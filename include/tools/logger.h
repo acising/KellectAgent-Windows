@@ -14,7 +14,7 @@ public:
 
 	//static el::Logger* defaultLogger;
 
-	static void initLogger(std::string confile = "log.conf");
+	static void initLogger(std::string confile = "config/log.conf");
 
 	static void writeLog(std::string msg);
 private:
