@@ -1,11 +1,11 @@
 简体中文 | [English](./README.md)
 # kellect 简介
 
-kellect是一个基于ETW（Event Tracing for Windows）和C++语言开发高性能多线程内核日志收集器。kellect可以追踪Windows系统的内核级信息，如文件、进程/线程、Image加载、注册表等信息。
+kellect是一个基于ETW（Event Tracing for Windows），由C++语言实现的高性能多线程内核日志收集器。kellect可以追踪Windows系统的内核级信息，如文件、进程/线程、Image加载、注册表等信息。
 
-kellect集成了事件收集、事件分析、事件语义修正、事件输出的全功能。采集事件可以以JSON事件输出到指定文件路径或通过socket传输到另外一台主机。
+kellect集成了事件收集、事件分析、事件语义修正、事件输出的全功能。采集事件可以以JSON事件输出到指定文件路径，或通过socket传输到另外一台主机。
 
-用户可以直接通过PowerShell.exe或cmd.exe使用改工具，并根据需要进行命令参数的设定，无需修改源代码。我们还提供了一些配置文件，用户可以根据需求进行定制。
+用户可以直接通过PowerShell.exe或cmd.exe使用该工具，并根据需要进行命令参数的设定，无需修改源代码。我们还提供了一些配置文件，用户可以根据需求进行定制。
 
 有关采集器的详细信息，请参阅[Demo Paper](./demoPaper.pdf) .
 
@@ -23,7 +23,7 @@ kellect使用一些第三方依赖库，如下所示，请查阅LICENSE-3RD-PART
 | easyloggingpp               | v9.96.7 | https://github.com/amraynonweb/easyloggingpp  |
 | moodycamel::ConcurrentQueue | /       | https://github.com/cameron314/concurrentqueue |
 
-kellect的开发主要依赖于Clion开发工具，但是编译主要依赖于MSVC编译器。开发用到的软件和版本如下表所示：
+kellect的开发主要依赖于Clion开发工具，编译主要依赖于MSVC编译器。开发用到的软件和版本如下表所示：
 
 | 工具名称          | 版本  |
 |---------------|-----|
@@ -38,7 +38,7 @@ kellect的开发主要依赖于Clion开发工具，但是编译主要依赖于MS
 
 经过测试，kellect可以在Windows7(x64)系统以上版本运行。
 
-采集器必须以**管理员**方法运行。如下所示，可通过配置参数的形式进行功能的选择。
+采集器必须以**管理员**身份运行。如下所示，可通过配置参数的形式进行功能的选择。
 
 ![image-20220503171012480](images/command.png)
 
@@ -49,12 +49,12 @@ kellect的开发主要依赖于Clion开发工具，但是编译主要依赖于MS
    kellect.exe -e 1 -f test.json
    ```
 
-**注意:** 参数 -e 请以十进制进行输入。
+**注意:** 参数 -e 请输入十进制格式参数。
 
 
 ## **配置文件的用法**
 
-用户可以配置filter.txt进行功能实现。通常采集器运行不需要进行修改，除非有定制化的需求。
+用户可以通过配置filter.txt实现不同功能。通常采集器运行不需要进行修改，除非有定制化的需求。
 
 - filter.txt的功能是去过滤不需要的日志数据。配置中可以进行三种不同类型的配置：进程ID、事件类别、Image文件路径的黑白名单。默认配置如下所示：
 
