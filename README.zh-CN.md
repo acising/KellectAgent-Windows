@@ -23,6 +23,15 @@ kellect使用一些第三方依赖库，如下所示，请查阅LICENSE-3RD-PART
 | easyloggingpp               | v9.96.7 | https://github.com/amraynonweb/easyloggingpp  |
 | moodycamel::ConcurrentQueue | /       | https://github.com/cameron314/concurrentqueue |
 
+kellect的开发主要依赖于Clion开发工具，但是编译主要依赖于MSVC编译器。开发用到的软件和版本如下表所示：
+
+| 工具名称          | 版本  |
+|---------------|-----|
+| Visual Studio |   16.11.13|
+| MSVC          |  19.29.30143.0  |
+| Windows SDK   |  10.0.20348.0  |
+| Clion         |   2022.1  |
+
 # **kellect 说明**
 
 ## **通过命令行调用**
