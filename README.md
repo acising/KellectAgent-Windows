@@ -1,6 +1,8 @@
-# WHound Introduction
+[简体中文](./README.zh-CN.md) | English 
 
-WHound is a multi-threaded Windows kernel log collector based on ETW(Event Tracing for Windows),developed on C++ language with high-efficient performance. WHound can track kernel level information of Windows system, such as FileIO, Process, Thread, ImageLoad, Registry and so on.
+# kellect Introduction
+
+kellect is a multi-threaded Windows kernel log collector based on ETW(Event Tracing for Windows),developed on C++ language with high-efficient performance. kellect can track kernel level information of Windows system, such as FileIO, Process, Thread, ImageLoad, Registry and so on.
 
 The program integrates the full functions of event collection, event analysis, event semantic correction, and event output. Output in JSON format, and can specify the output to a file path or transfer to another host through socket.
 
@@ -8,24 +10,24 @@ We implemented most of the functionality , which means users can use this tool v
 
 For more details, see the [Demo Paper](./demoPaper.pdf) .
 
-For more information on the future of WHound, see the [RoadMap](#roadmap) section.
+For more information on the future of kellect, see the [RoadMap](#roadmap) section.
 
 
 
 # **Implementation Details**
 
-WHound uses a number of 3rd party libraries, as shown below. Please see LICENSE-3RD-PARTY for further details.
+kellect uses a number of 3rd party libraries, as shown below. Please see LICENSE-3RD-PARTY for further details.
 
 | Module Name                 | Module Version | LicenseUrl                                    |
 | --------------------------- | -------------- | --------------------------------------------- |
 | easyloggingpp               | v9.96.7        | https://github.com/amraynonweb/easyloggingpp  |
 | moodycamel::ConcurrentQueue | /              | https://github.com/cameron314/concurrentqueue |
 
-# **WHound Manual**
+# **kellect Manual**
 
 ## **Usage of the command-line**
 
-After testing ,WHound can run on OS versions above win7(x64). 
+After testing ,kellect can run on OS versions above win7(x64). 
 
 Users must run this program **as administrator** , and provide some command-line options and parameters to achieve specific functions as blew.
 
@@ -35,7 +37,7 @@ We can collect the require data with the following command：
 
 
    ```
-   WHound.exe -e 0x1 -f test.json
+   kellect.exe -e 0x1 -f test.json
    ```
 
 **Notes:** The argument to the ‘-e’ option is in the form of a decimal sum.
@@ -141,7 +143,7 @@ We output event records in the format of JSON. Each Event has two parts of prope
     | ------------- | ------------------------------------------------------------ |
     | callStackInfo | the callstacks of the process operation.<br />  (the format of each call is like : **ModulePath:APIName**, e.g: C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock) |
 
- 4. ...... we can find other events properties in [https://docs.microsoft.com/en-us/windows/win32/etw/msnt-systemtrace]
+ 4. ...... we can find other events properties in (https://docs.microsoft.com/en-us/windows/win32/etw/msnt-systemtrace)
 
 It should be noted that we have **modified or populated** the properties of most events, so there will be some differences between the native events provided by Windows and ours. 
 
