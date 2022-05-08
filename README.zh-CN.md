@@ -125,30 +125,31 @@ whitelistOfImageFiles
 
   此类型属性因事件类型而异。 例如：
 
-  1. file_create 事件
+1. file_create 事件
 
-  | 属性              | 描述                                                            |
-      |---------------------------------------------------------------|--------|
-     | IrpPtr         | IO请求包                                                         |
-     | TTID           | 正在创建文件的线程的线程标识符                                               |
-     | FileObject     | 可用于在文件创建和关闭事件之间将操作与同一打开的文件对象实例相关联的标识符                         |
-     | CreateOptions  | 在 CreateOptions 和 CreateDispositions 参数中传递给 NtCreateFile 函数的值 |
-     | FileAttributes | 在 FileAttributes 参数中传递给 NtCreateFile 函数的值                     |
-     | ShareAccess    | 在 ShareAccess 参数中传递给 NtCreateFile 函数的值                        |
-     | OpenPath       | 文件路径                                                          |
+   | 属性    |描述           |
+   |------------------|--------|
+   | IrpPtr         | IO请包                  |
+   | TTID           | 正在创建文件的线程的线程标识符                |
+   | FileObject     | 可用于在文件创建和关闭事件之间将操作与同一打开的文件对象实例相关联的标识符   |
+   | CreateOptions  | 在 CreateOptions 和 CreateDispositions 参数中传递给 NtCreateFile 函数的值 |
+   | FileAttributes | 在 FileAttributes 参数中传递给 NtCreateFile 函数的值         |
+   | ShareAccess    | 在 ShareAccess 参数中传递给 NtCreateFile 函数的值                |
+   | OpenPath       | 文件路径                             |
 
-  1. FileIo_Name 事件
+2. FileIo_Name 事件
 
-     |   属性          | 描述                                                                                                                                                            | 
-     |---------------------------------------------------------------------------------------------------------------------------------------------------------------|--------|
-     | FileObject | 将此指针的值与 [**DiskIo_TypeGroup1**](https://docs.microsoft.com/en-us/windows/win32/etw/diskio-typegroup1) 事件中的 **FileObject** 指针值匹配以确定 I/O 操作的类型 |
-     | FileName   | 文件的完整路径，不包括驱动器号                                                                                                         |
+   |   属性     | 描述            | 
+   |---------------|--------|
+   | FileObject | 将此指针的值与 [**DiskIo_TypeGroup1**](https://docs.microsoft.com/en-us/windows/win32/etw/diskio-typegroup1) 事件中的 **FileObject** 指针值匹配以确定 I/O 操作的类型 |
+   | FileName   | 文件的完整路径，不包括驱动器号    |
+
 
 3. CallStack 事件 . 我们收集的API是Windows自己提供的，不收集用户自定义dll文件中的任何API。
 
-   | 属性             | 描述                                                                                                              |
-        |-----------------------------------------------------------------------------------------------------------------|--------|
-   | callStackInfo | 进程操作的调用栈.<br />  (每个调用的格式如下所示 : **ModulePath:APIName**, 如: C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock) |
+   | 属性             | 描述                   |
+   |-------------------------------|--------|
+   | callStackInfo | 进程操作的调用栈.<br />  (每个调用的格式如下所示 : **ModulePath:APIName**, 如:  C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock) |
 
 4. ...... 我们可以在[微软的文档](https://docs.microsoft.com/en-us/windows/win32/etw/msnt-systemtrace)中找到其他的时间属性描述 
 
