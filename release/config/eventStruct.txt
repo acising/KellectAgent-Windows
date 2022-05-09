@@ -1,0 +1,297 @@
+1030727888 1 ProcessStart;1030727888 2 ProcessEnd;1030727888 3 ProcessDCStart;1030727888 4 ProcessDCEnd;1030727888 39 ProcessDefunct
+UniqueProcessKey 8
+ProcessId 4
+ParentId 4
+SessionId 4
+ExitStatus 4
+DirectoryTableBase 8
+Flags 4
+UserSID 12
+ImageFileName 11
+CommandLine 10
+PackageFullName 1
+ApplicationId 1
+
+1030727889 1 ThreadStart;1030727889 2 ThreadEnd;1030727889 3 ThreadDCStart;1030727889 4 ThreadDCEnd
+ProcessId 4
+TThreadId 4
+StackBase 8
+StackLimit 8
+UserStackBase 8
+UserStackLimit 8
+Affinity 8
+Win32StartAddr 8
+TebBase 8
+SubProcessTag 4
+BasePriority 1
+PagePriority 1
+IoPriority 1
+ThreadFlags 1
+
+1030727889 36 ThreadCSwitch
+NewThreadId 4											
+OldThreadId 4
+NewThreadPriority 1	
+OldThreadPriority 1
+PreviousCState 1
+SpareByte 1
+OldThreadWaitReason 1
+ThreadFlags 1
+OldThreadState 1
+OldThreadWaitIdealProcessor 1
+NewThreadWaitTime 4	
+Reserved 4
+
+1030727888 32 ProcessPerfCtr;1030727888 33 ProcessPerfCtrRundown
+ProcessId 4
+PageFaultCount 4
+HandleCount 4
+Reserved 4
+PeakVirtualSize 8
+PeakWorkingSetSize 8
+PeakPagefileUsage 8
+QuotaPeakPagedPoolUsage 8
+QuotaPeakNonPagedPoolUsage 8
+VirtualSize 8
+WorkingSetSize 8
+PagefileUsage 8
+QuotaPagedPoolUsage 8
+QuotaNonPagedPoolUsage 8
+PrivatePageCount 8
+
+2924704302 10 RegistryCreate;2924704302 11 RegistryOpen;2924704302 12 RegistryDelete;2924704302 13 RegistryQuery;2924704302 14 RegistrySetValue;2924704302 15 RegistryDeleteValue;2924704302 16 RegistryQueryValue;2924704302 17 RegistryEnumerateKey;2924704302 18 RegistryEnumerateValueKey;2924704302 19 RegistryQueryMultipleValue;2924704302 20 RegistrySetInformation;2924704302 21 RegistryFlush;2924704302 22 RegistryKCBCreate;2924704302 23 RegistryKCBDelete;2924704302 24 RegistryKCBRundownBegin;2924704302 25 RegistryKCBRundownEnd;2924704302 26 RegistryVirtualize;2924704302 27 RegistryClose
+InitialTime 8
+Status 4
+Index 4
+KeyHandle 8
+KeyName 10
+
+2586315456 10 TcpIpSendIPV4
+PID 4
+size 4
+daddr 4
+saddr 4
+dport 2
+sport 2
+startime 4
+endtime 4
+seqnum 4
+connid 8
+
+2586315456 26 TcpIpSendIPV6
+PID 4
+size 4
+daddr 4
+saddr 4
+dport 2
+sport 2
+startime 4
+endtime 4
+seqnum 4
+connid 8
+
+2586315456 11 TcpIpRecvIPV4;2586315456 13 TcpIpDisconnectIPV4;2586315456 14 TcpIpRetransmitIPV4;2586315456 16 TcpIpReconnectIPV4;2586315456 18 TcpIpTCPCopyIPV4
+PID 4
+size 4
+daddr 4
+saddr 4
+dport 2
+sport 2
+seqnum 4
+connid 8
+
+2586315456 27 TcpIpRecvIPV6;2586315456 29 TcpIpDisconnectIPV6;2586315456 30 TcpIpRetransmitIPV6;2586315456 32 TcpIpReconnectIPV6;2586315456 34 TcpIpTCPCopyIPV6
+PID 4
+size 4
+daddr 4
+saddr 4
+dport 2
+sport 2
+seqnum 4
+connid 8
+
+2586315456 12 TcpIpConnectIPV4;2586315456 15 TcpIpAcceptIPV4
+PID 4
+size 4
+daddr 4
+saddr 4
+dport 2
+sport 2
+mss 2
+sackopt 2
+tsopt 2
+wsopt 2
+rcvwin 4
+rcvwinscale 2
+sndwinscale 2
+seqnum 4
+connid 8
+
+2586315456 28 TcpIpConnectIPV6;2586315456 31 TcpIpAcceptIPV6
+PID 4
+size 4
+daddr 4
+saddr 4
+dport 2
+sport 2
+mss 2
+sackopt 2
+tsopt 2
+wsopt 2
+rcvwin 4
+rcvwinscale 2
+sndwinscale 2
+seqnum 4
+connid 8
+
+2586315456 17 TcpIpFailed
+Proto  2
+FailureCode 2
+
+2429279289 64 FileIOCreate
+IrpPtr 8
+FileObject 8
+TTID 4
+CreateOptions 4
+FileAttributes 4
+ShareAccess 4
+OpenPath 10
+
+2429279289 72 FileIODirEnum;2429279289 77 FileIODirNotify
+IrpPtr 8	
+FileObject 8
+FileKey 8
+TTID 4
+Length 4
+InfoClass 4	
+FileIndex 4
+FileName 10	
+
+2429279289 69 FileIOSetInfo;2429279289 70 FileIODelete;2429279289 71 FileIORename;2429279289 74 FileIOQueryInfo;2429279289 75 FileIOFSControl
+IrpPtr 8
+FileObject 8
+FileKey 8
+ExtraInfo 8
+TTID 4
+InfoClass 4
+
+2429279289 0 FileIOName;2429279289 32 FileIOFileCreate;2429279289 35 FileIOFileDelete;2429279289 36 FileIOFileRundown
+FileObject 8
+FileName 10
+
+2429279289 76 FileIOOperationEnd
+IrpPtr 8
+ExtraInfo 8
+NtStatus 4
+
+2429279289 67 FileIORead;2429279289 68 FileIOWrite
+Offset 13
+IrpPtr 8
+FileObject 8
+FileKey 8
+TTID 4
+IoSize 4
+IoFlags 4
+
+2429279289 65 FileIOCleanup;2429279289 66 FileIOClose;2429279289 73 FileIOFlush
+IrpPtr 8
+FileObject 8
+FileKey 8
+TTID 4
+
+1030727892 11 DiskIOWrite;1030727892 11 DiskIORead
+DiskNumber 4
+IrpFlags 4
+TransferSize 4
+Reserved 4
+ByteOffset 8
+FileObject 8
+
+1030727892 12 DiskIOReadInit;1030727892 13 DiskIOWriteInit;1030727892 15 DiskIOFlushInit
+Irp 4
+IssuingThreadId 4
+
+1030727892 14 DiskIOFlushBuffers
+DiskNumber 4
+IrpFlags 4
+HighResResponseTime 8
+Irp 8
+IssuingThreadId 4
+
+1030727892 52 DiskIODrvComplReq
+RoutineAddr 8
+Irp 8
+UniqMatchId 4
+
+1030727892 53 DiskIODrvComplReqRet
+Irp 8
+UniqMatchId 4
+
+1030727892 37 DiskIODrvComplRout
+Routine 8
+Irp 8
+UniqMatchId 4
+
+1030727892 34 DiskIODrvMjFnCall
+MajorFunction 4
+MinorFunction 4
+RoutineAddr 8
+FileObject 8
+Irp 8
+UniqMatchId 4
+
+1030727892 35 DiskIODrvMjFnRet
+Irp 8
+UniqMatchId 4
+
+1171836109 34 ALPC-Receive-Message
+MessageID 4
+
+1171836109 33 ALPC-Send-Message
+MessageID 4
+
+1171836109 37 ALPC-Unwait
+Status 4
+
+1171836109 36 ALPC-Wait-For-New-Message
+IsServerPort 4
+PortName 10
+
+1171836109 35 ALPC-Wait-For-Reply
+MessageID 4
+
+3458056116 66 PerfInfoThreadDPC;3458056116 68 PerfInfoDPC;3458056116 69 PerfInfoTimerDPC
+InitialTime 8
+Routine 8
+
+3458056116 67 PerfInfoISR
+InitialTime 8
+Routine 8
+ReturnValue 1
+Vector 1
+Reserved 2
+
+3458056116 69 PerfInfoSysClEnter
+SysCallAddress 8
+
+3458056116 52 PerfInfoSysClEnter
+SysCallNtStatus 4
+
+749821213 10 ImageLoad;749821213 2 ImageUnload;749821213 3 ImageDCStart;749821213 4 ImageDCEnd
+ImageBase 8
+ImageSize 8
+ProcessId 4
+ImageChecksum 4
+TimeDateStamp 4
+SignatureLevel 1
+SignatureType 1
+Reserved0 2
+DefaultBase 8
+Reserved1 4
+Reserved2 4
+Reserved3 4
+Reserved4 4
+FileName 10
+
+3458056116 51 SysClEnter
+SysCallAddress 8
