@@ -159,9 +159,49 @@ It should be noted that we have **modified or populated** the properties of most
 The output case are as follows:
 
 ```
-{"EventName":FileIOCreate,"ProcessID":11144,"ProcessName":clion64.exe,"ThreadID":15692,"TimeStamp":132959694278638867,"arguments":{"CreateOptions":50331744,"FileAttributes":128,"FileObject":251724112,"IrpPtr":116229640,"OpenPath":"C:\Users\Administrator\AppData\Local\JetBrains\CLion2022.1\caches\contentHashes.dat.keystream.len","ShareAccess":7,"TTID":15692}}
+#FileIO Create Event
+{
+    "EventName":"FileIOCreate",
+    "ProcessID":11144,
+    "ProcessName":"clion64.exe",
+    "ThreadID":15692,
+    "TimeStamp":132959694278638867,
+    "arguments":{
+        "CreateOptions":50331744,
+        "FileAttributes":128,
+        "FileObject":251724112,
+        "IrpPtr":116229640,
+        "OpenPath":"C:\Users\Administrator\AppData\Local\JetBrains\CLion2022.1\caches\contentHashes.dat.keystream.len",
+        "ShareAccess":7,
+        "TTID":15692
+    }
+}
 
-{"EventName":CallStack,"ProcessID":11144,"ProcessName":clion64.exe,"ThreadID":15692,"TimeStamp":132959694278638867,"arguments":{"stackInfo":"C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,C:\Windows\System32\ntdll.dll:RtlCaptureStackContext"}}
+#Callstack event
+{
+    "EventName":"CallStack",
+    "ProcessID":11144,
+    "ProcessName":"clion64.exe",
+    "ThreadID":15692,
+    "TimeStamp":132959694278638867,
+    "arguments":{
+        "stackInfo":"C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
+        C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
+        C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
+        C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
+        C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
+        C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
+        C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
+        C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
+        C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
+        C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
+        C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
+        C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
+        C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
+        C:\Windows\System32\ntdll.dll:RtlCaptureStackContext"
+    }
+}
+
 ```
 
 # Future Work

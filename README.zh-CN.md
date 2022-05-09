@@ -157,9 +157,48 @@ whitelistOfImageFiles
 
 输出情况如下：
 ```
-{"EventName":FileIOCreate,"ProcessID":11144,"ProcessName":clion64.exe,"ThreadID":15692,"TimeStamp":132959694278638867,"arguments":{"CreateOptions":50331744,"FileAttributes":128,"FileObject":251724112,"IrpPtr":116229640,"OpenPath":"C:\Users\Administrator\AppData\Local\JetBrains\CLion2022.1\caches\contentHashes.dat.keystream.len","ShareAccess":7,"TTID":15692}}
+#FileIO的create 事件
+{
+    "EventName":"FileIOCreate",
+    "ProcessID":11144,
+    "ProcessName":"clion64.exe",
+    "ThreadID":15692,
+    "TimeStamp":132959694278638867,
+    "arguments":{
+        "CreateOptions":50331744,
+        "FileAttributes":128,
+        "FileObject":251724112,
+        "IrpPtr":116229640,
+        "OpenPath":"C:\Users\Administrator\AppData\Local\JetBrains\CLion2022.1\caches\contentHashes.dat.keystream.len",
+        "ShareAccess":7,
+        "TTID":15692
+    }
+}
 
-{"EventName":CallStack,"ProcessID":11144,"ProcessName":clion64.exe,"ThreadID":15692,"TimeStamp":132959694278638867,"arguments":{"stackInfo":"C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,C:\Windows\System32\ntdll.dll:RtlCaptureStackContext"}}
+#callstack事件
+{
+    "EventName":"CallStack",
+    "ProcessID":11144,
+    "ProcessName":"clion64.exe",
+    "ThreadID":15692,
+    "TimeStamp":132959694278638867,
+    "arguments":{
+        "stackInfo":"C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
+        C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
+        C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
+        C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
+        C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
+        C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
+        C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
+        C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
+        C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
+        C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
+        C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
+        C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
+        C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
+        C:\Windows\System32\ntdll.dll:RtlCaptureStackContext"
+    }
+}
 ```
 
 # 未来工作
