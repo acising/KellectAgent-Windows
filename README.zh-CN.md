@@ -7,8 +7,6 @@ kellect集成了事件收集、事件分析、事件语义修正、事件输出�
 
 用户可以直接通过PowerShell.exe或cmd.exe使用该工具，并根据需要进行命令参数的设定，无需修改源代码。我们还提供了一些配置文件，用户可以根据需求进行定制。
 
-有关采集器的详细信息，请参阅[Demo Paper](./demoPaper.pdf) .
-
 有关kellect的进一步发展，请参阅[未来规划](#roadmap)。
 
 
@@ -31,6 +29,17 @@ kellect的开发主要依赖于Clion开发工具，编译主要依赖于MSVC编�
 | MSVC          |  19.29.30143.0  |
 | Windows SDK   |  10.0.20348.0  |
 | Clion         |   2022.1  |
+
+kellect的目录结构如下所示：
+
+| 目录名称          | 说明      |
+|---------------|---------|
+| include       | 头文件     |
+| lib           | 第三方库    |
+| source        | 源文件     |
+|  source/config  | 配置文件  |
+| release       | 发布版本    |
+
 
 # **kellect 说明**
 
