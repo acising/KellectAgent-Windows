@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <initguid.h>
 #include <wbemidl.h>
 #include <wmistr.h>
 #include <time.h>
