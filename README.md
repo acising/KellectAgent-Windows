@@ -33,6 +33,16 @@ The development of kellect  depends on the Clion, but the compilation depends on
 | Windows SDK   |  10.0.20348.0  |
 | Clion         |   2022.1  |
 
+The directory of kellect is shown as blew:
+
+| name of directory | meaning                  |
+|-------------------|--------------------------|
+| include           | header files             |
+| lib               | the  3rd party libraries |
+| source            | source files             |
+| source/config     | config files             |
+| release           | executable file   |
+
 # **kellect Manual**
 
 ## **Usage of the command-line**
