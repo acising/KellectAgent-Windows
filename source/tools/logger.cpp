@@ -17,4 +17,5 @@ void MyLogger::initLogger(std::string confile) {
 
 void MyLogger::writeLog(std::string msg) {
 	//LOG(DEBUG) <<msg; 
+//	std::cout <<msg <<std::endl;
 }

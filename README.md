@@ -2,7 +2,7 @@
 
 # kellect Introduction
 
-kellect is a multi-threaded Windows kernel log collector based on ETW(Event Tracing for Windows),developed on C++ language with high-efficient performance. kellect can track kernel level information of Windows system, such as FileIO, Process, Thread, ImageLoad, Registry and so on.
+kellect is a multi-threaded Windows kernel log collector based on ETW(BaseEvent Tracing for Windows),developed on C++ language with high-efficient performance. kellect can track kernel level information of Windows system, such as FileIO, Process, Thread, ImageLoad, Registry and so on.
 
 The program integrates the full functions of event collection, event analysis, event semantic correction, and event output. Output in JSON format, and can specify the output to a file path or transfer to another host through socket.
 
@@ -19,9 +19,10 @@ For more information on the future of kellect, see the [RoadMap](#roadmap) secti
 kellect uses a number of 3rd party libraries, as shown below. Please see LICENSE-3RD-PARTY for further details.
 
 | Module Name                 | Module Version | LicenseUrl                                    |
-| --------------------------- | -------------- | --------------------------------------------- |
+|-----------------------------|----------------|-----------------------------------------------|
 | easyloggingpp               | v9.96.7        | https://github.com/amraynonweb/easyloggingpp  |
 | moodycamel::ConcurrentQueue | /              | https://github.com/cameron314/concurrentqueue |
+| nlohmann::json              | v3.10.4        | https://github.com/nlohmann/json              |
 
 The development of kellect  depends on the Clion, but the compilation depends on the MSVC compiler. The software and versions used for development are shown as blew:
 
@@ -94,9 +95,9 @@ whitelistOfImageFiles
 
 2. *[filteredEventIdentifier]* 
 
-   means filter events by the combination of Event ProviderID and opcode, which we call the EventIdentifier.
+   means filter events by the combination of BaseEvent ProviderID and opcode, which we call the EventIdentifier.
 
-   We can find the Event information in [https://docs.microsoft.com/en-us/windows/win32/etw/fileio]. ProviderID is the decimal form of the first part of class Guid and opcode is the EventType value under the Remarks of each Event Class Page.
+   We can find the BaseEvent information in [https://docs.microsoft.com/en-us/windows/win32/etw/fileio]. ProviderID is the decimal form of the first part of class Guid and opcode is the EventType value under the Remarks of each BaseEvent Class Page.
 
    ![image-20220503171251436](images/eventType.png)
 
@@ -112,7 +113,7 @@ whitelistOfImageFiles
 
 # **Output Format**
 
-We output event records in the format of JSON. Each Event has two parts of properties: common properties and private properties. The description of each part as follows:
+We output event records in the format of JSON. Each BaseEvent has two parts of properties: common properties and private properties. The description of each part as follows:
 
 - Common properties
 
@@ -125,7 +126,7 @@ We output event records in the format of JSON. Each Event has two parts of prope
 
 - Private properties
 
-  This type properties is various depends on the Event types. For example: 
+  This type properties is various depends on the BaseEvent types. For example: 
 
 1. file_create event
 
@@ -159,7 +160,7 @@ It should be noted that we have **modified or populated** the properties of most
 The output case are as follows:
 
 ```
-#FileIO Create Event
+#FileIO Create BaseEvent
 {
     "EventName":"FileIOCreate",
     "ProcessID":11144,

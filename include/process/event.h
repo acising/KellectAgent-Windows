@@ -27,7 +27,7 @@ public:
 	dataType(ULONG64 ld) :d(ld), s("NULL"), isString(false) {}
 	dataType() :s("NULL"), d(ULONGMAX), isString(false) {}
 
-	inline bool isEmpty() { return d == ULONGMAX && !isString; }
+//	inline bool isEmpty() { return d == ULONGMAX && !isString; }
 	inline bool getIsString() { return isString; }
 	inline ULONG64 getULONG64() { return d; }
 	inline std::string& getString() { return s; }
@@ -76,7 +76,7 @@ public:
 };
 typedef std::set <EventIdentifier*, EventIdentifierSortCriterion> EISetType;
 
-class Event{
+class BaseEvent{
 
 private:
 	char* rawProperty = nullptr;
@@ -96,7 +96,7 @@ protected:
 public:
 
 	using PropertyInfo = std::pair<std::string, int>;
-	static enum propertyNameIndex {
+    enum PropertyNameIndex {
 		UniqueProcessKey, ProcessId, ParentId, SessionId, ExitStatus, DirectoryTableBase, Flags, UserSID, ImageFileName, CommandLine, PackageFullName,
 		ApplicationId, TThreadId, StackBase, StackLimit, UserStackBase, UserStackLimit, Affinity, Win32StartAddr, TebBase, SubProcessTag, BasePriority,
 		PagePriority, IoPriority, ThreadFlags, NewThreadId, OldThreadId, NewThreadPriority, OldThreadPriority, PreviousCState, SpareByte, OldThreadWaitReason,
@@ -109,6 +109,7 @@ public:
 		PortName, ReturnValue, Vector, SysCallAddress, SysCallNtStatus, ImageBase, ImageSize, ImageChecksum, TimeDateStamp, SignatureLevel, SignatureType,
 		Reserved0, DefaultBase, Reserved1, Reserved2, Reserved3, Reserved4
 	};
+    static PropertyNameIndex propertyNameIndex;
 
 	static std::map<EventIdentifier*, std::vector<std::string>,EventIdentifierSortCriterion> eventPropertiesMap;
 	static std::set <EventIdentifier*, EventIdentifierSortCriterion> eventIdentifierSet;
@@ -116,12 +117,13 @@ public:
 	static std::vector <std::string> propertyNameVector;
 	static std::map <std::string,int> propertyName2IndexMap;
 	static std::map<EventIdentifier*, std::list<PropertyInfo>, EventIdentifierSortCriterion> eventStructMap;
+//	static std::map<ULONG64, std::set<EventIdentifier*,EventIdentifierSortCriterion>> eventProviderID2Opcodes; //use to classify events by providerID and opcodes.
 
 public:
 	virtual STATUS toJsonString(std::string* sJson);
 	virtual void parse() {};
-	Event() {};
-	virtual~Event() {
+	BaseEvent() {};
+	virtual~BaseEvent() {
 		// the arguments are deleted in function getCommonJsonNoLib(..), as to avoid twice traverse arguments
 		
 		if (!propertiesDeleted)
@@ -175,8 +177,8 @@ public:
 		if (propertyNameIndex > propertyNameVector.size())	return false;
 		return properties.count(propertyNameVector[propertyNameIndex]) != 0;
 	}
-	void setTIDAndPID(Event* event);
-	friend std::wostream& operator<< (std::wostream& os, Event& rec);
+	int setTIDAndPID(BaseEvent* event);
+	friend std::wostream& operator<< (std::wostream& os, BaseEvent& rec);
 };
 
 class MyAPI{

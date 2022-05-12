@@ -12,7 +12,7 @@ using namespace moodycamel;
 #define output2socket   0x4
 #define STATUS int
 #define STATUS_FAILED -1
-#define STATUS_SUCCESS 0
+//#define STATUS_SUCCESS 0
 #define STATUS_SOCKET_ERROR -2
 
 class OutPut {
@@ -20,8 +20,9 @@ class OutPut {
 private:
 	ConcurrentQueue<std::string*> q;
 	std::atomic<int> count;
-	const int outputThreshold = 10000;	//max number of events output to the destination
-	//const int outputThreshold = 5000;
+    int outputThreshold;	//max number of events output to the destination
+
+    //const int outputThreshold = 5000;
 	std::mutex m;
 	std::condition_variable cv;
 	const int maxDequeNumber = 15000;
@@ -37,6 +38,10 @@ public:
 	virtual STATUS init() { return STATUS_SUCCESS; };
 	bool initialized() { return ini; };
 	void setInit(bool i) { ini = i; };
+
+    void setOutputThreashold(int threashold){
+        outputThreshold = threashold;
+    };
 
 	void pushOutputQueue(std::string* res) {
 		q.enqueue(res);

@@ -10,15 +10,18 @@ public:
 	~Filter() {};
 	//filter according eventidentifier and processID
 	static bool firstFilter(PEVENT_RECORD pEvent);
-	static bool secondFilter(Event* event);
-	static bool thirdFilter(Event* event);
+	static bool secondFilter(BaseEvent* event);
+	static bool thirdFilter(BaseEvent* event);
 
 public:
+    //listen events specified by option "-e", only output listened events and filter others
+    static std::set<ULONG64> Filter::listenedEventsProviders;
+    //if user listen all event types, we need not to check current event if exist in "listenedEventsProviders"
+    static bool listenAllEvents;
 
-	static std::set<EventIdentifier*, EventIdentifierSortCriterion> filteredEventIdentifiers;
+    static std::set<EventIdentifier*, EventIdentifierSortCriterion> filteredEventIdentifiers;
 	static std::set<int> filteredProcessID;
 	static std::set<std::string> filteredImageFile;
-
 	static inline bool filterImageFile(std::string& imageFileName) {
 		return !Filter::filteredImageFile.count(imageFileName);
 	};

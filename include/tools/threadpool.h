@@ -11,10 +11,9 @@
 #include <list>
 
 typedef std::function<void()> Task;
-typedef void (*threadParseEvent)(Event* event);
+typedef void (*threadParseEvent)(BaseEvent* event);
 typedef void (*threadParsePeventRecord)(PEVENT_RECORD pEvent);
 typedef void (*beginThreadParseFunc)();
-
 
 class ThreadPool {
 private:
@@ -48,7 +47,7 @@ public:
 	//template<class F, class... Args> 
 	//auto enqueueTask(F&& f, Args&&... args)->std::future<decltype(f(args...))>;
 
-	void enqueueTask(threadParseEvent f, Event* event);
+	void enqueueTask(threadParseEvent f,BaseEvent* event);
 	void enqueueTask(beginThreadParseFunc f);
 	//void enqueueTask(threadParsePeventRecord f, PEVENT_RECORD pEvent);
 

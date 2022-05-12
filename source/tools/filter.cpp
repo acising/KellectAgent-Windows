@@ -13,8 +13,8 @@ bool Filter::firstFilter(PEVENT_RECORD pEvent) {
 	return flt;
 }
 
-//this filter function called in each "Eventxxx" class parse() function which is derived from "Event" class
-bool Filter::secondFilter(Event* event) {
+//this filter function called in each "Eventxxx" class parse() function which is derived from "BaseEvent" class
+bool Filter::secondFilter(BaseEvent* event) {
 
 	int pid = event->getProcessID();
 	bool flt = false;
@@ -25,11 +25,20 @@ bool Filter::secondFilter(Event* event) {
 	return flt;
 }
 
-bool Filter::thirdFilter(Event* event) {
+bool Filter::thirdFilter(BaseEvent* event) {
 
 	bool flt = false;
 
-	if (!event->isValueableEvent())	flt = true;
+    if (!event->isValueableEvent() )
+        flt = true;
+    if(listenAllEvents||listenedEventsProviders.count(event->getEventIdentifier()->getProviderID())){
+        if (filterPID(event->getProcessID())) {
+            event->setValueableEvent(false);
+            flt = true;
+        }
+    }else {
+        flt = true;
+    }
 
-	return flt;
+    return flt;
 }

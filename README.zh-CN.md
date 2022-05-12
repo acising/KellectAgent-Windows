@@ -1,7 +1,7 @@
 简体中文 | [English](./README.md)
 # kellect 简介
 
-kellect是一个基于ETW（Event Tracing for Windows），由C++语言实现的高性能多线程内核日志收集器。kellect可以追踪Windows系统的内核级信息，如文件、进程/线程、Image加载、注册表等信息。
+kellect是一个基于ETW（BaseEvent Tracing for Windows），由C++语言实现的高性能多线程内核日志收集器。kellect可以追踪Windows系统的内核级信息，如文件、进程/线程、Image加载、注册表等信息。
 
 kellect集成了事件收集、事件分析、事件语义修正、事件输出的全功能。采集事件可以以JSON事件输出到指定文件路径，或通过socket传输到另外一台主机。
 
@@ -94,7 +94,7 @@ whitelistOfImageFiles
 
 2. *[filteredEventIdentifier]*
 
-   表示通过Event ProviderID和opcode的组合过滤事件，我们称之为EventIdentifier。 具体的事件日志详情可以在[微软文档](https://docs.microsoft.com/en-us/windows/win32/etw/fileio)中获取. ProviderID 是 Guid 类第一部分的十进制形式，opcode 是每个 Event Class Page 的 Remarks 下的 EventType 值。
+   表示通过Event ProviderID和opcode的组合过滤事件，我们称之为EventIdentifier。 具体的事件日志详情可以在[微软文档](https://docs.microsoft.com/en-us/windows/win32/etw/fileio)中获取. ProviderID 是 Guid 类第一部分的十进制形式，opcode 是每个 BaseEvent Class Page 的 Remarks 下的 EventType 值。
 
    ![image-20220503171251436](images/eventType.png)
 
@@ -110,7 +110,7 @@ whitelistOfImageFiles
 
 # **输出格式**
 
-我们以 JSON 格式输出事件记录。 每个 Event 都有两部分属性：公共属性和私有属性。 各部分说明如下：
+我们以 JSON 格式输出事件记录。 每个 BaseEvent 都有两部分属性：公共属性和私有属性。 各部分说明如下：
 
 - 公共属性
 

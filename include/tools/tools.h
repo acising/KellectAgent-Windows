@@ -19,7 +19,7 @@ public:
 
 	static void initVolume2DiskMap();
 	static void convertFileNameInDiskFormat(std::string &fileName);
-	static std::string parseEventInJsonFormat(const Event &event);
+	static std::string parseEventInJsonFormat(const BaseEvent &event);
 };
 
 template<typename Key, typename Val>
@@ -82,7 +82,7 @@ public:
 		return res;
 	}
 
-	// used in setFileName(Event* ev) to avoid undefined behavior, because mutexe needs before iterator.
+	// used in setFileName(BaseEvent* ev) to avoid undefined behavior, because mutexe needs before iterator.
 	Val getValue(const Key& key) {
 
 		Val res;	

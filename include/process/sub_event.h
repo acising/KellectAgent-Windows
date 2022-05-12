@@ -3,7 +3,12 @@
 #include "tools/tools.h"
 #include "initialization/initializer.h"
 
-class EventProcess :public Event {
+#define MAX_PROCESSOR_NUM 65535
+#define MAX_THREAD_NUM 65535
+#define INIT_THREAD_ID -1
+#define INIT_PROCESS_ID -1
+
+class EventProcess :public BaseEvent {
 
 private:
 	using MinMaxModuleAddressPair = std::pair<ULONG64, ULONG64>;
@@ -18,7 +23,7 @@ public:
 	static ReadWriteMap<int, MinMaxModuleAddressPair> processID2ModuleAddressPair;
 	//static ReadWriteMap<int, std::string> processID2Name;
 	//static ReadWriteMap<std::string, int> processName2ID;
-	static const ULONG64 UnknownProcess = 0xffffffff - 1;
+//	static const int UnknownProcess = -1;
 
 public:
 	//std::string toJsonString() override;
@@ -32,18 +37,21 @@ public:
 	};
 
 private:
-	static enum { PROCESSSTART = 1, PROCESSDCSTART = 3, PROCESSEND = 2, PROCESSDCEND = 4, PROCESSDEFUNCT = 30 };
-	//std::wstring parentProcessName;
+    enum ProcessEnum { PROCESSSTART = 1, PROCESSDCSTART = 3, PROCESSEND = 2, PROCESSDCEND = 4, PROCESSDEFUNCT = 30 };
+    static ProcessEnum processEnum;
+
+    //std::wstring parentProcessName;
 };
 
-class EventFile :public Event {
+class EventFile :public BaseEvent {
 public:
 
-	static enum {
+	enum FileEnum {
 		FILECREATE = 32, FILEDELETE_ = 35, RENAME = 71, RUNDOWN = 36, CREATE = 64,
 		OPERATIONEND = 76, DELETE_ = 70, SETINFO = 69, NAME = 0, QUERYINFO = 74, FSCONTROL = 75,
 		READ = 67, WRITE = 68, DIRENUM = 72, NOTIFY = 77, CLEANUP = 65, CLOSE = 66, FLUSH = 73, NOTDEFINEDTYPE1 = 84, NOTDEFINEDTYPE2 = 83
 	};
+    static FileEnum fileEnum;
 
 	//static ReadWriteMap<ULONG64, std::string> fileKey2Name;
 	static std::map<ULONG64, std::string> fileKey2Name;
@@ -71,17 +79,16 @@ private:
 	//void fullEventName();
 };
 
-class EventThread :public Event {
+class EventThread :public BaseEvent {
 
 	//std::string toJsonString() override;
 	void parse() override;
 
 public:
 
-	//static ReadWriteMap<ULONG64, ULONG64> processorId2threadId;
-	static std::map<ULONG64, ULONG64> processorId2threadId;
-	//static ReadWriteMap<ULONG64, ULONG64> threadId2processId;
-	static std::map<ULONG64, ULONG64> threadId2processId;
+    static int processorId2threadId[MAX_PROCESSOR_NUM];
+    static int threadId2processId[MAX_THREAD_NUM];
+
 	static std::set<ULONG64> threadSet;
 	static void initThreadStruct();
 	~EventThread() {
@@ -95,7 +102,7 @@ private:
 	static std::unique_ptr<std::mutex> up;
 };
 
-class EventRegistry :public Event {
+class EventRegistry :public BaseEvent {
 
 public:
 	//std::string toJsonString() override;
@@ -109,7 +116,7 @@ public:
 	//enum { IMAGELOAD = 10, IMAGEDCSTART = 3, IMAGEUNLOAD = 2, IMAGEDCEND = 4 };
 };
 
-class EventDisk :public Event {
+class EventDisk :public BaseEvent {
 
 	//std::string toJsonString() override;
 	void parse() override;
@@ -117,7 +124,7 @@ class EventDisk :public Event {
 
 	};
 };
-class EventUnImportant :public Event {
+class EventUnImportant :public BaseEvent {
 
 	//std::string toJsonString() override;
 	void parse() override;
@@ -126,7 +133,7 @@ class EventUnImportant :public Event {
 	};
 };
 
-class EventImage :public Event {
+class EventImage :public BaseEvent {
 
 public:
 	//static std::map < int, std::set<Module*, ModuleSortCriterion> > processID2Modules;
@@ -163,27 +170,36 @@ private:
 class CallStackIdentifier {
 
 private:
-	std::string operationName;
+//	std::string operationName;
 	int depth;		//callstacks depth
-	ULONG64 topCallAddress;
+//	ULONG64 topCallAddress;
+	std::vector<ULONG64> callAddresses;
 
 public:
-	CallStackIdentifier(std::string opName, int dth, ULONG64 topAddress) :
-		operationName(opName), depth(dth), topCallAddress(topAddress) {}
-	
+//	CallStackIdentifier(std::string opName, int dth, std::vector<ULONG64> callAddresses) :
+//		operationName(opName), depth(dth), callAddresses(callAddresses) {}
+    CallStackIdentifier(int depth, std::vector<ULONG64> callAddresses) :
+            depth(depth), callAddresses(callAddresses) {}
+
 	bool operator< (const CallStackIdentifier& ci)const {
 		if (depth != ci.depth)	return depth < ci.depth;
 		else {
 			//int res = strcmp(operationName.c_str(), ci.operationName.c_str());
 			//if (res != 0)	return res < 0;
 			//else{
-				return topCallAddress < ci.topCallAddress;
-			//}
+            for(int i =0;i<depth;i++){
+                if(ci.callAddresses[i] == this->callAddresses[i]){
+                    if(i>5) return false;
+                    continue;
+                }
+                return ci.callAddresses[i] < this->callAddresses[i];
+            }
+            return false;
 		}
 	}
 };
 
-class EventCallstack :public Event {
+class EventCallstack :public BaseEvent {
 
 public:
 	std::vector<ULONG64> stackAddresses;
@@ -212,7 +228,7 @@ private:
 	//std::wstring callStackInfo;
 };
 
-class EventPerfInfo :public Event {
+class EventPerfInfo :public BaseEvent {
 
 public:
 	static std::map< ULONG64, std::string*> systemCallMap;
@@ -231,17 +247,27 @@ private:
 	std::string* sysCallName;
 };
 
-class EventTCPIP :public Event {
+class EventTCPIP :public BaseEvent {
 
 public:
 	//std::string toJsonString() override;
-	void parse() override;
+	inline std::string transferULONG2IPAddr(ULONG64& lAddr){
+        CHAR sAddr[36] = { 0 };
+        sprintf_s(sAddr, 36, "%lld.%lld.%lld.%lld", (lAddr >> 0) & 0xff,
+                  (lAddr >> 8) & 0xff,
+                  (lAddr >> 16) & 0xff,
+                  (lAddr >> 24) & 0xff);
+        return sAddr;
+    }
+    void parse() override;
 	~EventTCPIP() {
 
 	};
 
 private:
-	static enum {SENDIPV4 = 10, RECVIPV4 = 11, DISCONNECTIPV4 = 13, RETRANSMITIPV4 = 14, RECONNECTIPV4 = 16,
+    enum TCPIPEnum{SENDIPV4 = 10, RECVIPV4 = 11, DISCONNECTIPV4 = 13, RETRANSMITIPV4 = 14, RECONNECTIPV4 = 16,
 		TCPCOPYIPV4 = 18, CONNECTIPV4 = 12, ACCEPTIPV4 = 15, TCPIPFAILED = 17
 	};
+
+    static TCPIPEnum tcpipEnum;
 }; 

@@ -5,11 +5,11 @@
 #include <iostream> 
 #include <regex>
 
-std::map<EventIdentifier*, std::vector<std::string>,EventIdentifierSortCriterion > Event::eventPropertiesMap;		//映射了event中不同的参数
-std::set <std::string> Event::propertyNameSet;
-std::vector <std::string> Event::propertyNameVector;
-std::map <std::string, int> Event::propertyName2IndexMap;
-std::set <EventIdentifier*, EventIdentifierSortCriterion> Event::eventIdentifierSet;
+std::map<EventIdentifier*, std::vector<std::string>,EventIdentifierSortCriterion > BaseEvent::eventPropertiesMap;		//映射了event中不同的参数
+std::set <std::string> BaseEvent::propertyNameSet;
+std::vector <std::string> BaseEvent::propertyNameVector;
+std::map <std::string, int> BaseEvent::propertyName2IndexMap;
+std::set <EventIdentifier*, EventIdentifierSortCriterion> BaseEvent::eventIdentifierSet;
 
 //ReadWriteMap<ULONG64, std::string> EventFile::fileKey2Name;
 std::map<ULONG64, std::string> EventFile::fileKey2Name;
@@ -31,9 +31,9 @@ extern std::map<ULONG64, std::string> addr2FuncNameUsed;
 //INT64 Tools::String2INT64(std::string s);  //将string转换为INT64
 
 
-dataType* Event::getProperty(int propertyNameIndex) {
+dataType* BaseEvent::getProperty(int propertyNameIndex) {
 
-	if (Event::propertyNameVector.size() <= propertyNameIndex ) {
+	if (BaseEvent::propertyNameVector.size() <= propertyNameIndex ) {
 		MyLogger::writeLog("propertyNameIdex 超出了EventIdentifier::propertyNameVector的大小！\n");
 		exit(-1);
 	}
@@ -42,7 +42,7 @@ dataType* Event::getProperty(int propertyNameIndex) {
 		exit(-1);
 	}
 
-	std::string propertyName = Event::propertyNameVector[propertyNameIndex];
+	std::string propertyName = BaseEvent::propertyNameVector[propertyNameIndex];
 	//event doen't have this property
 	if (!properties.count(propertyName)) {
 
@@ -54,9 +54,9 @@ dataType* Event::getProperty(int propertyNameIndex) {
 	return this->properties[propertyName];
 }
 
-void Event::setProperty(int propertyNameIdex, dataType* dt) {
+void BaseEvent::setProperty(int propertyNameIdex, dataType* dt) {
 
-	if (Event::propertyNameVector.size() <= propertyNameIdex) {
+	if (BaseEvent::propertyNameVector.size() <= propertyNameIdex) {
 		MyLogger::writeLog("propertyNameIdex 超出了EventIdentifier::propertyNameVector的大小！\n");
 		exit(-1);
 	}
@@ -65,7 +65,7 @@ void Event::setProperty(int propertyNameIdex, dataType* dt) {
 		MyLogger::writeLog("setProperty propertyNameIdex 为负数\n");
 		exit(-1);
 	}
-	std::string propertyName = Event::propertyNameVector[propertyNameIdex];
+	std::string propertyName = BaseEvent::propertyNameVector[propertyNameIdex];
 
 	properties[propertyName] = dt;
 }

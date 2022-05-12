@@ -9,8 +9,7 @@
 #include "DbgHelp.h"
 
 /*defined status code*/
-#define STATUS_SUCCESS               ((NTSTATUS)0x00000000L)
-#define STATUS_INFO_LENGTH_MISMATCH      ((NTSTATUS)0xC0000004L)    
+#define STATUS_INFO_LENGTH_MISMATCH      ((NTSTATUS)0xC0000004L)
 #define STATUS_UNSUCCESSFUL (0xC0000001L)
 
 typedef BOOL(__stdcall* IMAGEUNLOAD)(
@@ -110,9 +109,9 @@ typedef struct _RTL_PROCESS_MODULES
 #define FILEEVENT			0x8
 #define DISKEVENT			0x10
 #define REGISTEREVENT		0x20
-#define SYSTEMCALLEVENT		0x30
+//#define SYSTEMCALLEVENT		0x40
 #define CALLSTACKEVENT		0x40
-#define TCPIPEVENT			0x50
+#define TCPIPEVENT			0x80
 
 #define FILEOUTPUT			0x0
 #define CONSOLEOUTPUT		0x1
@@ -121,21 +120,24 @@ typedef struct _RTL_PROCESS_MODULES
 //#define SIZEOFARGV 255
 
 #define STATUS int
-#define STATUS_SUCCESS             0
-#define STATUS_FAIL	               1
-#define STATUS_SOCKET_FORMAT_ERROR 8
-#define STATUS_SHOW_MANUAL         2
-#define STATUS_FILE_OPEN_FAILED	   3
-#define STATUS_DUPLICATE_OUTPUT	   4
-#define STATUS_SOCKET_OPEN_FAILED  5        //TODO
-#define STATUS_EVENT_TYPE_ERROR    6        //TODO
-#define STATUS_NO_OUTPUT_OPTION    7
-//#define STATUS_SHOW_MANUAL         9
+#define STATUS_SUCCESS             0x0
+#define STATUS_FAIL	               0x1
+#define STATUS_UNKNOWN_OPTION	   0xa
+#define STATUS_SOCKET_FORMAT_ERROR 0x8
+#define STATUS_SHOW_MANUAL         0x2
+#define STATUS_FILE_OPEN_FAILED	   0x3
+#define STATUS_DUPLICATE_OUTPUT	   0x4
+#define STATUS_SOCKET_OPEN_FAILED  0x5        //TODO
+#define STATUS_EVENT_TYPE_ERROR    0x6
+#define STATUS_NO_OUTPUT_OPTION    0x7
 
 class Initializer {
 
 public:
-	Initializer(int argc, char** argV) :argc(argc), argV(argV) {}
+	Initializer(int argc, char** argV) :argc(argc), argV(argV) {
+        //set default "false" to listenCallStack
+//        listenCallStack = false;
+    }
 
 	~Initializer() {
 		char* temp;
@@ -149,7 +151,7 @@ public:
 
 	inline bool validArgLength(int i, STATUS& status);
     inline bool isOutPutOption(char* option);
-    inline void initEnabledFlags();
+    inline void initDefaultEnabledEvents();
 
     STATUS initEnabledEvent(ULONG64 eventType);
     //static void initPropertyNames(std::wstring confFile = L"propertyName.txt");
@@ -162,7 +164,13 @@ public:
     void showCommandList();
     void initEventPropertiesMap(std::string confFile = "config/eventStruct.txt");
     void initThreadParseProviders();
-
+    void initProcessor2ThreadAndThread2Process();
+    static bool getListenCallStack(){
+        return listenCallStack;
+    }
+    static void setListenCallStack(bool flag){
+        listenCallStack = flag;
+    }
     //void initOutPut();
 	//STATUS initConsoleOutPut();
 	//STATUS initFileOutPut(std::string fileName);
@@ -171,16 +179,26 @@ public:
 	//void initParser();
 
 private:
-	int argc;
+
+    int argc;
 	char** argV;
 	bool outputInited = false;
     ULONG64 enabledFlags = 0;
+    bool enbaleFlagsInited = false;
+    static bool listenCallStack;
+
     const char* eventStructFile = "config/eventstruct.txt";
     const char* filterFileName = "config/filter.txt";
     const char* imagesFile = "config/initImages.txt";
+    ULONG64 outputThreashold = 500;
+
+    //user specify in the argument of option "-e"
+    ULONG64 userEnabledFlags;
 
     void initFilter();
     void initPrasePool();
+    int initOutputThreashold(ULONG64 flags);
+
     BOOLEAN InitSymHandler();
     ULONG GetKernelInfo(char* lpKernelName, ULONG* ulBase, ULONG* ulSize);
     BOOLEAN LoadSymModule(char* ImageName, DWORD ModuleBase);

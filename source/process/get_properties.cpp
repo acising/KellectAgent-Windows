@@ -1,6 +1,4 @@
 //Turns the DEFINE_GUID for EventTraceGuid into a const.
-//#include <atlstr.h>
-#define INITGUID
 #include "process/event_parse.h"
 #include <windows.h>
 #include <stdio.h>
@@ -12,9 +10,11 @@
 #include <in6addr.h>
 #include "process/customer_parse.h"
 #include "process/event.h"
+#include "process/etw_config.h"
 #include "tools/json.hpp"
 #include "tools/tools.h"
 #include "tools/logger.h"
+#include "tools/providerInfo.h"
 
 #pragma comment(lib, "tdh.lib")
 #pragma comment(lib, "ws2_32.lib")  // For ntohs function
@@ -33,47 +33,39 @@ using namespace std;
 // Pointer value. The value will be 4 or 8.
 USHORT g_PointerSize = 8;
 
-Event* event = nullptr;
+BaseEvent* event = nullptr;
 
-Event* WINAPI EventParser::getEventWithIdentifier(PEVENT_RECORD pEvent) {
+BaseEvent* WINAPI EventParser::getEventWithIdentifier(PEVENT_RECORD pEvent) {
 
-    Event* event = nullptr;
+    BaseEvent* event = nullptr;
 
     switch (pEvent->EventHeader.ProviderId.Data1) // init by event type
     {
-    case ProviderFileIo:
+    case FileProvider:
         event = new EventFile;
         break;
-    case ProviderThread:
+    case ThreadProvider:
         event = new EventThread;
         break;
-    case ProviderProcess:
+    case ProcessProvider:
         event = new EventProcess;
         break;
-    case ProviderImage:
+    case ImageProvider:
         event = new EventImage;
         break;
-    case ProviderRegistry:
+    case RegistryProvider:
         event = new EventRegistry;
         break;
-        //event = nullptr;
-        //return event;
-        //case ProviderALPC:
-        //    event = new EventRecordAlpc;
-        //    break;
-    case ProviderDiskIo:
-        event = new EventUnImportant;
+    case DiskProvider:
+        event = new EventDisk;
         break;
-    case ProviderPerfInfo:
+    case SystemCallProvider:
         event = new EventPerfInfo;
         break;
-    case ProviderTcpIp:
+    case TcpIpProvider:
         event = new EventTCPIP;
         break;
-        //case ProviderUdpIp:
-        //    event = new EventRecordUdpip;
-        //    break;
-    case ProviderStackWalk:
+    case CallStackProvider:
         event = new EventCallstack;
         break;
     default:
@@ -92,28 +84,18 @@ Event* WINAPI EventParser::getEventWithIdentifier(PEVENT_RECORD pEvent) {
     return event;
 }
 
-//Event* EventParser::getRawEvent(PEVENT_RECORD pEvent) {
-//
-//    Event* event = getEventWithIdentifier(pEvent);
-//
-//    return event;
-//}
+BaseEvent* EventParser::getPropertiesByParsingOffset(BaseEvent* event, int userDataLen, void* userDataBeginAddress) {
 
-//Event* EventParser::getPropertiesByParsingOffset(Event* event, PEVENT_RECORD pEvent) {
-Event* EventParser::getPropertiesByParsingOffset(Event* event, int userDataLen, void* userDataBeginAddress) {
+    //BaseEvent* event = getEventWithIdentifier(pEvent);
 
-    //Event* event = getEventWithIdentifier(pEvent);
-
-    if (event->getEventIdentifier()->getProviderID() != ProviderStackWalk) { //fill events' properties accoding to property offsets
+    if (event->getEventIdentifier()->getProviderID() != CallStackProvider) { //fill events' properties according to property offsets
         
-        auto iter = Event::eventStructMap.find(event->getEventIdentifier());
+        auto iter = BaseEvent::eventStructMap.find(event->getEventIdentifier());
 
-        if (iter != Event::eventStructMap.end()) {
+        if (iter != BaseEvent::eventStructMap.end()) {
 
             dataType* dt = nullptr;
             ULONG64 dataAddress = (ULONG64)userDataBeginAddress;
-            //ULONG64 dataAddress = (ULONG64)pEvent->UserData;
-            //ULONG64 dataAddress = (ULONG64)event->getRawProperty();
             std::wstring wsVal;
             std::string sVal;
 
@@ -157,12 +139,11 @@ Event* EventParser::getPropertiesByParsingOffset(Event* event, int userDataLen, 
                     sVal = Tools::WString2String((LPWSTR)dataAddress);
                     dataAddress += sVal.size() + 1;
 
-                    if (event->getEventIdentifier()->getProviderID() == ProviderFileIo ||
-                        event->getEventIdentifier()->getProviderID() == ProviderImage)
+                    if (event->getEventIdentifier()->getProviderID() == FileProvider ||
+                        event->getEventIdentifier()->getProviderID() == ImageProvider)
                         Tools::convertFileNameInDiskFormat(sVal);
+
                     dt = new dataType(sVal);
-                    //dataAddress += wcslen((LPWSTR)dataAddress) + 1;
-                    //std::wcout << dt->getWString() << std::endl;
                     break;
                 case PUSHORT_:
                     dt = new dataType(*(PUSHORT)(dataAddress));
@@ -197,7 +178,6 @@ Event* EventParser::getPropertiesByParsingOffset(Event* event, int userDataLen, 
                     sVal.append(UserName);
                     dt = new dataType(sVal);
 
-                    //std::wcout << dt->getWString() << std::endl;
                     dataAddress += GetLengthSid((PVOID)(dataAddress));
                     break;
                 }
@@ -209,13 +189,11 @@ Event* EventParser::getPropertiesByParsingOffset(Event* event, int userDataLen, 
     }
     else {
         int stacksNum;
-        ULONG64 process_id_;
-        ULONG64 etw_stack_address;
+        ULONG64 processID;
+        ULONG64 stackAddress;
         EventIdentifier* ei;
         EventCallstack* callStackEvent = new EventCallstack();  // get stack address and return 
-        //ULONG64* p_data = (ULONG64*)event->getRawProperty();
         ULONG64* p_data = (ULONG64*)userDataBeginAddress;
-        //size_t data_size = event->getRawPropertyLen();
         size_t data_size = userDataLen;
         int processorId = event->getProcessorID();
         ULONG64 minAddr = 0xffffffff;
@@ -237,32 +215,29 @@ Event* EventParser::getPropertiesByParsingOffset(Event* event, int userDataLen, 
             //return callStackEvent;
         }
         else {
-            //auto targetProcessIter = EventImage::processID2Modules.find(callStackEvent->getProcessID());
-            //auto processID2ModulesEnd = EventImage::processID2Modules.end();
-            //if (targetProcessIter != processID2ModulesEnd) {
-            //    for (auto it : targetProcessIter->second) {
-            //        if (it->getAddressBegin() < lAddr) lAddr = it->getAddressBegin();
-            //        if (it->getAddressEnd() > rAddr) rAddr = it->getAddressEnd();
-            //    }
-            //}
-            //get call address number, -2 because of the callstackadresses begin from third property
+
+            //get call address number, -2 because of the callStack addresses begin from third property
             stacksNum = (data_size / 8 - 2);
+            processID = callStackEvent->getProcessID();
             //auto it = EventProcess::processID2ModuleAddressPair.find(callStackEvent->getProcessID());
-            if (EventProcess::processID2ModuleAddressPair.count(callStackEvent->getProcessID())!=0) {
-                auto minmaxAddrPair = EventProcess::processID2ModuleAddressPair[callStackEvent->getProcessID()];
+            if (EventProcess::processID2ModuleAddressPair.count(processID)!=0) {
+                auto minmaxAddrPair = EventProcess::processID2ModuleAddressPair[processID];
                 minAddr = minmaxAddrPair.first;
                 maxAddr = minmaxAddrPair.second;
             }
 
             for (int i = 0; i < stacksNum; ++i) {
 
-                etw_stack_address = *(p_data + i) & (0xffffffff);   //extract low32 bits of the address
-                if (etw_stack_address<minAddr || etw_stack_address>maxAddr)  continue;
+                stackAddress = *(p_data + i) & (0xffffffff);   //extract low32 bits of the address
+                if (stackAddress<minAddr || stackAddress>maxAddr)  continue;
 
-                callStackEvent->stackAddresses.push_back(etw_stack_address);
+//                std::cout<<stackAddress<<";";
+
+                callStackEvent->stackAddresses.push_back(stackAddress);
             }
 
         }
+//        std::cout<<std::endl;
         //return callStackEvent;
         delete event;   //avoid memory leak
         event = callStackEvent;
@@ -272,7 +247,7 @@ Event* EventParser::getPropertiesByParsingOffset(Event* event, int userDataLen, 
 }
 
 
-Event* WINAPI EventParser::getPropertiesByTdh(PEVENT_RECORD pEvent)
+BaseEvent* WINAPI EventParser::getPropertiesByTdh(PEVENT_RECORD pEvent)
 {
     // Callback that receives the events. 
     // Used to determine the data size of property values that contain a
@@ -324,7 +299,7 @@ Event* WINAPI EventParser::getPropertiesByTdh(PEVENT_RECORD pEvent)
         //init event type
 
         event = this->getEventWithIdentifier(pEvent);
-        if (event->getEventIdentifier()->getProviderID() == ProviderStackWalk)  goto cleanup;
+        if (event->getEventIdentifier()->getProviderID() == CallStackProvider)  goto cleanup;
 
         // If the event contains event-specific data use TDH to extract
         // the event data. For this example, to extract the data, the event 
@@ -464,7 +439,7 @@ DWORD EventParser::PrintProperties(PEVENT_RECORD pEvent, PTRACE_EVENT_INFO pInfo
                     //wprintf(L"TdhGetPropertySize failed with %lu , %s\n", status, paramName);
                     if (strcmp("connid", paramName.c_str()) == 0) {
                         auto connid = *(PULONG64)((ULONG64)pEvent->UserData + pEvent->UserDataLength - 8);
-                        event->setProperty(Event::connid,new dataType(connid));
+                        event->setProperty(BaseEvent::connid, new dataType(connid));
 
                         auto port1 = *(PSHORT)((ULONG64)pEvent->UserData + pEvent->UserDataLength - 14);
                         auto port2 = *(PSHORT)((ULONG64)pEvent->UserData + pEvent->UserDataLength - 16);

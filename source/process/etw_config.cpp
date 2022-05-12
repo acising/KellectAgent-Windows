@@ -4,44 +4,14 @@
 #include <vector>
 #include <time.h>
 #include <tdh.h> //PROCESS_TRACE_MODE_REAL_TIME | PROCESS_TRACE_MODE_EVENT_RECORD
-#include <in6addr.h>
-#include <conio.h>
 #include <strsafe.h>
 #include <fstream>
-#include <set>
 #include <iostream>
-#include <stdio.h>
-#include <string>
 
-#include "process/etw_configuration.h"
+#include "process/etw_config.h"
 #include "process/customer_parse.h"
 #include "process/event_parse.h"
 #include "process/multithread_configuration.h"
-
-//ETWConfiguration::ETWConfiguration(ULONG64 enabledFalg)
-ETWConfiguration::ETWConfiguration(ULONG64 enabledFalg)
-{
-   //Preemption();
-                    
-    //enable_flag = 0
-    //    | EVENT_TRACE_FLAG_PROCESS			// process start & end              *
-    //    | EVENT_TRACE_FLAG_THREAD			// thread start & end               *
-    //    | EVENT_TRACE_FLAG_IMAGE_LOAD 		// image load                       *
-    //    | EVENT_TRACE_FLAG_FILE_IO          // file IO                          *
-    //    |EVENT_TRACE_FLAG_FILE_IO_INIT
-    //    | EVENT_TRACE_FLAG_DISK_FILE_IO     // requires disk IO                 *
-    //    //| EVENT_TRACE_FLAG_REGISTRY         // registry calls                   *
-    //    | EVENT_TRACE_FLAG_CSWITCH          // context switches                 *
-    //    | EVENT_TRACE_FLAG_SYSTEMCALL       // system calls                     *
-    //    //| EVENT_TRACE_FLAG_ALPC             // ALPC traces                      
-    //    //| EVENT_TRACE_FLAG_DISK_IO          // physical disk IO                 * 
-    //    //| EVENT_TRACE_FLAG_DISK_IO_INIT     // physical disk IO initiation
-    //    | EVENT_TRACE_FLAG_NETWORK_TCPIP     // tcpip send & receive            * 
-    //    ;
-
-    enable_flag = enabledFalg;
-    logfile_path = L"C:\\logfile.bin";
-}
 
 ETWConfiguration& ETWConfiguration::operator=(const ETWConfiguration& config) {
 
@@ -55,9 +25,7 @@ ETWConfiguration& ETWConfiguration::operator=(const ETWConfiguration& config) {
     return *this;
 }
 
-
-PEVENT_TRACE_PROPERTIES
-ETWConfiguration::AllocateTraceProperties(
+PEVENT_TRACE_PROPERTIES ETWConfiguration::allocateTraceProperties(
     _In_opt_ PWSTR LoggerName,
     _In_opt_ PWSTR LogFileName,
     _In_opt_ BOOLEAN isSysLogger,
@@ -100,6 +68,7 @@ ETWConfiguration::AllocateTraceProperties(
     TraceProperties->LoggerNameOffset = sizeof(EVENT_TRACE_PROPERTIES);
     TraceProperties->LogFileNameOffset = sizeof(EVENT_TRACE_PROPERTIES) +
         (MAXIMUM_SESSION_NAME * sizeof(WCHAR));
+
     // Set the session properties. You only append the log file name
     // to the properties structure; the StartTrace function appends
     // the session name for you.
@@ -112,10 +81,9 @@ ETWConfiguration::AllocateTraceProperties(
     }
 
     TraceProperties->MaximumFileSize = 100; // Limit file size to 100MB max
-    TraceProperties->BufferSize = 512; // Use 512KB trace buffer
-    TraceProperties->MinimumBuffers = 1024;
+    TraceProperties->BufferSize = 1024; // Use 1024KB trace buffer
+//    TraceProperties->MinimumBuffers = 32;
     TraceProperties->MaximumBuffers = 1024;
-    //TraceProperties->EnableFlags = EVENT_TRACE_FLAG_DISK_IO;
 
     if (LoggerName != nullptr) {
         StringCchCopyW((LPWSTR)((PCHAR)TraceProperties + TraceProperties->LoggerNameOffset),
@@ -133,15 +101,14 @@ Exit:
     return TraceProperties;
 }
 
-int ETWConfiguration::MainSessionConfig(bool real_time_switch) {
+int ETWConfiguration::mainSessionConfig(bool real_time_switch) {
 start:
     ULONG status = ERROR_SUCCESS;
     TRACEHANDLE SessionHandle = 0;
     EVENT_TRACE_PROPERTIES* mainSessionProperties = nullptr;
-    ULONG BufferSize = 0;
     //PWSTR LoggerName = (PWSTR)L"MyTrace";
 
-    mainSessionProperties = AllocateTraceProperties(NULL, NULL,true);
+    mainSessionProperties = allocateTraceProperties(NULL, NULL,true);
 
     // Create the trace session.
     status = StartTrace(&SessionHandle, KERNEL_LOGGER_NAME, mainSessionProperties);
@@ -151,57 +118,49 @@ start:
         if (ERROR_ALREADY_EXISTS == status)
         {
             status = ControlTrace(SessionHandle, KERNEL_LOGGER_NAME, mainSessionProperties, EVENT_TRACE_CONTROL_STOP);
-            //wprintf(L"The NT Kernel Logger session is already in use.\n");
+            wprintf(L"The Kernel Session is already in use.\n");
             //wprintf(L"The NT Kernel Logger session is already in use and will be finished.\n");
-            //wprintf(L"restart the NT Kernel Logger automaticly... .\n");
+            wprintf(L"restart the NT Kernel Logger automaticly... .\n");
             goto start;
         }
-        else
-        {
-            wprintf(L"EnableTrace() failed with %lu\n", status);
-            goto cleanup;
-        }
 
-        //goto cleanup;
+        wprintf(L"EnableTrace() failed with %lu\n", status);
+        goto cleanup;
     }
 
-    //wprintf(L"Press any key to end trace session\n\n ");
     wprintf(L"Press any key to end trace session..\n\n ");
-    // _getch();
 
-    if (real_time_switch) {
+    //enable callstack trace
+    if(Initializer::getListenCallStack())
         EventCallstack::initCallStackTracing(SessionHandle);
 
-        //SetupEventConsumer((LPWSTR)KERNEL_LOGGER_NAME,TRUE);
-        std::thread tt(&ETWConfiguration::SetupEventConsumer, this, (LPWSTR)KERNEL_LOGGER_NAME, TRUE);
-        tt.detach();
-        //tt.join();
+    SetupEventConsumer((LPWSTR)KERNEL_LOGGER_NAME,TRUE);
+//        std::thread tt(&ETWConfiguration::SetupEventConsumer, this, (LPWSTR)KERNEL_LOGGER_NAME, TRUE);
+//        tt.detach();
 
-        while (1) {
+    // for test events lost
+    /*
+    while (1) {
 
-            std::this_thread::sleep_for(std::chrono::microseconds(1000000));
-            status = ControlTrace(SessionHandle, KERNEL_LOGGER_NAME, mainSessionProperties, EVENT_TRACE_CONTROL_QUERY);
-            if (ERROR_SUCCESS == status)
-            {
-                std::this_thread::sleep_for(std::chrono::microseconds(20000000));
-                std::cout <<
-                    "  BuffersWritten:" << mainSessionProperties->BuffersWritten <<
-                    "  FreeBuffers:" << mainSessionProperties->FreeBuffers <<
-                    "  NumberOfBuffers:" << mainSessionProperties->NumberOfBuffers <<
-                    "  EventsLost:" << mainSessionProperties->EventsLost
-                    << std::endl;
-                
-                if (mainSessionProperties->EventsLost > 0)
-                    int a = 0; 
-            }
+        std::this_thread::sleep_for(std::chrono::microseconds(1000000));
+        status = ControlTrace(SessionHandle, KERNEL_LOGGER_NAME, mainSessionProperties, EVENT_TRACE_CONTROL_QUERY);
+        if (ERROR_SUCCESS == status)
+        {
+            std::this_thread::sleep_for(std::chrono::microseconds(20000000));
+            std::cout <<
+                "  BuffersWritten:" << mainSessionProperties->BuffersWritten <<
+                "  FreeBuffers:" << mainSessionProperties->FreeBuffers <<
+                "  NumberOfBuffers:" << mainSessionProperties->NumberOfBuffers <<
+                "  EventsLost:" << mainSessionProperties->EventsLost
+                << std::endl;
+
+            if (mainSessionProperties->EventsLost > 0)
+                int a = 0;
         }
-
-        goto cleanup; 
-    } 
-    else {
-        wprintf(L"\n");
-        getchar();
     }
+    */
+
+    goto cleanup;
 
     return 0;
 
@@ -224,7 +183,7 @@ cleanup:
 
 }
 
-int ETWConfiguration::SubSessionConfig4XMLProvider(bool real_time_switch,GUID providerGUID,ULONG matchAnyKeywords, PWSTR privateLoggerName) {
+int ETWConfiguration::subSessionConfig(bool real_time_switch,GUID providerGUID,ULONG matchAnyKeywords, PWSTR privateLoggerName) {
 
 start:
     ULONG status = ERROR_SUCCESS;
@@ -232,7 +191,7 @@ start:
     EVENT_TRACE_PROPERTIES* subSessionProperties = nullptr;
     ULONG BufferSize = 0;
     //PWSTR LoggerName = (PWSTR)L"subSession";
-    subSessionProperties = AllocateTraceProperties(privateLoggerName, NULL, FALSE);
+    subSessionProperties = allocateTraceProperties(privateLoggerName, NULL, FALSE);
 
     // Create the trace session.
     status = StartTraceW((PTRACEHANDLE)&SessionHandle, privateLoggerName, subSessionProperties);
@@ -245,11 +204,10 @@ start:
         if (ERROR_ALREADY_EXISTS == status)
         {
 
-
             status = ControlTraceA(SessionHandle, (LPCSTR)privateLoggerName, subSessionProperties, EVENT_TRACE_CONTROL_STOP);
             //wprintf(L"The NT Kernel Logger session is already in use.\n");
-            wprintf(L"The NT Kernel Logger session is already in use and will be finished.\n");
-            wprintf(L"restart the NT Kernel Logger automaticly... .\n");
+            wprintf(L"The Logger session is already in use and will be finished.\n");
+            wprintf(L"restart the Logger automaticly... .\n");
 
             goto start;
         }
@@ -260,9 +218,9 @@ start:
         }
     }
 
-    status = EnableTraceEx2(SessionHandle, &SystemTraceControlGuid, EVENT_CONTROL_CODE_ENABLE_PROVIDER, TRACE_LEVEL_INFORMATION, 0, 0, 0, nullptr);
-    //status = EnableTraceEx2(SessionHandle, &providerGUID, EVENT_CONTROL_CODE_ENABLE_PROVIDER, TRACE_LEVEL_INFORMATION, matchAnyKeywords, 0, 0, nullptr);
-    status = EnableTraceEx2(SessionHandle, &providerGUID, EVENT_CONTROL_CODE_CAPTURE_STATE, TRACE_LEVEL_INFORMATION, matchAnyKeywords, 0, 0, nullptr);
+//    status = EnableTraceEx2(SessionHandle, &SystemTraceControlGuid, EVENT_CONTROL_CODE_ENABLE_PROVIDER, TRACE_LEVEL_INFORMATION, 0, 0, 0, nullptr);
+    status = EnableTraceEx2(SessionHandle, &providerGUID, EVENT_CONTROL_CODE_ENABLE_PROVIDER, TRACE_LEVEL_INFORMATION, matchAnyKeywords, 0, 0, nullptr);
+//    status = EnableTraceEx2(SessionHandle, &providerGUID, EVENT_CONTROL_CODE_CAPTURE_STATE, TRACE_LEVEL_INFORMATION, matchAnyKeywords, 0, 0, nullptr);
 
     //wprintf(L"Press any key to end trace session ");
     // _getch();
@@ -273,7 +231,6 @@ start:
         goto cleanup;
     }
     else {
-        wprintf(L"�������ļ���ʽ�����־��Ϣ�����������ֹ��\n");
         getchar();
     }
 
@@ -298,84 +255,7 @@ cleanup:
     return 0;
 }
 
-INT ETWConfiguration::SubSessionConfig4MOFProvider(
-    bool real_time_switch,
-    ULONG enabledFlags,
-    PWSTR privateLoggerName) {
-
-start:
-    ULONG status = ERROR_SUCCESS;
-    TRACEHANDLE SessionHandle = 0;
-    EVENT_TRACE_PROPERTIES* subSessionProperties = nullptr;
-    ULONG BufferSize = 0;
-    //PWSTR LoggerName = (PWSTR)L"subSession";
-    subSessionProperties = AllocateTraceProperties(privateLoggerName, NULL, FALSE);
-
-    subSessionProperties->EnableFlags = enabledFlags;
-    // Create the trace session.
-    status = StartTraceW((PTRACEHANDLE)&SessionHandle, privateLoggerName, subSessionProperties);
-
-
-    if (ERROR_SUCCESS != status)
-    {
-        wprintf(L"GetProcAddress failed with %lu.\n", status = GetLastError());
-
-        if (ERROR_ALREADY_EXISTS == status)
-        {
-            //Ĭ��subsession���Զ���session
-            status = ControlTrace(SessionHandle, (LPCSTR)privateLoggerName, subSessionProperties, EVENT_TRACE_CONTROL_STOP);
-            //wprintf(L"The NT Kernel Logger session is already in use.\n");
-            wprintf(L"The NT Kernel Logger session is already in use and will be finished.\n");
-            wprintf(L"restart the NT Kernel Logger automaticly... .\n");
-
-            goto start;
-        }
-        else
-        {
-            wprintf(L"EnableTrace() failed with %lu\n", status);
-            goto cleanup;
-        }
-    }
-
-    //Status = EnableTraceEx2(SessionHandle, &SystemTraceControlGuid, EVENT_CONTROL_CODE_ENABLE_PROVIDER, TRACE_LEVEL_INFORMATION, 0x10, 0, 0, nullptr);
-    //status = EnableTraceEx2(SessionHandle, &providerGUID, EVENT_CONTROL_CODE_ENABLE_PROVIDER, TRACE_LEVEL_INFORMATION, matchAnyKeywords, 0, 0, nullptr);
-
-    //wprintf(L"Press any key to end trace session ");
-    // _getch();
-
-
-    if (real_time_switch) {
-        SetupEventConsumer(privateLoggerName, FALSE);
-        goto cleanup;
-    }
-    else {
-        wprintf(L"output to a file,Press any key to end trace session..\n");
-        getchar();
-    }
-
-cleanup:
-
-    if (SessionHandle)
-    {
-        status = ControlTrace(SessionHandle, NULL, subSessionProperties, EVENT_TRACE_CONTROL_STOP);
-        //status = EnableTraceEx2(SessionHandle, &providerGUID, EVENT_CONTROL_CODE_DISABLE_PROVIDER, TRACE_LEVEL_INFORMATION, 0, 0, 0, nullptr);
-
-        if (ERROR_SUCCESS != status)
-        {
-            wprintf(L"ControlTrace(stop) failed with %lu\n", status);
-            wprintf(L"cleanup SubSession Config failed with %lu.\n", status = GetLastError());
-
-        }
-    }
-
-    if (subSessionProperties)
-        free(subSessionProperties);
-
-    return 0;
-}
-
-
-INT ETWConfiguration::AllocateTraceLogFile(
+void ETWConfiguration::allocateTraceLogFile(
     _In_opt_ PWSTR LoggerName,
     EVENT_TRACE_LOGFILE& event_logfile,
     BOOLEAN mainConsumer,
@@ -383,20 +263,19 @@ INT ETWConfiguration::AllocateTraceLogFile(
     
     //event_logfile = (PEVENT_TRACE_LOGFILE)malloc(sizeof(EVENT_TRACE_LOGFILE));
     ZeroMemory(&event_logfile, sizeof(EVENT_TRACE_LOGFILE));
-
+//    event_logfile.LoggerName =  (char*)Tools::WString2String(LoggerName).c_str();
     event_logfile.LoggerName = reinterpret_cast<LPSTR>((LPWSTR) LoggerName);
     event_logfile.ProcessTraceMode = PROCESS_TRACE_MODE_EVENT_RECORD;
-    // consum_event() is the callback function. should be writen in this class.
-    EventParser EventParser;
+
     if(isRealTimeSession)
         event_logfile.ProcessTraceMode |= PROCESS_TRACE_MODE_REAL_TIME;
 
+    // ConsumeEventMain&ConsumeEventSub is the callback function. should be specified here.
     if(mainConsumer)
-        event_logfile.EventRecordCallback = (PEVENT_RECORD_CALLBACK)(EventParser.ConsumeEventMain);
+        event_logfile.EventRecordCallback = (PEVENT_RECORD_CALLBACK)(eventParser.ConsumeEventMain);
     else
-        event_logfile.EventRecordCallback = (PEVENT_RECORD_CALLBACK)(EventParser.ConsumeEventSub);
+        event_logfile.EventRecordCallback = (PEVENT_RECORD_CALLBACK)(eventParser.ConsumeEventSub);
 
-    return 0;
 }
 
 void ETWConfiguration::SetupEventConsumer(LPWSTR loggerName,BOOLEAN isMainSession) {
@@ -410,13 +289,8 @@ void ETWConfiguration::SetupEventConsumer(LPWSTR loggerName,BOOLEAN isMainSessio
     TDHSTATUS temp_status;
 
     event_logfile_header = &(event_logfile.LogfileHeader);
-    status=AllocateTraceLogFile(loggerName, event_logfile,isMainSession);
+    allocateTraceLogFile(loggerName, event_logfile,isMainSession);
 
-    if (status != ERROR_SUCCESS) {
-        wprintf(L"AllocateTraceLogFile failed with %lu\n", status);
-        goto cleanup;
-    }
-   // event_logfile_handle = OpenTrace(event_logfile);
     event_logfile_handle = OpenTrace(&event_logfile);
 
     if (INVALID_PROCESSTRACE_HANDLE == event_logfile_handle) {
@@ -434,7 +308,6 @@ void ETWConfiguration::SetupEventConsumer(LPWSTR loggerName,BOOLEAN isMainSessio
     // If everything go well, the program will be block here.
     // to perform the callback function defined in EventRecordCallback property
     temp_status = ProcessTrace(&event_logfile_handle, 1, 0, 0);  
-
 
     if (temp_status != ERROR_SUCCESS && temp_status != ERROR_CANCELLED) {
         wprintf(L"ProcessTrace failed with %lu\n", temp_status);

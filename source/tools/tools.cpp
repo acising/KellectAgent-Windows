@@ -5,11 +5,9 @@
 #include "process/event_parse.h"
 #include "tools/logger.h"
 #include <locale>
-#include <codecvt>
 
 std::map <std::string, std::string > EventImage::volume2Disk;
 
-//�����ַ�תΪstring
 std::string Tools::WString2String(LPCWSTR ws) {
 
     int nLen = WideCharToMultiByte(CP_UTF8, 0, ws, -1, NULL, 0, NULL, NULL);
@@ -49,7 +47,7 @@ int Tools::String2Int(const std::string& s) {
 std::string Tools::DecInt2HexStr(ULONG64 num)
 {
     CHAR tempres[255];
-    sprintf_s(tempres,255, "%x", num);
+    sprintf_s(tempres,255, "%llx", num);
 
     return tempres;
 }
@@ -58,7 +56,7 @@ std::string Tools::DecInt2HexStr(ULONG64 num)
 std::wstring Tools::DecInt2HexWStr(ULONG64 num)
 {
     wchar_t tempres[255];
-    swprintf_s(tempres, L"%x", num);
+    swprintf_s(tempres, L"%llx", num);
 
     return tempres;
 }
@@ -139,28 +137,27 @@ ULONG64 Tools::String2ULONG64(const std::string& s) {
 void Tools::convertFileNameInDiskFormat(std::string &fileName) {
 
     if (fileName.empty()) {
-        MyLogger::writeLog("�յ�imgaeFileName��convertFileNameInDiskFormatת��ʧ��");
+        MyLogger::writeLog("fileName is empty, skip it");
+        return;
     }
 
     if (strcmp(fileName.substr(0,7).c_str(), "\\Device") == 0) {
-        //MyLogger::writeLog("ת������device");
         std::string pathType = fileName.substr(0,23);
 
         std::map<std::string,std::string>::iterator it =  EventImage::volume2Disk.find(pathType);
         if (it == EventImage::volume2Disk.end()) {
-            MyLogger::writeLog("�޷�ת��imageFileName��DiskNumber");
+            MyLogger::writeLog("not find the mapping imageFileName2DiskNumber");
             return;
         }
 
         fileName = it->second + fileName.substr(23);
     }
     else if (strcmp(fileName.substr(0,11).c_str(), "\\SystemRoot") == 0) {
-        //MyLogger::writeLog("ת�����ǻ�������");
         std::string pathType = fileName.substr(0, 11);
 
         std::map<std::string, std::string>::iterator it = EventImage::volume2Disk.find(pathType);
         if (it == EventImage::volume2Disk.end()) {
-            MyLogger::writeLog("�޷�ת��imageFileName��DiskNumber");
+            MyLogger::writeLog("not find the mapping imageFileName2DiskNumber");
             return;
         }
 
@@ -168,29 +165,27 @@ void Tools::convertFileNameInDiskFormat(std::string &fileName) {
     }
 }
 
-//���ҽ����µ������߳���Ϣ
-int initThreadProcessMap(ULONG64 pid) {
+void initThreadProcessMap(ULONG64 pid) {
 
     THREADENTRY32 te32;
     te32.dwSize = sizeof(te32);
     HANDLE hThreadSnap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, pid);
 
     if (hThreadSnap == INVALID_HANDLE_VALUE){
-        MyLogger::writeLog("CreateToolhelp32Snapshot �����̵߳���ʧ��.\n");
-        exit(-1);
+        MyLogger::writeLog("CreateToolhelp32Snapshot of thread failed.\n");
+        return;
     }
     BOOL tMore = Thread32First(hThreadSnap, &te32);
     while (tMore) {
         //ReadWriteMap will OverWrite the item if the key is exist.
         //EventThread::threadId2processId.insert(te32.th32ThreadID, pid);
-        EventThread::threadId2processId.insert(std::map<ULONG64, ULONG64>::value_type(te32.th32ThreadID, pid));
+        EventThread::threadId2processId[te32.th32ThreadID] = pid;
         EventThread::threadSet.insert(te32.th32ThreadID);
         tMore = Thread32Next(hThreadSnap, &te32);
     }
-    CloseHandle(hThreadSnap);
 
+    CloseHandle(hThreadSnap);
 }
-int InitProcessMap();
 
 int InitProcessMap() {
 
@@ -198,40 +193,46 @@ int InitProcessMap() {
 
     PROCESSENTRY32 pe32;
     int i = 0;
-    //��ʹ������ṹǰ�����������Ĵ�С
+    //????????????????????????С
     pe32.dwSize = sizeof(pe32);
-    //��ϵͳ�����еĽ����ĸ�����
+
+    //get the snapshot current processes
     HANDLE hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (hProcessSnap == INVALID_HANDLE_VALUE)
     {
-        printf("CreateToolhelp32Snapshot ����ʧ��.\n");
+        printf("CreateToolhelp32Snapshot of process failed.\n");
         return -1;
     }
-    //�������̿��գ�������ʾÿ�����̵���Ϣ
+
+    //search first process infomation by snapshot got before
     BOOL bMore = Process32First(hProcessSnap, &pe32);
     while (bMore)
     {
-        //printf("�������ƣ�%ls\n", pe32.szExeFile);
-        //printf("����ID��%u\n\n", pe32.th32ProcessID);
-        if (pe32.th32ProcessID != 0) {		//����pid=0�Ŀ��н���
-            EventProcess::processID2Name[pe32.th32ProcessID] = Tools::WString2String((LPCWSTR)pe32.szExeFile);
+        //printf("processName:%ls\n", pe32.szExeFile);
+        //printf("processID:%u\n\n", pe32.th32ProcessID);
+        if (pe32.th32ProcessID != 0) {		//skip pid=0, which is idle process
+            EventProcess::processID2Name[pe32.th32ProcessID] = pe32.szExeFile;
+
             //EventProcess::processID2Name.insert(pe32.th32ProcessID,Tools::WString2String((LPCWSTR)pe32.szExeFile));
             //EventProcess::processIDSet.insert(pe32.th32ProcessID);
 
             //std::wcout << EventProcess::processID2Name[pe32.th32ProcessID] << std::endl;
-            //initThreadProcessMap(pe32.th32ProcessID);
+            initThreadProcessMap(pe32.th32ProcessID);
         }
+
+        //search next process infomation by snapshot got before
         bMore = Process32Next(hProcessSnap, &pe32);
         ++i;
     }
-    //��Ϊ ��pid=0 Ϊδ֪���̣�ϵͳ��pid=0Ϊidle����
+    //set idle process mapping
     EventProcess::processID2Name[0] = "idle";
-    EventProcess::processID2Name[EventProcess::UnknownProcess] =  "Unknown" ;
+    EventProcess::processID2Name[INIT_PROCESS_ID] =  "Unknown" ;
     //EventProcess::processID2Name.insert(EventProcess::UnknownProcess, "Unknown" );
     //EventProcess::processID2Name.insert(0, "idle" );
 
     std::cout << "------Initialize datas of process and thread end...------" << std::endl;
-    //��Ҫ���������snapshot����
+
+    //release snapshot
     CloseHandle(hProcessSnap);
 
     return 0;
@@ -241,19 +242,18 @@ ULONG64	Tools::getProcessIDByTID(ULONG64 tid){
 
     PROCESSENTRY32 pe32;
 
-    //��ʹ������ṹǰ�����������Ĵ�С
     pe32.dwSize = sizeof(pe32);
     HANDLE hThreadSnap;
     THREADENTRY32 te32;
-    ULONG64 pid = 0;
-    //��ϵͳ�����еĽ����ĸ�����
+    ULONG64 pid = -1;
+
     HANDLE hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (hProcessSnap == INVALID_HANDLE_VALUE) {
-        MyLogger::writeLog("CreateToolhelp32Snapshot ����ʧ��.\n");
+        MyLogger::writeLog("CreateToolhelp32Snapshot for process failed.\n");
         return pid;
     }
     BOOL tMore = false;
-    //�������̿��գ�������ʾÿ�����̵���Ϣ
+
     BOOL bMore = Process32First(hProcessSnap, &pe32);
     while (bMore) {
         /*	if (pid == pe32.th32ProcessID) {
@@ -264,8 +264,8 @@ ULONG64	Tools::getProcessIDByTID(ULONG64 tid){
         hThreadSnap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, pid);
 
         if (hThreadSnap == INVALID_HANDLE_VALUE) {
-            MyLogger::writeLog("CreateToolhelp32Snapshot �����̵߳���ʧ��.\n");
-            exit(-1);
+            MyLogger::writeLog("CreateToolhelp32Snapshot for thread failed.\n");
+            return 0;
         }
         tMore = Thread32First(hThreadSnap, &te32);
         while (tMore) {
@@ -274,13 +274,14 @@ ULONG64	Tools::getProcessIDByTID(ULONG64 tid){
                 pid = pe32.th32ProcessID;
                 break;
             }
+            tMore = Thread32Next(hThreadSnap, &te32);
         }
         CloseHandle(hThreadSnap);
 
-        if (pid != 0)	break;
+        if (pid != -1)	break;
         bMore = Process32Next(hProcessSnap, &pe32);
     }
-    //��Ҫ���������snapshot����
+
     CloseHandle(hProcessSnap);
 
     return pid;
@@ -290,16 +291,15 @@ std::wstring Tools::getProcessNameByPID(ULONG64 pid) {
 
     PROCESSENTRY32 pe32;
     int i = 0;
-    //��ʹ������ṹǰ�����������Ĵ�С
+
     pe32.dwSize = sizeof(pe32);
     std::wstring pName = L"";
-    //��ϵͳ�����еĽ����ĸ�����
+
     HANDLE hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (hProcessSnap == INVALID_HANDLE_VALUE){
-        MyLogger::writeLog("CreateToolhelp32Snapshot ����ʧ��.\n");
+        MyLogger::writeLog("CreateToolhelp32Snapshot for process failed.\n");
         return pName;
     }
-    //�������̿��գ�������ʾÿ�����̵���Ϣ
     BOOL bMore = Process32First(hProcessSnap, &pe32);
     while (bMore){
         if (pid == pe32.th32ProcessID) {
@@ -308,7 +308,6 @@ std::wstring Tools::getProcessNameByPID(ULONG64 pid) {
         }
         bMore = Process32Next(hProcessSnap, &pe32);
     }
-    //��Ҫ���������snapshot����
     CloseHandle(hProcessSnap);
 
     return pName;

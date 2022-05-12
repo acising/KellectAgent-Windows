@@ -67,12 +67,12 @@ void ThreadPool::enqueueTask(beginThreadParseFunc f) {
 	cv.notify_one();
 }
 
-void ThreadPool::enqueueTask(threadParseEvent f, Event* event)
+void ThreadPool::enqueueTask(threadParseEvent f, BaseEvent* event)
 {
 	using return_type = void;
 
 	auto task = std::make_shared< std::packaged_task<return_type()> >(
-		std::bind(std::forward<threadParseEvent>(f), std::forward<Event*>(event))
+		std::bind(std::forward<threadParseEvent>(f), std::forward<BaseEvent*>(event))
 		);
 	//std::future<return_type> res = task->get_future();
 

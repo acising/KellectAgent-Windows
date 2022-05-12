@@ -1,10 +1,12 @@
 #pragma once
 #include "initialization/initializer.h"
 #include "process/event_parse.h"
+#include "process/etw_config.h"
 #include "tools/tools.h"
 #include "tools/logger.h"
 #include <regex>
 #include "filter.h"
+#include "tools/providerInfo.h"
 
 INITIALIZE_EASYLOGGINGPP
 using namespace std;
@@ -20,47 +22,79 @@ PLOADED_IMAGE pli;
 std::string parseFiles[] = { "\\SystemRoot\\System32\\win32k.sys","\\SystemRoot\\System32\\ntoskrnl.exe" };
 
 
+//use to classify events by providerID and opcodes.
+std::map<EventIdentifier*, std::list<BaseEvent::PropertyInfo>, EventIdentifierSortCriterion>  BaseEvent::eventStructMap;
+
 std::set<EventIdentifier*, EventIdentifierSortCriterion> Filter::filteredEventIdentifiers;
 std::set<int> Filter::filteredProcessID;
 std::set<std::string> Filter::filteredImageFile;
-std::map<EventIdentifier*, std::list<Event::PropertyInfo>, EventIdentifierSortCriterion>  Event::eventStructMap;
+std::set<ULONG64> Filter::listenedEventsProviders;
+bool Filter::listenAllEvents(false);
+bool Initializer::listenCallStack(false);
+
 std::map <std::string, std::set<MyAPI*, MyAPISortCriterion> > EventImage::modulesName2APIs;
 //ReadWriteMap <std::string, std::set<MyAPI*, MyAPISortCriterion> > EventImage::modulesName2APIs;
 ThreadPool* EventParser::parsePools;
 std::atomic<bool> EventParser::threadParseFlag;
+//ReadWriteMap<ULONG64, ULONG64> EventThread::processorId2threadId;
+int EventThread::processorId2threadId[MAX_PROCESSOR_NUM];
+//ReadWriteMap<ULONG64, ULONG64> EventThread::threadId2processId;
+int EventThread::threadId2processId[MAX_THREAD_NUM];
 
 STATUS Initializer::initEnabledEvent(ULONG64 eventType) {
 
-
-    enabledFlags = EVENT_TRACE_FLAG_CSWITCH;
-
-    //TODO verify eventType
-    //if(eventType is not valid)
-
-    if (eventType & PROCESSEVENT)
+    enabledFlags = 0;
+    //callstack initialize in
+    if (eventType & CALLSTACKEVENT){
+        setListenCallStack(true);   // set listenCallStack true;
+        enabledFlags |= EVENT_TRACE_FLAG_IMAGE_LOAD|EVENT_TRACE_FLAG_PROCESS;
+        Filter::listenedEventsProviders.insert(CallStackProvider);
+    }
+    if (eventType & PROCESSEVENT){
         enabledFlags |= EVENT_TRACE_FLAG_PROCESS;
-    if (eventType & THREADEVENT)
+        Filter::listenedEventsProviders.insert(ProcessProvider);
+    }
+    if (eventType & THREADEVENT){
         enabledFlags |= EVENT_TRACE_FLAG_THREAD;
-    if (eventType & REGISTEREVENT)
+        Filter::listenedEventsProviders.insert(ThreadProvider);
+    }
+    if (eventType & REGISTEREVENT){
         enabledFlags |= EVENT_TRACE_FLAG_REGISTRY;
-    if (eventType & FILEEVENT)
-        enabledFlags |= EVENT_TRACE_FLAG_FILE_IO_INIT | EVENT_TRACE_FLAG_DISK_FILE_IO | EVENT_TRACE_FLAG_FILE_IO;
-    if (eventType & DISKEVENT)
+        Filter::listenedEventsProviders.insert(RegistryProvider);
+    }
+    if (eventType & FILEEVENT){
+
+        enabledFlags |= EVENT_TRACE_FLAG_FILE_IO_INIT | EVENT_TRACE_FLAG_DISK_FILE_IO | EVENT_TRACE_FLAG_FILE_IO
+                        |EVENT_TRACE_FLAG_PROCESS|EVENT_TRACE_FLAG_CSWITCH|EVENT_TRACE_FLAG_THREAD;
+        Filter::listenedEventsProviders.insert(FileProvider);
+    }
+    if (eventType & DISKEVENT){
         enabledFlags |= EVENT_TRACE_FLAG_DISK_IO | EVENT_TRACE_FLAG_DISK_IO_INIT;
-    if (eventType & SYSTEMCALLEVENT)
-        enabledFlags |= EVENT_TRACE_FLAG_SYSTEMCALL;
-    if (eventType & IMAGEEVENT)
+        Filter::listenedEventsProviders.insert(DiskProvider);
+    }
+//    if (eventType & SYSTEMCALLEVENT)
+//        enabledFlags |= EVENT_TRACE_FLAG_SYSTEMCALL;
+    if (eventType & IMAGEEVENT){
         enabledFlags |= EVENT_TRACE_FLAG_IMAGE_LOAD;
-    if (eventType & TCPIPEVENT)
-        enabledFlags |= EVENT_TRACE_FLAG_NETWORK_TCPIP;
+        Filter::listenedEventsProviders.insert(ImageProvider);
+    }
+    if (eventType & TCPIPEVENT){
+        enabledFlags |= EVENT_TRACE_FLAG_NETWORK_TCPIP|EVENT_TRACE_FLAG_PROCESS|EVENT_TRACE_FLAG_CSWITCH
+                |EVENT_TRACE_FLAG_THREAD;
+        Filter::listenedEventsProviders.insert(TcpIpProvider);
+    }
+
+    if(Filter::listenedEventsProviders.size() == 8) Filter::listenAllEvents=true;
 
     return STATUS_SUCCESS;
 }
-
 /*
     initialize kernel provider trace events type.
 */
-inline void Initializer::initEnabledFlags() {
+inline void Initializer::initDefaultEnabledEvents() {
+
+    Filter::listenAllEvents=true;
+    setListenCallStack(true);
     enabledFlags = 0
                    | EVENT_TRACE_FLAG_PROCESS
                    | EVENT_TRACE_FLAG_THREAD
@@ -68,7 +102,7 @@ inline void Initializer::initEnabledFlags() {
                    | EVENT_TRACE_FLAG_FILE_IO_INIT   //enable FileIo_OpEnd
                    | EVENT_TRACE_FLAG_DISK_FILE_IO
                    | EVENT_TRACE_FLAG_FILE_IO
-                   //| EVENT_TRACE_FLAG_CSWITCH        //too many events
+                   | EVENT_TRACE_FLAG_CSWITCH        //too many events
                    | EVENT_TRACE_FLAG_DISK_IO
                    |EVENT_TRACE_FLAG_DISK_IO_INIT
                    //| EVENT_TRACE_FLAG_SYSTEMCALL     //too many events
@@ -161,12 +195,18 @@ void Initializer::initProcessID2ModulesMap() {
                 iter->first, std::set<Module*, ModuleSortCriterion>()
         );
 
-        //initialize processID2ModuleAddressPair structure with processID2Name which is initilized before.
-        //Initialize each item'value a default minmaxAddress pair.
+        /*
+        initialize processID2ModuleAddressPair structure with processID2Name which is initilized before.
+        Initialize each item'value a default minmaxAddress pair.
+         */
         //EventProcess::processID2ModuleAddressPair.insert(std::map<int, EventProcess::MinMaxModuleAddressPair>::
         //    value_type(iter->first, std::make_pair(EventProcess::initMinAddress,EventProcess::initMaxAddress)));
+
+
         EventProcess::processID2ModuleAddressPair.insert(
                 iter->first, std::make_pair(EventProcess::initMinAddress, EventProcess::initMaxAddress));
+//        EventProcess::processID2ModuleAddressPair.insert(
+//                iter->first, std::make_pair(EventProcess::initMaxAddress, EventProcess::initMinAddress));
     }
 
 }
@@ -188,7 +228,6 @@ void Initializer::initImages(std::string confFile) {
         //images.insert(tempString);
 
         std::set<MyAPI*, MyAPISortCriterion> apis;
-        //wsCurrentImage = Tools::StringToWString(currentImage.c_str());
 
         //   imageFile
         Filter::filteredImageFile.insert(currentImage);
@@ -234,8 +273,8 @@ void Initializer::initEventPropertiesMap(std::string confFile) {
     std::string propertyName;
     std::string tempString = "";
     std::set <EventIdentifier*> tempEventIdentifierSet;
-    std::list<Event::PropertyInfo> tempList;
-    Event::PropertyInfo propertyInfo;
+    std::list<BaseEvent::PropertyInfo> tempList;
+    BaseEvent::PropertyInfo propertyInfo;
     //std::vector<std::wstring> testPropertyIndex;
 
 
@@ -261,9 +300,9 @@ void Initializer::initEventPropertiesMap(std::string confFile) {
             std::string eventTypeName = *(++sp);
 
             ei = new EventIdentifier(providerID, opCode, eventTypeName);
+//            BaseEvent::eventProviderID2Opcodes[providerID].insert(ei);
             ++p;
             tempEventIdentifierSet.insert(ei);
-            //Event::eventIdentifierSet.insert(ei);
         }
 
         while (getline(myfile, tempString) && tempString != "") {
@@ -276,10 +315,10 @@ void Initializer::initEventPropertiesMap(std::string confFile) {
                 //std::wstring propertyName = Tools::StringToWString(*p);
                 propertyName = *p;
 
-                if (Event::propertyNameSet.find(propertyName) == Event::propertyNameSet.end()) {
-                    Event::propertyNameVector.push_back(propertyName);
-                    Event::propertyNameSet.insert(propertyName);
-                    //Event::propertyName2IndexMap.insert()
+                if (BaseEvent::propertyNameSet.find(propertyName) == BaseEvent::propertyNameSet.end()) {
+                    BaseEvent::propertyNameVector.push_back(propertyName);
+                    BaseEvent::propertyNameSet.insert(propertyName);
+                    //BaseEvent::propertyName2IndexMap.insert()
                 }
 
                 propertyInfo = make_pair(propertyName, Tools::String2Int(*(++p)));
@@ -289,9 +328,9 @@ void Initializer::initEventPropertiesMap(std::string confFile) {
 
         for (auto ei : tempEventIdentifierSet) {
 
-            Event::eventIdentifierSet.insert(ei);
-            Event::eventStructMap.insert(
-                    std::map<EventIdentifier*, std::list<Event::PropertyInfo>, EventIdentifierSortCriterion>::value_type(ei, tempList));
+            BaseEvent::eventIdentifierSet.insert(ei);
+            BaseEvent::eventStructMap.insert(
+                    std::map<EventIdentifier*, std::list<BaseEvent::PropertyInfo>, EventIdentifierSortCriterion>::value_type(ei, tempList));
         }
 
         tempEventIdentifierSet.clear();
@@ -299,93 +338,12 @@ void Initializer::initEventPropertiesMap(std::string confFile) {
     }
 
     //for debug: get propertyIndex
-    //for (auto item : Event::propertyNameVector) {
+    //for (auto item : BaseEvent::propertyNameVector) {
     //    std::wcout << item << L",";
     //}
 
     //int a = 0;
 }
-/*
-    initialize EventIdentiier map with correlated properties
-*/
-/*
-void initEventPropertiesMap(std::wstring confFile) {
-
-    std::ifstream myfile(confFile);
-
-    std::string tempString = "";
-
-    if (!myfile.is_open()) {
-        MyLogger::writeLog("file initEventPropertiesMap open failed!");
-        exit(-1);
-    }
-
-    while (getline(myfile, tempString) && tempString != "") {
-        //MyLogger::writeLog("file initEventPropertiesMap read failed!");
-        //exit(-1);
-
-        std::regex re(" ");
-        std::sregex_token_iterator p(tempString.begin(), tempString.end(), re, -1);
-        std::sregex_token_iterator end;
-        EventIdentifier* ei;
-        std::vector<std::string> tempPropertyVector;
-
-        while (p != end) {
-
-            //std::wstring ws = Tools::StringToWString(*p);
-            INT64 providerID = Tools::String2INT64(*p);
-            INT64 opCode = Tools::String2INT64(*(++p));
-            std::string eventName = (*(++p));
-
-            ei = new EventIdentifier(providerID, opCode, eventName);
-            ++p;
-        }
-
-        if (!getline(myfile, tempString)) {
-            MyLogger::writeLog("file initPropertyNames read failed!");
-            exit(-1);
-        }
-
-
-        //init properties vector
-        re = std::regex(",");
-        p = std::sregex_token_iterator (tempString.begin(), tempString.end(), re, -1);
-
-        while (p != end) {
-            std::wstring ws = Tools::StringToWString(*p);
-
-            if (Event::propertyNameSet.find(ws) == Event::propertyNameSet.end()) {
-                Event::propertyNameVector.push_back(ws);
-                Event::propertyNameSet.insert(ws);
-                //Event::propertyName2IndexMap.insert()
-            }
-            ++p;
-        }
-
-        Event::eventIdentifierSet.insert(ei);
-
-        //if (getline(myfile, tempString) && tempString != "") {
-        //    std::regex re(",");
-        //    std::sregex_token_iterator p(tempString.begin(), tempString.end(), re, -1);
-        //    std::sregex_token_iterator end;
-
-        //    while (p != end) {
-        //        //std::wstring ws = Tools::StringToWString(*p);
-        //        tempPropertyVector.push_back(*p);
-        //        ++p;
-        //    }
-        //}
-        //else {
-        //    MyLogger::writeLog("initEventPropertiesMap   ȡʧ ܡ ");
-        //    break;
-        //}
-        Event::eventPropertiesMap.insert(std::pair<EventIdentifier*, std::vector<std::string>>(ei, tempPropertyVector));
-    }
-
-    //clear property set
-    Event::propertyNameSet.clear();
-}
-*/
 
 /*
     initialize threadpool with 8 threads and a task queue of 10000000 capacity
@@ -402,16 +360,25 @@ void Initializer::initOutputThread() {
 
 void Initializer::initThreadParseProviders() {
 
-    EventParser::threadParseProviders.insert(ProviderTcpIp);
-    EventParser::threadParseProviders.insert(ProviderThread);
-    EventParser::threadParseProviders.insert(ProviderDiskIo);
-    EventParser::threadParseProviders.insert(ProviderRegistry);
-    EventParser::threadParseProviders.insert(ProviderImage);
-    //EventParser::threadParseProviders.insert(ProviderFileIo);
-//    EventParser::threadParseProviders.insert(ProviderStackWalk);
+    EventParser::threadParseProviders.insert(TcpIpProvider);
+    EventParser::threadParseProviders.insert(DiskProvider);
+    {
+        //EventParser::threadParseProviders.insert(ProviderStackWalk);
+        EventParser::threadParseProviders.insert(RegistryProvider);
+//        std::cout << "parse registry events in thread" << std::endl;
+    }
+//    EventParser::threadParseProviders.insert(ProviderImage);
+    EventParser::threadParseFlag = true;
+}
 
-    EventParser::threadParseFlag = false;
-    //EventParser::threadParseFlag = true;
+//initialize structure of Processor2ThreadAndThread2Process, which is used in function setPidAndTid() to fix threadId and processId
+void Initializer::initProcessor2ThreadAndThread2Process(){
+
+    for(int i = 0 ; i<MAX_PROCESSOR_NUM; i++)
+        EventThread::processorId2threadId[i] = INIT_THREAD_ID;
+
+    for(int i = 0 ; i<MAX_THREAD_NUM; i++)
+        EventThread::threadId2processId[i] = INIT_PROCESS_ID;
 }
 
 void Initializer::initNeededStruct() {
@@ -426,21 +393,48 @@ void Initializer::initNeededStruct() {
         exit(-1);
     }
     initEventPropertiesMap();
+
+    //default trace all events
+    if(!enbaleFlagsInited)
+        initDefaultEnabledEvents();
+    else{
+        initEnabledEvent(userEnabledFlags);
+        initOutputThreashold(userEnabledFlags);
+    }
+
     initFilter();
     initProcessID2ModulesMap();
-    initEnabledFlags();
     initPrasePool();
     initThreadParseProviders();
+    initProcessor2ThreadAndThread2Process();
+
+    //set output threashold value, which depends on the event type we tracing
+    EventParser::op->setOutputThreashold(outputThreashold);
 }
 
 void Initializer::showCommandList() {
 
     std::string cmdList = "CommandLine Option Rules:\n";
-    cmdList.append("-e , the event type you want to trace , example:0x1(process), 0x2(thread:)...\n");
-    cmdList.append("-f , the file path that you want to output the events , example:c:\\123.txt\n");
+    cmdList.append("-e , the event type you want to trace\n");
+    cmdList.append("\targuments details:\n"
+                   "\t\t0x1(PROCESS)\n"
+                   "\t\t0x2(THREAD)\n"
+                   "\t\t0x4(IMAGE)\n"
+                   "\t\t0x8(FILE)\n"
+                   "\t\t0x10(DISK)\n"
+                   "\t\t0x20(REGISTRY)\n"
+//                   "\t\t0x40(SYSTEMCALL)\n"
+                   "\t\t0x40(CALLSTACK)\n"
+                   "\t\t0x80(TCPIP)\n"
+                   "\t\tall(tracing all event types)\n"
+                   "\tusage:-e 0x11 ,which will trace events of Process and Disk.\n"
+    );
+    cmdList.append("-f , the file path that you want to output the events\n"
+                   "\tusage:c:\\123.txt ,which will output events to file c:\\123.txt\n");
     cmdList.append("-c , output events to the console \n");
-    cmdList.append("-s , the socket that you want to transmission events,example:192.168.1.2:66 \n");
-    cmdList.append("-h , get the guide manual\n");
+    cmdList.append("-s , the socket that you want to transmission events\n"
+                   "\tusage:example:192.168.1.2:66 which will output events to host whose ip is 192.168.1.2:66 \n");
+    cmdList.append("-h , get the manual\n");
 
     std::cout << cmdList;
 }
@@ -453,6 +447,7 @@ inline bool Initializer::validArgLength(int i,STATUS& status) {
 
         return 0;
     }
+    status = STATUS_SUCCESS;
     return 1;
 }
 
@@ -461,12 +456,39 @@ inline bool Initializer::isOutPutOption(char* option) {
     return !strcmp(option, "-c") || !strcmp(option, "-f") || !strcmp(option, "-s");
 }
 
+//change the outputThreashold accroing to the event type we traced.
+STATUS Initializer::initOutputThreashold(ULONG64 eventType) {
+    outputThreashold = 0;
+
+    //the accumulated value was not tested experimentally, all based on experience
+    if (eventType & PROCESSEVENT)
+        outputThreashold += 10;
+    if (eventType & THREADEVENT)
+        outputThreashold += 100;
+    if (eventType & REGISTEREVENT)
+        outputThreashold += 300;
+    if (eventType & FILEEVENT)
+        outputThreashold += 100;
+    if (eventType & DISKEVENT)
+        outputThreashold += 10;
+//    if (eventType & SYSTEMCALLEVENT)
+//        outputThreashold += 1000;
+    if (eventType & IMAGEEVENT)
+        outputThreashold += 30;
+    if (eventType & TCPIPEVENT)
+        outputThreashold += 50;
+    if (eventType & CALLSTACKEVENT)
+        outputThreashold += 50;
+
+    return STATUS_SUCCESS;
+}
+
 ULONG64 Initializer::init() {
 
     STATUS status = 0;
     int i = 1;
     char* currentArv = nullptr;
-    string errorMsg = "";
+//    string errorMsg = "";
 
     if (argc < 1) return 0;
     //default trace all events
@@ -482,8 +504,7 @@ ULONG64 Initializer::init() {
             EventParser::op = new ConsoleOutPut();
             status = EventParser::op->init();
             //EventParser::op->beginOutputThread();
-            //i++;
-            if (status != STATUS_SUCCESS)   break;
+//            if (status != STATUS_SUCCESS)   break;
             outputInited = true;
         }
         else if (strcmp(currentArv, "-f") == 0 && !outputInited) {
@@ -493,8 +514,7 @@ ULONG64 Initializer::init() {
             EventParser::op = new FileOutPut(argV[i++]);
             status = EventParser::op->init();
             //EventParser::op->beginOutputThread();
-
-            if (status != STATUS_SUCCESS)   break;
+//            if (status != STATUS_SUCCESS)   break;
             outputInited = true;
         }
         else if (strcmp(currentArv, "-s") == 0 && !outputInited) {
@@ -504,26 +524,24 @@ ULONG64 Initializer::init() {
             EventParser::op = new SocketOutPut(argV[i++]);
             status = EventParser::op->init();
             //EventParser::op->beginOutputThread();
-            if (status != STATUS_SUCCESS)   break;
+//            if (status != STATUS_SUCCESS)   break;
             outputInited = true;
         }
         else if (strcmp(currentArv, "-e") == 0) {
 
             if (!validArgLength(i, status))   break;
+//            std::cout<<strcmp(argV[i++],"all")<<std::endl;
+            std::string arg = argV[i++];
+            userEnabledFlags = strcmp(arg.c_str(),"all") == 0? 0x1ff:Tools::HexStr2DecInt(arg);
 
-            ULONG64 userEnabledFlags = Tools::String2ULONG64(argV[i++]);
-            status = initEnabledEvent(userEnabledFlags);
+            if(status == STATUS_SUCCESS)    enbaleFlagsInited = true;
         }
         else if (strcmp(currentArv, "-h") == 0) {
 
             status = STATUS_SHOW_MANUAL;
-            /*showCommandList();
-            exit(-1);*/
-            //if (status == STATUS_FAIL)   break;
-            //outputInited = true;
         }
         else {
-            status = isOutPutOption(currentArv) ? STATUS_DUPLICATE_OUTPUT : STATUS_FAIL;
+            status = isOutPutOption(currentArv) ? STATUS_DUPLICATE_OUTPUT : STATUS_UNKNOWN_OPTION;
         }
 
         if (status != STATUS_SUCCESS)   break;
@@ -554,11 +572,19 @@ ULONG64 Initializer::init() {
                 break;
             }
             case STATUS_SHOW_MANUAL: {
-                MyLogger::writeLog("the following are help manual.");
+                MyLogger::writeLog("the following is help manual.");
+                break;
+            }
+            case STATUS_EVENT_TYPE_ERROR:{
+                MyLogger::writeLog("-e format error.");
+                break;
+            }
+            case STATUS_UNKNOWN_OPTION:{
+                MyLogger::writeLog("unknown option specified.");
                 break;
             }
             case STATUS_FAIL: {
-                MyLogger::writeLog("option or arguments error. ");
+                MyLogger::writeLog("options or arguments error. ");
                 break;
             }
         }
@@ -767,7 +793,8 @@ BOOLEAN Initializer::LoadSymModule(
 
     pSymGetSymbolFile = (SYMGETSYMBOLFILE)GetProcAddress(hDbgHelp, "SymGetSymbolFile");
     if (!pSymGetSymbolFile) {
-        printf("pSymGetSymbolFile() failed %X\r\n", pSymGetSymbolFile);
+//        printf("pSymGetSymbolFile() failed %d\r\n", pSymGetSymbolFile);
+        std::cout<<"pSymGetSymbolFile() failed %d"<< pSymGetSymbolFile<<std::endl;
         return FALSE;
     }
 

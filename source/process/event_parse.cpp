@@ -2,26 +2,25 @@
 #include "process/event_parse.h"
 #include <iostream>
 #include <map>
-#include <fstream>
 #include <string>
 #include "tools/my_socket.h"
 #include "process/event.h"
-#include <regex>
-
+#include "process/etw_config.h"
 using namespace std;
 
-EventParser c;
 OutPut* EventParser::op;
 std::set<ULONG64> EventParser::threadParseProviders;
-atomic<ULONG64> EventParser::successParse = 0;
-atomic<ULONG64> threadParseEventsNum = 0;
+atomic<ULONG64> EventParser::successParse(0);
+//atomic<ULONG64> threadParseEventsNum(0);
 ULONG64 comingEventsNum = 0;
+EventParser ETWConfiguration::eventParser;
 
-void EventParser::eventParseThreadFunc(Event* event) {
+void EventParser::eventParseThreadFunc(BaseEvent* event) {
 
-	event = c.getPropertiesByParsingOffset(event,event->getRawPropertyLen(),event->getRawProperty());
-	event->parse();
-	
+	event = ETWConfiguration::eventParser
+            .getPropertiesByParsingOffset(event,event->getRawPropertyLen(),event->getRawProperty());
+
+    event->parse();
 	if (!Filter::thirdFilter(event)) {
 
 		if (++successParse % 50000 == 0) {
@@ -34,10 +33,6 @@ void EventParser::eventParseThreadFunc(Event* event) {
 			//	//delete sJson;
 			op->pushOutputQueue(sJson);
 		}
-
-		//if (++threadParseEventsNum % 5000 == 0)
-			//std::this_thread::sleep_for(std::chrono::nanoseconds(10));
-
 	}
 	delete event;
 }
@@ -49,8 +44,8 @@ VOID WINAPI EventParser::ConsumeEventMain(PEVENT_RECORD pEvent) {
 	}
 	if (!Filter::firstFilter(pEvent)) {
 
-		//Event* event = c.getPropertiesByTdh(pEvent);		//parsing speed is too low , will lead to events lost!
-		Event* event = c.getEventWithIdentifier(pEvent);
+		//BaseEvent* event = c.getPropertiesByTdh(pEvent);		//speed of TDH's parsing way is too low , will lead to events lost!
+		BaseEvent* event = ETWConfiguration::eventParser.getEventWithIdentifier(pEvent);
 
 		if (event) {	//correctly parse EventIdentifer.
 			
@@ -61,15 +56,16 @@ VOID WINAPI EventParser::ConsumeEventMain(PEVENT_RECORD pEvent) {
 			}
 			else {
 				//synchronize
-				event = c.getPropertiesByParsingOffset(event, pEvent->UserDataLength, pEvent->UserData);
+				event = ETWConfiguration::eventParser
+                        .getPropertiesByParsingOffset(event, pEvent->UserDataLength, pEvent->UserData);
 				event->parse();
 
 				if (!Filter::thirdFilter(event)) {
 					if (++successParse % 50000 == 0) {
-
 						std::cout << "parse events number:" << successParse << std::endl;
-						//std::this_thread::sleep_for(std::chrono::nanoseconds(1));
 					}
+
+                    //create string and to get Json format event
 					std::string* sJson = new std::string();
 					STATUS status = event->toJsonString(sJson);
 
@@ -87,25 +83,9 @@ VOID WINAPI EventParser::ConsumeEventMain(PEVENT_RECORD pEvent) {
 }
 
 VOID WINAPI EventParser::ConsumeEventSub(PEVENT_RECORD pEvent) {
-	static nlohmann::json retJson;
-
-	string resJsonStr;
-
 	//对公共区域进行上锁
 	//m.lock();
-	c.getPropertiesByTdh(pEvent);
+    ETWConfiguration::eventParser.getPropertiesByTdh(pEvent);
 	//m.unlock();
 	//对公共区域进行解锁
-
-	//cout << "event from subsubsusbusbusubsub" << endl;
-	//cout << "返回的jsonstr：" << resJsonStr << endl;
-
-//mySocket.sendMsg(resJsonStr);		//socket通信
-	//ParseEventStruct(pEvent, retJson);
-
-	//待完成子消费器的分支处理函数
-
-	cout << retJson.dump() << endl;   //输出rec
-
-	retJson.clear();
 }
