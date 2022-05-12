@@ -1,5 +1,4 @@
 #pragma once
-#include <set>
 #include "process/event.h"
 
 class Filter {

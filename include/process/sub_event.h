@@ -204,7 +204,9 @@ class EventCallstack :public BaseEvent {
 public:
 	std::vector<ULONG64> stackAddresses;
 
-	static ReadWriteMap<CallStackIdentifier, std::string*> callStackRecord;
+    static std::atomic<int> callStackRecordNum;
+//	static ReadWriteMap<CallStackIdentifier, std::string*> callStackRecord;
+	static std::map<CallStackIdentifier, std::string*> callStackRecord;
 	static void initCallStackTracing(TRACEHANDLE& SessionHandle);
 	static void initCallStackEvents();
 	//std::string toJsonString() override;

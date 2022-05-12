@@ -1,4 +1,5 @@
 #include "tools/filter.h"
+#include <tdh.h>
 
 bool Filter::firstFilter(PEVENT_RECORD pEvent) {
 	

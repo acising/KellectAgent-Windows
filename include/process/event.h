@@ -1,15 +1,11 @@
 #pragma once
 #include <Windows.h>
-#include <iostream>
 #include <evntrace.h>
-#include <tdh.h>
 #include <map>
-#include <fstream>
 #include <string>
 #include <vector>
 #include <set>
 #include <list>
-#include <mutex>
 #include <algorithm>
 #include "initialization/initializer.h"
 

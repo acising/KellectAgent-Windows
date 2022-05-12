@@ -1,12 +1,7 @@
 #pragma once
-//#include <evntrace.h>
 #include <Windows.h>
-#include <iostream>
-#include <string>
-#include <evntrace.h>
 #include <thread>
-#include<mutex>
-#include <cstdlib>
+#include <mutex>
 #include "etw_config.h"
 
 class BaseThread {

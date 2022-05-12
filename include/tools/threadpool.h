@@ -1,14 +1,11 @@
 #pragma once
 #include <thread>
 #include <mutex>
+#include <future>
+#include <condition_variable>
 #include <functional>
 #include <queue>
-#include <vector>
-#include <condition_variable>
-#include <iostream>
-#include <future>
 #include "process/event.h"
-#include <list>
 
 typedef std::function<void()> Task;
 typedef void (*threadParseEvent)(BaseEvent* event);

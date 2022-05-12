@@ -9,9 +9,7 @@
 #include <iostream>
 #include <evntrace.h>
 #include <cstdlib>
-
 #include "process/etw_config.h"
-#include "process/customer_parse.h"
 #include "process/event_parse.h"
 #include "process/multithread_configuration.h"
 
@@ -131,40 +129,37 @@ start:
     }
 
     wprintf(L"Press any key to end trace session..\n\n ");
-
-    //enable callstack trace
-    if(Initializer::getListenCallStack())
-        EventCallstack::initCallStackTracing(SessionHandle);
+    if (real_time_switch) {
+        //enable callstack trace
+        if (Initializer::getListenCallStack())
+            EventCallstack::initCallStackTracing(SessionHandle);
 
     SetupEventConsumer((LPWSTR)KERNEL_LOGGER_NAME,TRUE);
-//        std::thread tt(&ETWConfiguration::SetupEventConsumer, this, (LPWSTR)KERNEL_LOGGER_NAME, TRUE);
+//        std::thread tt(&ETWConfiguration::SetupEventConsumer, this, (LPWSTR) KERNEL_LOGGER_NAME, TRUE);
 //        tt.detach();
 
-    // for test events lost
-    /*
-    while (1) {
-
-        std::this_thread::sleep_for(std::chrono::microseconds(1000000));
-        status = ControlTrace(SessionHandle, KERNEL_LOGGER_NAME, mainSessionProperties, EVENT_TRACE_CONTROL_QUERY);
-        if (ERROR_SUCCESS == status)
-        {
-            std::this_thread::sleep_for(std::chrono::microseconds(20000000));
-            std::cout <<
-                "  BuffersWritten:" << mainSessionProperties->BuffersWritten <<
-                "  FreeBuffers:" << mainSessionProperties->FreeBuffers <<
-                "  NumberOfBuffers:" << mainSessionProperties->NumberOfBuffers <<
-                "  EventsLost:" << mainSessionProperties->EventsLost
-                << std::endl;
-
-            if (mainSessionProperties->EventsLost > 0)
-                int a = 0;
-        }
+        // for test events lost
+//
+//        while (1) {
+//
+//            std::this_thread::sleep_for(std::chrono::microseconds(1000000));
+//            status = ControlTrace(SessionHandle, KERNEL_LOGGER_NAME, mainSessionProperties, EVENT_TRACE_CONTROL_QUERY);
+//            if (ERROR_SUCCESS == status) {
+//                std::this_thread::sleep_for(std::chrono::microseconds(20000000));
+//                std::cout <<
+//                          "  BuffersWritten:" << mainSessionProperties->BuffersWritten <<
+//                          "  FreeBuffers:" << mainSessionProperties->FreeBuffers <<
+//                          "  NumberOfBuffers:" << mainSessionProperties->NumberOfBuffers <<
+//                          "  EventsLost:" << mainSessionProperties->EventsLost
+//                          << std::endl;
+//
+//                if (mainSessionProperties->EventsLost > 0)
+//                    int a = 0;
+//            }
+//        }
+    }else {
+        getchar();
     }
-    */
-
-    goto cleanup;
-
-    return 0;
 
 cleanup:
 

@@ -1,6 +1,4 @@
 #pragma once
-//#include "multithread_configuration.h">
-
 #include "event_parse.h"
 
 class ETWConfiguration

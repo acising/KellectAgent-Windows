@@ -8,7 +8,6 @@
 #include <evntrace.h>
 #include <tdh.h>
 #include <in6addr.h>
-#include "process/customer_parse.h"
 #include "process/event.h"
 #include "process/etw_config.h"
 #include "tools/json.hpp"

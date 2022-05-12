@@ -16,7 +16,9 @@ std::set<ULONG64> EventThread::threadSet;
 std::set <Module*, ModuleSortCriterion> EventImage::globalModuleSet;
 std::set <Module*, ModuleSortCriterion> EventImage::usedModuleSet;
 ReadWriteMap<int, EventProcess::MinMaxModuleAddressPair> EventProcess::processID2ModuleAddressPair;
-ReadWriteMap<CallStackIdentifier, std::string*> EventCallstack::callStackRecord;
+//ReadWriteMap<CallStackIdentifier, std::string*> EventCallstack::callStackRecord;
+std::map<CallStackIdentifier, std::string*> EventCallstack::callStackRecord;
+std::atomic<int> EventCallstack::callStackRecordNum(0);
 
 void setFileName(BaseEvent* ev) {
 
@@ -580,7 +582,6 @@ void  EventCallstack::parse() {
                         //only parse top stack call
                         //break;
                     }
-
                 }
 
 				int i = 0;
@@ -591,8 +592,16 @@ void  EventCallstack::parse() {
 				}
 
 				//record each callstackinfo which maybe reused later.
-				callStackRecord.insert(tempCallStackIdentifier,callInfo);
+                if(callStackRecordNum.load()<2000){
+                    callStackRecord[tempCallStackIdentifier] =callInfo;
+                    callStackRecordNum++;
+                }else{
+                    auto begin = callStackRecord.begin();
+                    delete begin->second;
 
+                    callStackRecord.erase(begin);
+                    callStackRecord[tempCallStackIdentifier] =callInfo;
+                }
 				//std::cout << *callInfo << std::endl << std::endl;
 			}
 		}

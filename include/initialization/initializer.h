@@ -5,7 +5,6 @@
 #include <windows.h>
 #include <iostream>
 #include <fstream>
-//#include "dia2.h"
 #include "DbgHelp.h"
 
 /*defined status code*/
