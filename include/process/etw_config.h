@@ -1,13 +1,6 @@
 #pragma once
 //#include "multithread_configuration.h">
-#include <winsock2.h>
-#include <windows.h>
-#include <evntrace.h>
-#include <iostream>
-#include <string>
-#include <thread>
-#include <mutex>
-#include <cstdlib>
+
 #include "event_parse.h"
 
 class ETWConfiguration

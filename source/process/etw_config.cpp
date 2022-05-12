@@ -1,12 +1,13 @@
+#include <windows.h>
 #include <wbemidl.h>
 #include <wmistr.h>
-#include <evntrace.h>
-#include <vector>
 #include <time.h>
 #include <tdh.h> //PROCESS_TRACE_MODE_REAL_TIME | PROCESS_TRACE_MODE_EVENT_RECORD
 #include <strsafe.h>
 #include <fstream>
 #include <iostream>
+#include <evntrace.h>
+#include <cstdlib>
 
 #include "process/etw_config.h"
 #include "process/customer_parse.h"
