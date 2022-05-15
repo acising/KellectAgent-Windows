@@ -49,7 +49,7 @@ kellect的目录结构如下所示：
 
 采集器必须以**管理员**身份运行。如下所示，可通过配置参数的形式进行功能的选择。
 
-![image-20220503171012480](images/command.png)
+![image-20220503171012480](https://www.ics2.cn/files/kellect/command.png)
 
 我们可以通过以下命令进行数据采集：
 
@@ -105,9 +105,9 @@ whitelistOfImageFiles
 
    表示通过Event ProviderID和opcode的组合过滤事件，我们称之为EventIdentifier。 具体的事件日志详情可以在[微软文档](https://docs.microsoft.com/en-us/windows/win32/etw/fileio)中获取. ProviderID 是 Guid 类第一部分的十进制形式，opcode 是每个 BaseEvent Class Page 的 Remarks 下的 EventType 值。
 
-   ![image-20220503171251436](images/eventType.png)
+   ![image-20220503171251436](https://www.ics2.cn/files/kellect/eventType.png)
 
-   ![image-20220503171255065](images/guid.png)
+   ![image-20220503171255065](https://www.ics2.cn/files/kellect/guid.png)
 
 3. *[blacklistOfImageFiles]*
 
