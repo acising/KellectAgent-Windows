@@ -8,7 +8,6 @@ The program integrates the full functions of event collection, event analysis, e
 
 We implemented most of the functionality , which means users can use this tool via start PowerShell.exe or cmd.exe and specify the command-line options and parameters as needed without modifying source code. We also provide some configuration files that users can customize to suit their needs.
 
-
 For more information on the future of kellect, see the [RoadMap](#roadmap) section.
 
 
