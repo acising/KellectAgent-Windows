@@ -647,20 +647,6 @@ void  EventProcess::parse() {
 		// for both update and add value
 		processID2Name[pid] = getProperty(ImageFileName)->getString();
 
-        auto tempDataType = getProperty(CommandLine);
-        std::string cmdLine = tempDataType->getString();
-
-
-        int len = cmdLine.size();
-        for(int i =len-1;i>=0;i--){
-            if(cmdLine.c_str()[i] == '\"')
-                cmdLine.replace(i,1,"");
-        }
-
-        Tools::convertFileNameInDiskFormat(cmdLine);
-        delete tempDataType;
-        setProperty( CommandLine,new dataType(cmdLine));
-
 		if (EventImage::processID2Modules.count(pid) == 0)  {
             /*
              //for normal std::map
@@ -700,6 +686,23 @@ void  EventProcess::parse() {
 	}
 
 	if (isValueableEvent()) {
+
+        //change the format of commandLine property.
+        auto tempDataType = getProperty(CommandLine);
+        std::string cmdLine = tempDataType->getString();
+
+//        std::cout<<cmdLine<<std::endl;
+        int len = cmdLine.size();
+        for(int i =len-1;i>=0;i--){
+            if(cmdLine.at(i) == '\"'){
+                cmdLine.replace(i,1,"");
+            }
+        }
+
+        Tools::convertFileNameInDiskFormat(cmdLine);
+        delete tempDataType;
+        setProperty( CommandLine,new dataType(cmdLine));
+
 		ULONG64 ppid = getProperty(ParentId)->getULONG64();
         EventProcess::processID2ParentProcessID[pid] = ppid;    //set ppid to each pid
 
