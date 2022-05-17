@@ -14,10 +14,13 @@ private:
 	using MinMaxModuleAddressPair = std::pair<ULONG64, ULONG64>;
 	const static ULONG64 initMinAddress = 0xffffffff;
 	const static ULONG64 initMaxAddress = 0;
+	const static int ProcessNumSize = 65535;
 
 public:
 	friend class EventImage;
 	friend class Initializer;
+
+    static int processID2ParentProcessID[ProcessNumSize];
 	static std::map<int, std::string> processID2Name;
 	static std::map<std::string, int> processName2ID;
 	static ReadWriteMap<int, MinMaxModuleAddressPair> processID2ModuleAddressPair;

@@ -82,7 +82,9 @@ protected:
 	int threadID;
 	int processID;
 	int processorID;
+    int parentProcessID;
 	std::string processName;
+	std::string parentProcessName;
 	ULONG64 timestamp;
 	EventIdentifier* ei;
 	bool valueableEvent = true;
@@ -131,9 +133,12 @@ public:
 	void setPropertiesDeleted(bool deleted) { propertiesDeleted = deleted; }
 	void setThreadID(int tid) { threadID = tid; }
 	void setProcessID(int pid) { processID = pid; }
+	void setParentProcessID(int ppid) { parentProcessID = ppid; }
 	void setProcessorID(int pcid) { processorID = pcid; }
 	void setTimeStamp(ULONG64 timeStamp) { timestamp = timeStamp; }
 	void setProcessName(std::string name) { processName = name; }
+    void fillProcessInfo();
+	void setParentProcessName(std::string parentName) { parentProcessName = parentName; }
 	void setEventIdentifier(EventIdentifier* eIdentifier) { ei = eIdentifier; }
 	void setValueableEvent(bool vb) { valueableEvent = vb; }
 	void setRawProperty(int len, void* data) {
@@ -153,10 +158,12 @@ public:
 	bool getPropertiesDeleted() { return propertiesDeleted; }
 	int getThreadID() { return threadID; }
 	int getProcessID() { return processID; }
+	int getParentProcessID() { return parentProcessID; }
 	int getProcessorID() { return processorID; }
 	ULONG64 getTimeStamp() { return  timestamp; }
 	bool isValueableEvent() { return  valueableEvent; }
 	std::string& getProcessName() { return processName; }
+	std::string& getParentProcessName() { return parentProcessName; }
 	const EventIdentifier* getEventIdentifier()const { return ei; }
 	EventIdentifier* getEventIdentifier() { return ei; }
 	char* getRawProperty() { return rawProperty; };

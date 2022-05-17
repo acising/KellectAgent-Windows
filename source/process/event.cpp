@@ -30,6 +30,29 @@ extern std::map<ULONG64, std::string> addr2FuncName;
 extern std::map<ULONG64, std::string> addr2FuncNameUsed;
 //INT64 Tools::String2INT64(std::string s);  //将string转换为INT64
 
+void BaseEvent::fillProcessInfo(){
+
+    int pid =getProcessID();
+    int ppid = EventProcess::processID2ParentProcessID[pid];
+
+    setParentProcessID(ppid);
+
+    auto res = EventProcess::processID2Name.find(pid);
+    if (res != EventProcess::processID2Name.end())
+        setProcessName(res->second);
+    else
+        setProcessName("Unknown");
+
+    if(ppid != -1){
+        auto res = EventProcess::processID2Name.find(ppid);
+        if(res != EventProcess::processID2Name.end())
+            setParentProcessName(res->second);
+        else
+            setParentProcessName("Unknown");
+    }else{
+        setParentProcessName("Unknown");
+    }
+}
 
 dataType* BaseEvent::getProperty(int propertyNameIndex) {
 

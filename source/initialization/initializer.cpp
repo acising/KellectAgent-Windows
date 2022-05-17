@@ -379,6 +379,9 @@ void Initializer::initProcessor2ThreadAndThread2Process(){
 
     for(int i = 0 ; i<MAX_THREAD_NUM; i++)
         EventThread::threadId2processId[i] = INIT_PROCESS_ID;
+
+    for(int i = 0 ; i<EventProcess::ProcessNumSize; i++)
+        EventProcess::processID2ParentProcessID[i] = -1;
 }
 
 void Initializer::initNeededStruct() {
