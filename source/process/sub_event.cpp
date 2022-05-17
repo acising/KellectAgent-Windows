@@ -647,6 +647,20 @@ void  EventProcess::parse() {
 		// for both update and add value
 		processID2Name[pid] = getProperty(ImageFileName)->getString();
 
+        auto tempDataType = getProperty(CommandLine);
+        std::string cmdLine = tempDataType->getString();
+
+
+        int len = cmdLine.size();
+        for(int i =len-1;i>=0;i--){
+            if(cmdLine.c_str()[i] == '\"')
+                cmdLine.replace(i,1,"");
+        }
+
+        Tools::convertFileNameInDiskFormat(cmdLine);
+        delete tempDataType;
+        setProperty( CommandLine,new dataType(cmdLine));
+
 		if (EventImage::processID2Modules.count(pid) == 0)  {
             /*
              //for normal std::map

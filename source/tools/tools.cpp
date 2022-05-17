@@ -162,6 +162,15 @@ void Tools::convertFileNameInDiskFormat(std::string &fileName) {
         }
 
         fileName = it->second.append(fileName.substr(11));
+    }else if(strcmp(fileName.substr(0,11).c_str(), "%SystemRoot") == 0){
+        std::string pathType = fileName.substr(0, 11);
+
+        std::map<std::string, std::string>::iterator it = EventImage::volume2Disk.find("\\SystemRoot");
+        if (it == EventImage::volume2Disk.end()) {
+            MyLogger::writeLog("not find the mapping imageFileName2DiskNumber");
+            return;
+        }
+        fileName = it->second.append(fileName.substr(11));
     }
 }
 
