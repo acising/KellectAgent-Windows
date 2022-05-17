@@ -8,8 +8,6 @@ The program integrates the full functions of event collection, event analysis, e
 
 We implemented most of the functionality , which means users can use this tool via start PowerShell.exe or cmd.exe and specify the command-line options and parameters as needed without modifying source code. We also provide some configuration files that users can customize to suit their needs.
 
-For more details, see the [Demo Paper](./demoPaper.pdf) .
-
 For more information on the future of kellect, see the [RoadMap](#roadmap) section.
 
 
@@ -51,7 +49,7 @@ After testing ,kellect can run on OS versions above win7(x64).
 
 Users must run this program **as administrator** , and provide some command-line options and parameters to achieve specific functions as blew.
 
-![image-20220503171012480](images/command.png)
+![usage](https://www.ics2.cn/files/kellect/command.png)
 
 We can collect the require data with the following command：
 
@@ -109,9 +107,9 @@ whitelistOfImageFiles
 
    We can find the BaseEvent information in [https://docs.microsoft.com/en-us/windows/win32/etw/fileio]. ProviderID is the decimal form of the first part of class Guid and opcode is the EventType value under the Remarks of each BaseEvent Class Page.
 
-   ![image-20220503171251436](images/eventType.png)
+   ![image-20220503171251436](https://www.ics2.cn/files/kellect/eventType.png)
 
-   ![image-20220503171255065](images/guid.png)
+   ![image-20220503171255065](https://www.ics2.cn/files/kellect/guid.png)
 
 3. *[blacklistOfImageFiles]*
 
