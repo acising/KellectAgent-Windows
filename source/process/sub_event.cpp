@@ -927,12 +927,12 @@ STATUS getCommonJsonNoLib(BaseEvent* event, std::string* sJson) {
 	bool flag = false;
 
 	sJson->append(
-		"{\"EventName\":" + eventName +
-		",\"ProcessID\":" + std::to_string(event->getProcessID()) +
-		",\"ProcessName\":" + event->getProcessName() +
-		",\"ParentProcessID\":" + std::to_string(event->getParentProcessID()) +
-		",\"ParentProcessName\":" + event->getParentProcessName() +
-		",\"ThreadID\":" + std::to_string(event->getThreadID()) +
+		"{\"EventName\":\"" + eventName +
+		"\",\"ProcessID\":" + std::to_string(event->getProcessID()) +
+		",\"ProcessName\":\"" + event->getProcessName() +
+		"\",\"ParentProcessID\":" + std::to_string(event->getParentProcessID()) +
+		",\"ParentProcessName\":\"" + event->getParentProcessName() +
+		"\",\"ThreadID\":" + std::to_string(event->getThreadID()) +
 		",\"TimeStamp\":" + std::to_string(event->getTimeStamp()) +
 		",\"arguments\":{");
 
