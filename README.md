@@ -2,14 +2,16 @@
 
 # kellect Introduction
 
-kellect is a multi-threaded Windows kernel log collector based on ETW(BaseEvent Tracing for Windows),developed on C++ language with high-efficient performance. kellect can track kernel level information of Windows system, such as FileIO, Process, Thread, ImageLoad, Registry and so on.
 
-The program integrates the full functions of event collection, event analysis, event semantic correction, and event output. Output in JSON format, and can specify the output to a file path or transfer to another host through socket.
+**Kellect** means a **K**ernel-based efficient and **L**oss**l**ess event log coll**ec**tor which is a systematic framework for the full processing on kernel level logs, including collection, cleanup, confusion, storage, and analysis. 
 
-We implemented most of the functionality , which means users can use this tool via start PowerShell.exe or cmd.exe and specify the command-line options and parameters as needed without modifying source code. We also provide some configuration files that users can customize to suit their needs.
+As a firstborn version, kellect is a multi-threaded Windows kernel log collector based on ETW(BaseEvent Tracing for Windows), developed in C++ language with high-efficient performance. kellect can track kernel-level information of Windows system, such as FileIO, Process, Thread, ImageLoad, Registry, and so on.
 
+The program integrates the full functions of event collection, event analysis, event semantic correction, and event output. Output in JSON format, and can specify the output to a file path or transfer to another host through the socket.
 
-For more information on the future of kellect, see the [RoadMap](#roadmap) section.
+We implemented most of the functionality, which means users can use this tool via start PowerShell.exe or cmd.exe and specify the command-line options and parameters as needed without modifying the source code. We also provide some configuration files that users can customize to suit their needs.
+
+For more information on the future of kellect, see the [Future Work]() section.
 
 
 
@@ -216,9 +218,9 @@ The output case are as follows:
 
 # Future Work
 
-## **RoadMap**
-
- 1. 
+1. <s>ETW-based Windows kernel events log collector（V1.0，released）</s>
+2. eBPF-based Linux kernel events log collector（V1.1，developing）
+3. Common Data Model interface
 
 
 

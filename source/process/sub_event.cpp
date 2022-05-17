@@ -19,6 +19,7 @@ ReadWriteMap<int, EventProcess::MinMaxModuleAddressPair> EventProcess::processID
 //ReadWriteMap<CallStackIdentifier, std::string*> EventCallstack::callStackRecord;
 std::map<CallStackIdentifier, std::string*> EventCallstack::callStackRecord;
 std::atomic<int> EventCallstack::callStackRecordNum(0);
+int EventProcess::processID2ParentProcessID[ProcessNumSize];
 
 void setFileName(BaseEvent* ev) {
 
@@ -137,6 +138,7 @@ void EventFile::parse() {
 			}
 		}
 
+        fillProcessInfo(); //fill parentProcess Information
 		auto res = EventProcess::processID2Name.find(getProcessID());
 		if (res != EventProcess::processID2Name.end())
 			setProcessName(res->second);
@@ -211,11 +213,7 @@ void EventThread::parse() {
 		setProcessID(pid);
 		setThreadID(tid);
 
-		auto res = EventProcess::processID2Name.find(pid);
-		if (res != EventProcess::processID2Name.end())
-			setProcessName(res->second);
-		else
-			setProcessName("Unknown");
+        fillProcessInfo(); //fill parentProcess and process Information
 	}
 }
 
@@ -336,12 +334,8 @@ void  EventImage::parse() {
 		//setValueableEvent(false);
 //	}
 
-	//set process name 
-	auto res = EventProcess::processID2Name.find(processID);
-	if (res != EventProcess::processID2Name.end())
-		setProcessName(res->second);
-	else
-		setProcessName("Unknown");
+	//set process info
+    fillProcessInfo(); //fill parentProcess and process Information
 
 	switch (opCode)
 	{
@@ -508,11 +502,7 @@ void  EventCallstack::parse() {
 	std::string* callInfo = nullptr;
 	int callStackDepth = stackAddresses.size();
 
-	auto res = EventProcess::processID2Name.find(stackProcessID);
-	if(res!= EventProcess::processID2Name.end())
-		setProcessName(res->second);
-	else
-		setProcessName("Unknown");
+    fillProcessInfo(); //fill parentProcess and process Information
 
 	if (callStackDepth>0) {		
 
@@ -697,24 +687,14 @@ void  EventProcess::parse() {
 
 	if (isValueableEvent()) {
 		ULONG64 ppid = getProperty(ParentId)->getULONG64();
-		//ULONG64 pid = getProcessID();
+        EventProcess::processID2ParentProcessID[pid] = ppid;    //set ppid to each pid
 
 		//second filter, filter according to revised processID
 		if (!Filter::secondFilter(this)) {
 
 			//std::wstring parentProcessName;
-			auto res = EventProcess::processID2Name.find(ppid);
-			if (res != EventProcess::processID2Name.end())
-				setProperty("ParentProcessName", new dataType(res->second));
-			else
-				setProperty("ParentProcessName", new dataType("Unknown"));
-
-			res = EventProcess::processID2Name.find(pid);
-			if (res != EventProcess::processID2Name.end())
-				setProcessName(res->second);
-			else
-				setProcessName("Unknown");
-		}
+            fillProcessInfo(); //fill parentProcess and process Information
+        }
 		else {
 			setValueableEvent(false);
 			//return;
@@ -781,10 +761,12 @@ void EventPerfInfo::initSystemCallMap() {
 
 void  EventRegistry::parse() {
 
+    fillProcessInfo(); //fill parentProcess and process Information
 }
 
 void  EventDisk::parse() {
 
+    fillProcessInfo(); //fill parentProcess and process Information
 }
 
 void  EventPerfInfo::parse() {
@@ -792,9 +774,8 @@ void  EventPerfInfo::parse() {
 	//int a = 0;
 	
 	setTIDAndPID(this);
-	ULONG64 pid = getProcessID();
-	setProcessName(EventProcess::processID2Name[pid]);
 
+    fillProcessInfo(); //fill parentProcess and process Information
 	//std::cout << Tools::DecInt2HexStr(getProperty(BaseEvent::SysCallAddress).getULONG64());
 	if (ei->getOpCode() == 51) {
 
@@ -874,11 +855,7 @@ void  EventTCPIP::parse() {
 	//else {
 	//	setProcessName("Unknown");
 	//}
-	auto res = EventProcess::processID2Name.find(pid);
-	if (res != EventProcess::processID2Name.end())
-		setProcessName(res->second);
-	else
-		setProcessName("Unknown");
+	fillProcessInfo();
 	//setProcessName(EventProcess::processID2Name[pid]);
 }
 
@@ -953,6 +930,8 @@ STATUS getCommonJsonNoLib(BaseEvent* event, std::string* sJson) {
 		"{\"EventName\":" + eventName +
 		",\"ProcessID\":" + std::to_string(event->getProcessID()) +
 		",\"ProcessName\":" + event->getProcessName() +
+		",\"ParentProcessID\":" + std::to_string(event->getParentProcessID()) +
+		",\"ParentProcessName\":" + event->getParentProcessName() +
 		",\"ThreadID\":" + std::to_string(event->getThreadID()) +
 		",\"TimeStamp\":" + std::to_string(event->getTimeStamp()) +
 		",\"arguments\":{");

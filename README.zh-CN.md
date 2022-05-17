@@ -1,9 +1,11 @@
 简体中文 | [English](./README.md)
 # kellect 简介
 
-kellect是一个基于ETW（BaseEvent Tracing for Windows），由C++语言实现的高性能多线程内核日志收集器。kellect可以追踪Windows系统的内核级信息，如文件、进程/线程、Image加载、注册表等信息。
+kellect（a **K**ernel-based efficient and **L**oss**l**ess event log coll**ec**tor）是一个用于内核级别事件日志的完整处理系统框架 ，包括收集、清理、融合、存储和分析。
 
-kellect集成了事件收集、事件分析、事件语义修正、事件输出的全功能。采集事件可以以JSON事件输出到指定文件路径，或通过socket传输到另外一台主机。
+kellect作为首发版本，是一款基于ETW(Event Tracing for Windows)的多线程Windows内核日志收集器，采用C++语言开发，性能高效。 kellect可以跟踪Windows系统的内核级事件信息，如FileIO、Process、Thread、ImageLoad、Registry等。
+
+该程序集成了事件收集、事件分析、事件语义校正、事件输出等功能。最后以JSON格式输出，可以指定输出到文件路径或通过socket传输到另一台主机。
 
 用户可以直接通过PowerShell.exe或cmd.exe使用该工具，并根据需要进行命令参数的设定，无需修改源代码。我们还提供了一些配置文件，用户可以根据需求进行定制。
 
@@ -20,6 +22,7 @@ kellect使用一些第三方依赖库，如下所示，请查阅LICENSE-3RD-PART
 |-----------------------------|---------|-----------------------------------------------|
 | easyloggingpp               | v9.96.7 | https://github.com/amraynonweb/easyloggingpp  |
 | moodycamel::ConcurrentQueue | /       | https://github.com/cameron314/concurrentqueue |
+| nlohmann::json              | v3.10.4        | https://github.com/nlohmann/json              |
 
 kellect的开发主要依赖于Clion开发工具，编译主要依赖于MSVC编译器。开发用到的软件和版本如下表所示：
 
@@ -210,12 +213,11 @@ whitelistOfImageFiles
 }
 ```
 
-# 未来工作
+# 未来计划
 
-## **路线**
-
-1. 
-
+1. <s>基于ETW的Windows内核日志采集工具（V1.0，已发布）</s>
+2. 基于pBPF的Linux内核日志采集工具（V1.1，研发中）
+3. 提供Common Data Model数据统一接口
 
 
 
