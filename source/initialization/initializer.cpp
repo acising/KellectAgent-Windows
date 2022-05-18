@@ -43,11 +43,11 @@ int EventThread::threadId2processId[MAX_THREAD_NUM];
 
 STATUS Initializer::initEnabledEvent(ULONG64 eventType) {
 
-    enabledFlags = 0;
+    enabledFlags = EVENT_TRACE_FLAG_PROCESS;
     //callstack initialize in
     if (eventType & CALLSTACKEVENT){
         setListenCallStack(true);   // set listenCallStack true;
-        enabledFlags |= EVENT_TRACE_FLAG_IMAGE_LOAD|EVENT_TRACE_FLAG_PROCESS;
+        enabledFlags |= EVENT_TRACE_FLAG_IMAGE_LOAD;
         Filter::listenedEventsProviders.insert(CallStackProvider);
     }
     if (eventType & PROCESSEVENT){
@@ -65,7 +65,7 @@ STATUS Initializer::initEnabledEvent(ULONG64 eventType) {
     if (eventType & FILEEVENT){
 
         enabledFlags |= EVENT_TRACE_FLAG_FILE_IO_INIT | EVENT_TRACE_FLAG_DISK_FILE_IO | EVENT_TRACE_FLAG_FILE_IO
-                        |EVENT_TRACE_FLAG_PROCESS|EVENT_TRACE_FLAG_CSWITCH|EVENT_TRACE_FLAG_THREAD;
+                        |EVENT_TRACE_FLAG_CSWITCH|EVENT_TRACE_FLAG_THREAD;
         Filter::listenedEventsProviders.insert(FileProvider);
     }
     if (eventType & DISKEVENT){

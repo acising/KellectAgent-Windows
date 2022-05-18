@@ -19,6 +19,7 @@ filteredEventIdentifier
 3208270021 26
 3208270021 10
 1030727888 11
+2924704302 34
 
 filteredImageFile
 ntdll.dll

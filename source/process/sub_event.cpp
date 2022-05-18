@@ -10,6 +10,7 @@
 #include "process/event_parse.h"
 #include "tools/providerInfo.h"
 
+ReadWriteMap<ULONG64,std::string> EventRegistry::keyHandle2KeyName;
 std::map< ULONG64, std::string*> EventPerfInfo::systemCallMap;
 std::map< ULONG64, std::string*> EventPerfInfo::systemCallMapUsed;
 std::set<ULONG64> EventThread::threadSet;
@@ -688,20 +689,7 @@ void  EventProcess::parse() {
 	if (isValueableEvent()) {
 
         //change the format of commandLine property.
-        auto tempDataType = getProperty(CommandLine);
-        std::string cmdLine = tempDataType->getString();
-
-//        std::cout<<cmdLine<<std::endl;
-        int len = cmdLine.size();
-        for(int i =len-1;i>=0;i--){
-            if(cmdLine.at(i) == '\"'){
-                cmdLine.replace(i,1,"");
-            }
-        }
-
-        Tools::convertFileNameInDiskFormat(cmdLine);
-        delete tempDataType;
-        setProperty( CommandLine,new dataType(cmdLine));
+        removeQuotesFromProperty(CommandLine);
 
 		ULONG64 ppid = getProperty(ParentId)->getULONG64();
         EventProcess::processID2ParentProcessID[pid] = ppid;    //set ppid to each pid
@@ -779,7 +767,38 @@ void EventPerfInfo::initSystemCallMap() {
 void  EventRegistry::parse() {
 
     fillProcessInfo(); //fill parentProcess and process Information
+
+    switch (getEventIdentifier()->getOpCode()) {
+        case REG_OPEN:
+        case REG_CREATE:
+        case REG_QUERYVALUE:
+//        case REG_KCBDELETE:
+        case REG_KCBCREATE:{
+
+            removeQuotesFromProperty(KeyName);
+            std::string keyName = getProperty(KeyName)->getString();
+            ULONG64 keyHandle = getProperty(KeyHandle)->getULONG64();
+            keyHandle2KeyName.insertOverwirte(keyHandle,keyName);
+            break;
+        }
+        default:{
+            auto d = getProperty(KeyHandle);
+
+            if(d){
+                ULONG64 keyHandle = d->getULONG64();
+    //            auto item = keyHandle2KeyName.find(keyHandle);
+                auto keyName = keyHandle2KeyName.getValue(keyHandle);
+
+                if(keyName.size()>0){
+                    delete getProperty(KeyName);
+                    setProperty(KeyName,new dataType(keyName));
+                }
+            }
+        }
+    }
+    EventRegistry::keyHandle2KeyName;
 }
+
 
 void  EventDisk::parse() {
 

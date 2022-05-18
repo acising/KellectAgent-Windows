@@ -82,7 +82,7 @@ public:
 		return res;
 	}
 
-	// used in setFileName(BaseEvent* ev) to avoid undefined behavior, because mutexe needs before iterator.
+	// used in setFileName(BaseEvent* ev) to avoid undefined behavior, because mutex needs before iterator.
 	Val getValue(const Key& key) {
 
 		Val res;	

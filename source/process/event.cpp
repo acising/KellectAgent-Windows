@@ -93,3 +93,23 @@ void BaseEvent::setProperty(int propertyNameIdex, dataType* dt) {
 	properties[propertyName] = dt;
 }
 
+void BaseEvent::removeQuotesFromProperty(int propertyIndex){
+
+    auto tempDataType = getProperty(propertyIndex);
+
+    if(tempDataType!= nullptr){
+        std::string propertyValue = tempDataType->getString();
+
+        int len = propertyValue.size();
+        for(int i =len-1;i>=0;i--){
+            if(propertyValue.at(i) == '\"'){
+                propertyValue.replace(i,1,"");
+            }
+        }
+
+        Tools::convertFileNameInDiskFormat(propertyValue);
+        delete tempDataType;
+        setProperty( propertyIndex,new dataType(propertyValue));
+    }
+}
+
