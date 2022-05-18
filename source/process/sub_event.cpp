@@ -100,7 +100,10 @@ void EventFile::parse() {
 	}
 	case DIRENUM:
 	case NOTIFY: {
-		// do nothing in directory enumeration and directory notification events
+        // do nothing in directory enumeration and directory notification events
+
+        removeQuotesFromProperty(FileName);
+//        std::cout<<getProperty(FileName)->getString()<<std::endl;
 		break;
 	}
 	case CLEANUP:{
