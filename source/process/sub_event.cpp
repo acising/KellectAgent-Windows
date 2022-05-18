@@ -171,6 +171,8 @@ int BaseEvent::setTIDAndPID(BaseEvent* ev) {
 	ev->setProcessID(processId);
 	ev->setThreadID(threadId);
 
+//    std::cout<<threadId<< " :  "<< processId <<std::endl;
+
     return processId;
 }
 
@@ -804,6 +806,35 @@ void  EventRegistry::parse() {
 
 
 void  EventDisk::parse() {
+
+
+    switch (getEventIdentifier()->getOpCode()) {
+        case DISKFLUSHBUFFERS:
+        case DISKWRITE:
+        case DISKREAD: {
+
+//            setTIDAndPID(this);
+
+//            Filter::secondFilter(this);
+
+            auto d = getProperty(IssuingThreadId);
+            if (d != nullptr) {
+
+                int issuingThreadId = d->getULONG64();
+                int processId = EventThread::threadId2processId[issuingThreadId];
+
+                if (processId == INIT_PROCESS_ID) {
+                    processId = Tools::getProcessIDByTID(issuingThreadId);
+                    EventThread::threadId2processId[issuingThreadId] = processId;
+//                  std::cout<<"issuingThread:"<<issuingThreadId<<"   ,processId:" << processId<<std::endl;
+                }
+                setThreadID(issuingThreadId);
+                setProcessID(processId);
+
+                EventThread::threadId2processId[issuingThreadId] = processId;
+            }
+        }
+    }
 
     fillProcessInfo(); //fill parentProcess and process Information
 }

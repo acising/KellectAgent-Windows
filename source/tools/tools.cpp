@@ -173,36 +173,9 @@ void Tools::convertFileNameInDiskFormat(std::string &fileName) {
         fileName = it->second.append(fileName.substr(11));
     }
 }
-
-void initThreadProcessMap(ULONG64 pid) {
-
-    THREADENTRY32 te32;
-    te32.dwSize = sizeof(te32);
-    HANDLE hThreadSnap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, pid);
-
-    if (hThreadSnap == INVALID_HANDLE_VALUE){
-        MyLogger::writeLog("CreateToolhelp32Snapshot of thread failed.\n");
-        return;
-    }
-    BOOL tMore = Thread32First(hThreadSnap, &te32);
-    while (tMore) {
-        //ReadWriteMap will OverWrite the item if the key is exist.
-        //EventThread::threadId2processId.insert(te32.th32ThreadID, pid);
-        EventThread::threadId2processId[te32.th32ThreadID] = pid;
-        EventThread::threadSet.insert(te32.th32ThreadID);
-        tMore = Thread32Next(hThreadSnap, &te32);
-    }
-
-    CloseHandle(hThreadSnap);
-}
-
-int InitProcessMap() {
-
-    std::cout << "------Begin to initialize datas of process and thread...------" << std::endl;
+std::string Tools::getProcessNameByPID(ULONG64 pid){
 
     PROCESSENTRY32 pe32;
-    int i = 0;
-    //????????????????????????С
     pe32.dwSize = sizeof(pe32);
 
     //get the snapshot current processes
@@ -210,114 +183,52 @@ int InitProcessMap() {
     if (hProcessSnap == INVALID_HANDLE_VALUE)
     {
         printf("CreateToolhelp32Snapshot of process failed.\n");
-        return -1;
-    }
+    }else{
+        //search first process infomation by snapshot got before
+        BOOL bMore = Process32First(hProcessSnap, &pe32);
+        while (bMore)
+        {
+            if (pe32.th32ProcessID == pid) {		//skip pid=0, which is idle process
+                std::string res = pe32.szExeFile;
+                CloseHandle(hProcessSnap);
 
-    //search first process infomation by snapshot got before
-    BOOL bMore = Process32First(hProcessSnap, &pe32);
-    while (bMore)
-    {
-        //printf("processName:%ls\n", pe32.szExeFile);
-        //printf("processID:%u\n\n", pe32.th32ProcessID);
-        if (pe32.th32ProcessID != 0) {		//skip pid=0, which is idle process
-            EventProcess::processID2Name[pe32.th32ProcessID] = pe32.szExeFile;
+                return res;
+            }
 
-            //EventProcess::processID2Name.insert(pe32.th32ProcessID,Tools::WString2String((LPCWSTR)pe32.szExeFile));
-            //EventProcess::processIDSet.insert(pe32.th32ProcessID);
-
-            //std::wcout << EventProcess::processID2Name[pe32.th32ProcessID] << std::endl;
-            initThreadProcessMap(pe32.th32ProcessID);
+            //search next process infomation by snapshot got before
+            bMore = Process32Next(hProcessSnap, &pe32);
         }
-
-        //search next process infomation by snapshot got before
-        bMore = Process32Next(hProcessSnap, &pe32);
-        ++i;
+        //release snapshot
+        CloseHandle(hProcessSnap);
     }
-    //set idle process mapping
-    EventProcess::processID2Name[0] = "idle";
-    EventProcess::processID2Name[INIT_PROCESS_ID] =  "Unknown" ;
-    //EventProcess::processID2Name.insert(EventProcess::UnknownProcess, "Unknown" );
-    //EventProcess::processID2Name.insert(0, "idle" );
 
-    std::cout << "------Initialize datas of process and thread end...------" << std::endl;
-
-    //release snapshot
-    CloseHandle(hProcessSnap);
-
-    return 0;
+    return "";
 }
 
-ULONG64	Tools::getProcessIDByTID(ULONG64 tid){
+int	Tools::getProcessIDByTID(ULONG64 tid){
 
-    PROCESSENTRY32 pe32;
-
-    pe32.dwSize = sizeof(pe32);
     HANDLE hThreadSnap;
     THREADENTRY32 te32;
-    ULONG64 pid = -1;
+    int pid = -1;
 
-    HANDLE hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (hProcessSnap == INVALID_HANDLE_VALUE) {
-        MyLogger::writeLog("CreateToolhelp32Snapshot for process failed.\n");
+    te32.dwSize = sizeof(te32);
+    hThreadSnap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, pid);
+
+    if (hThreadSnap == INVALID_HANDLE_VALUE) {
+        MyLogger::writeLog("CreateToolhelp32Snapshot for thread failed.\n");
         return pid;
     }
-    BOOL tMore = false;
+    BOOL tMore = Thread32First(hThreadSnap, &te32);
 
-    BOOL bMore = Process32First(hProcessSnap, &pe32);
-    while (bMore) {
-        /*	if (pid == pe32.th32ProcessID) {
-                pName = (LPCWSTR)pe32.szExeFile;
-                break;
-            }*/
-        te32.dwSize = sizeof(te32);
-        hThreadSnap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, pid);
+    while (tMore) {
 
-        if (hThreadSnap == INVALID_HANDLE_VALUE) {
-            MyLogger::writeLog("CreateToolhelp32Snapshot for thread failed.\n");
-            return 0;
-        }
-        tMore = Thread32First(hThreadSnap, &te32);
-        while (tMore) {
-
-            if (tid == te32.th32ThreadID) {
-                pid = pe32.th32ProcessID;
-                break;
-            }
-            tMore = Thread32Next(hThreadSnap, &te32);
-        }
-        CloseHandle(hThreadSnap);
-
-        if (pid != -1)	break;
-        bMore = Process32Next(hProcessSnap, &pe32);
-    }
-
-    CloseHandle(hProcessSnap);
-
-    return pid;
-}
-
-std::wstring Tools::getProcessNameByPID(ULONG64 pid) {
-
-    PROCESSENTRY32 pe32;
-    int i = 0;
-
-    pe32.dwSize = sizeof(pe32);
-    std::wstring pName = L"";
-
-    HANDLE hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (hProcessSnap == INVALID_HANDLE_VALUE){
-        MyLogger::writeLog("CreateToolhelp32Snapshot for process failed.\n");
-        return pName;
-    }
-    BOOL bMore = Process32First(hProcessSnap, &pe32);
-    while (bMore){
-        if (pid == pe32.th32ProcessID) {
-            pName = (LPCWSTR)pe32.szExeFile;
+        if (tid == te32.th32ThreadID) {
+            pid = te32.th32OwnerProcessID;
             break;
         }
-        bMore = Process32Next(hProcessSnap, &pe32);
+        tMore = Thread32Next(hThreadSnap, &te32);
     }
-    CloseHandle(hProcessSnap);
+    CloseHandle(hThreadSnap);
 
-    return pName;
+    return pid;
 }

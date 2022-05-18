@@ -14,8 +14,8 @@ public:
 	static ULONG64 HexStr2DecInt(std::string);      //ʮ����ת16�����ַ���
 	static std::string UnicodeToUtf8(LPCWSTR unicode);      //ʮ����ת16�����ַ���
 	static std::string getTimeFromSystemTimeStamp(LARGE_INTEGER timeStamp);
-	static std::wstring getProcessNameByPID(ULONG64 pid);
-	static ULONG64 getProcessIDByTID(ULONG64 pid);
+	static std::string getProcessNameByPID(ULONG64 pid);
+	static int getProcessIDByTID(ULONG64 pid);
 
 	static void initVolume2DiskMap();
 	static void convertFileNameInDiskFormat(std::string &fileName);
@@ -218,5 +218,4 @@ private:
 	RWLock rwLock;
 };
 
-int InitProcessMap();
 

@@ -151,7 +151,9 @@ public:
 	inline bool validArgLength(int i, STATUS& status);
     inline bool isOutPutOption(char* option);
     inline void initDefaultEnabledEvents();
+    inline STATUS InitProcessMap();
 
+    inline STATUS initThreadProcessMap();
     STATUS initEnabledEvent(ULONG64 eventType);
     //static void initPropertyNames(std::wstring confFile = L"propertyName.txt");
     static void initProcessID2ModulesMap();
