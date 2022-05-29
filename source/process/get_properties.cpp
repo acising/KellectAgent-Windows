@@ -184,6 +184,8 @@ BaseEvent* EventParser::getPropertiesByParsingOffset(BaseEvent* event, int userD
             }
             
             //event->deleteRawProperty(); //delete userdata
+        }else{
+            event->setValueableEvent(false);
         }
     }
     else {

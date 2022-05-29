@@ -20,20 +20,23 @@ void EventParser::eventParseThreadFunc(BaseEvent* event) {
 	event = ETWConfiguration::eventParser
             .getPropertiesByParsingOffset(event,event->getRawPropertyLen(),event->getRawProperty());
 
-    event->parse();
-	if (!Filter::thirdFilter(event)) {
+    if(event->isValueableEvent()){
+        event->parse();
+        if (!Filter::thirdFilter(event)) {
 
-		if (++successParse % 50000 == 0) {
-			std::cout << "parse events number:" << successParse << std::endl;
-		}
-		std::string* sJson = new std::string();
-		STATUS status = event->toJsonString(sJson);
+            if (++successParse % 50000 == 0) {
+                std::cout << "parse events number:" << successParse << std::endl;
+            }
+            std::string* sJson = new std::string();
+            STATUS status = event->toJsonString(sJson);
 
-		if (status == STATUS_SUCCESS) {
-			//	//delete sJson;
-			op->pushOutputQueue(sJson);
-		}
-	}
+            if (status == STATUS_SUCCESS) {
+                //	//delete sJson;
+                op->pushOutputQueue(sJson);
+            }
+        }
+    }
+
 	delete event;
 }
 
@@ -55,26 +58,28 @@ VOID WINAPI EventParser::ConsumeEventMain(PEVENT_RECORD pEvent) {
 				parsePools->enqueueTask(eventParseThreadFunc, event);	//asynchronize
 			}
 			else {
-				//synchronize
+				//synchronize section
 				event = ETWConfiguration::eventParser
                         .getPropertiesByParsingOffset(event, pEvent->UserDataLength, pEvent->UserData);
-				event->parse();
 
-				if (!Filter::thirdFilter(event)) {
-					if (++successParse % 50000 == 0) {
-						std::cout << "parse events number:" << successParse << std::endl;
-					}
+                if(event->isValueableEvent()) {
 
-                    //create string and to get Json format event
-					std::string* sJson = new std::string();
-					STATUS status = event->toJsonString(sJson);
+                    event->parse();
+                    if (!Filter::thirdFilter(event)) {
+                        if (++successParse % 50000 == 0) {
+                            std::cout << "parse events number:" << successParse << std::endl;
+                        }
 
-					if (status == STATUS_SUCCESS) {
-						//	//delete sJson;
-						op->pushOutputQueue(sJson);
-					}
-				}
+                        //create string and to get Json format event
+                        std::string* sJson = new std::string();
+                        STATUS status = event->toJsonString(sJson);
 
+                        if (status == STATUS_SUCCESS) {
+                            //	//delete sJson;
+                            op->pushOutputQueue(sJson);
+                        }
+                    }
+                }
 				delete event;
 			}
 		}

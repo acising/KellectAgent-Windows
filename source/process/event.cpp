@@ -1,8 +1,8 @@
 #include "tools/logger.h"
-#include "tools/tools.h"
 #include "process/sub_event.h"
+#include "tools/tools.h"
+
 #include <fstream>
-#include <iostream> 
 #include <regex>
 
 std::map<EventIdentifier*, std::vector<std::string>,EventIdentifierSortCriterion > BaseEvent::eventPropertiesMap;		//映射了event中不同的参数
@@ -40,15 +40,23 @@ void BaseEvent::fillProcessInfo(){
     auto res = EventProcess::processID2Name.find(pid);
     if (res != EventProcess::processID2Name.end())
         setProcessName(res->second);
-    else
-        setProcessName("Unknown");
+    else{
+//        std::string rtVal = Tools::getProcessNameByPID(pid);
+//        EventProcess::processID2Name[pid] = rtVal;
+//        setProcessName(rtVal);
+        setProcessName("");
+    }
 
     if(ppid != -1){
         auto res = EventProcess::processID2Name.find(ppid);
         if(res != EventProcess::processID2Name.end())
             setParentProcessName(res->second);
-        else
-            setParentProcessName("Unknown");
+        else{
+//            std::string rtVal = Tools::getProcessNameByPID(pid);
+//            EventProcess::processID2Name[pid] = rtVal;
+//            setParentProcessName(rtVal);
+            setParentProcessName("");
+        }
     }else{
         setParentProcessName("Unknown");
     }
@@ -91,5 +99,25 @@ void BaseEvent::setProperty(int propertyNameIdex, dataType* dt) {
 	std::string propertyName = BaseEvent::propertyNameVector[propertyNameIdex];
 
 	properties[propertyName] = dt;
+}
+
+void BaseEvent::removeQuotesFromProperty(int propertyIndex){
+
+    auto tempDataType = getProperty(propertyIndex);
+
+    if(tempDataType!= nullptr){
+        std::string propertyValue = tempDataType->getString();
+
+        int len = propertyValue.size();
+        for(int i =len-1;i>=0;i--){
+            if(propertyValue.at(i) == '\"'){
+                propertyValue.replace(i,1,"");
+            }
+        }
+
+        Tools::convertFileNameInDiskFormat(propertyValue);
+        delete tempDataType;
+        setProperty( propertyIndex,new dataType(propertyValue));
+    }
 }
 

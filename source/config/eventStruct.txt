@@ -206,9 +206,12 @@ TransferSize 4
 Reserved 4
 ByteOffset 8
 FileObject 8
+Irp 8
+HighResResponseTime 8
+IssuingThreadId 4
 
 1030727892 12 DiskIOReadInit;1030727892 13 DiskIOWriteInit;1030727892 15 DiskIOFlushInit
-Irp 4
+Irp 8
 IssuingThreadId 4
 
 1030727892 14 DiskIOFlushBuffers

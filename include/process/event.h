@@ -103,7 +103,7 @@ public:
 		QuotaNonPagedPoolUsage, PrivatePageCount, InitialTime, Status, Index, KeyHandle, KeyName, PID, size, daddr, saddr, dport, sport, startime, endtime,
 		seqnum, connid, mss, sackopt, tsopt, wsopt, rcvwin, rcvwinscale, sndwinscale, Proto, FailureCode, IrpPtr, FileObject, TTID, CreateOptions, FileAttributes, ShareAccess,
 		OpenPath, FileKey, Length, InfoClass, FileIndex, FileName, ExtraInfo, NtStatus, Offset, IoSize, IoFlags, DiskNumber, IrpFlags, TransferSize,
-		ByteOffset, Irp, IssuingThreadId, HighResResponseTime, RoutineAddr, UniqMatchId, Routine, MajorFunction, MinorFunction, MessageID, IsServerPort,
+		ByteOffset, Irp, HighResResponseTime, IssuingThreadId, RoutineAddr, UniqMatchId, Routine, MajorFunction, MinorFunction, MessageID, IsServerPort,
 		PortName, ReturnValue, Vector, SysCallAddress, SysCallNtStatus, ImageBase, ImageSize, ImageChecksum, TimeDateStamp, SignatureLevel, SignatureType,
 		Reserved0, DefaultBase, Reserved1, Reserved2, Reserved3, Reserved4
 	};
@@ -181,6 +181,8 @@ public:
 		return properties.count(propertyNameVector[propertyNameIndex]) != 0;
 	}
 	int setTIDAndPID(BaseEvent* event);
+    void removeQuotesFromProperty(int propertyIndex);
+
 	friend std::wostream& operator<< (std::wostream& os, BaseEvent& rec);
 };
 

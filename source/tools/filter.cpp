@@ -5,11 +5,11 @@ bool Filter::firstFilter(PEVENT_RECORD pEvent) {
 	
 	bool flt = false;
 	int pid = pEvent->EventHeader.ProcessId;
-	ULONG64 providerId = pEvent->EventHeader.ProviderId.Data1;
-	int opCode = pEvent->EventHeader.EventDescriptor.Opcode;
+//	ULONG64 providerId = pEvent->EventHeader.ProviderId.Data1;
+//	int opCode = pEvent->EventHeader.EventDescriptor.Opcode;
 
 	if (filterPID(pid)) 	flt = true;
-	else if (filterEventIdentifier(providerId, opCode))	flt = true;
+//	else if (filterEventIdentifier(providerId, opCode))	flt = true;     //do not filter checks for every event, as it is time-consuming
 
 	return flt;
 }
@@ -34,7 +34,7 @@ bool Filter::thirdFilter(BaseEvent* event) {
         flt = true;
     if(listenAllEvents||listenedEventsProviders.count(event->getEventIdentifier()->getProviderID())){
         if (filterPID(event->getProcessID())) {
-            event->setValueableEvent(false);
+//            event->setValueableEvent(false);
             flt = true;
         }
     }else {

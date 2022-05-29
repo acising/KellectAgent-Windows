@@ -47,13 +47,15 @@ private:
 };
 
 class EventFile :public BaseEvent {
-public:
 
-	enum FileEnum {
-		FILECREATE = 32, FILEDELETE_ = 35, RENAME = 71, RUNDOWN = 36, CREATE = 64,
-		OPERATIONEND = 76, DELETE_ = 70, SETINFO = 69, NAME = 0, QUERYINFO = 74, FSCONTROL = 75,
-		READ = 67, WRITE = 68, DIRENUM = 72, NOTIFY = 77, CLEANUP = 65, CLOSE = 66, FLUSH = 73, NOTDEFINEDTYPE1 = 84, NOTDEFINEDTYPE2 = 83
-	};
+private:
+    enum FileEnum {
+        FILECREATE = 32, FILEDELETE_ = 35, RENAME = 71, RUNDOWN = 36, CREATE = 64,
+        OPERATIONEND = 76, DELETE_ = 70, SETINFO = 69, NAME = 0, QUERYINFO = 74, FSCONTROL = 75,
+        READ = 67, WRITE = 68, DIRENUM = 72, NOTIFY = 77, CLEANUP = 65, CLOSE = 66, FLUSH = 73, NOTDEFINEDTYPE1 = 84, NOTDEFINEDTYPE2 = 83
+    };
+
+public:
     static FileEnum fileEnum;
 
 	//static ReadWriteMap<ULONG64, std::string> fileKey2Name;
@@ -106,6 +108,16 @@ private:
 };
 
 class EventRegistry :public BaseEvent {
+private:
+    enum RegistryEnum {
+        REG_CREATE = 10, REG_OPEN = 11, REG_DELETE = 12, REG_QUERY = 13, REG_SETVALUE = 14,
+        REG_DELETEVALUE = 15, REG_QUERYVALUE = 16, REG_ENUMERATEKEY = 17, REG_ENUMERATEVALUEKEY = 18, REG_QUERYMULTIVALUE = 19, REG_SETINFORMATION = 20,
+        REG_FLUSH = 21, REG_KCBCREATE = 22, REG_KCBDELETE = 23, REG_KCBRUNDOWNBEGIN = 24, REG_KCBRUNDOWNEND = 25, REG_VIRTUALIZE = 26, REG_CLOSE = 27
+    };
+public:
+
+    static RegistryEnum registryEnum;
+    static ReadWriteMap<ULONG64,std::string> keyHandle2KeyName;
 
 public:
 	//std::string toJsonString() override;
@@ -120,7 +132,13 @@ public:
 };
 
 class EventDisk :public BaseEvent {
+private:
+    enum DiskEnum {
+        DISKREAD = 10, DISKWRITE = 11, DISKREADINIT = 12, DISKWRITEINIT = 13, DISKFLUSHINIT = 15,DISKFLUSHBUFFERS = 14
+    };
 
+public:
+    static DiskEnum diskEnum;
 	//std::string toJsonString() override;
 	void parse() override;
 	~EventDisk() {

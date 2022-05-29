@@ -5,6 +5,7 @@
 #include "tools/tools.h"
 #include "tools/logger.h"
 #include <regex>
+#include <TlHelp32.h>
 #include "filter.h"
 #include "tools/providerInfo.h"
 
@@ -43,11 +44,11 @@ int EventThread::threadId2processId[MAX_THREAD_NUM];
 
 STATUS Initializer::initEnabledEvent(ULONG64 eventType) {
 
-    enabledFlags = 0;
+    enabledFlags = EVENT_TRACE_FLAG_PROCESS|EVENT_TRACE_FLAG_THREAD;
     //callstack initialize in
     if (eventType & CALLSTACKEVENT){
         setListenCallStack(true);   // set listenCallStack true;
-        enabledFlags |= EVENT_TRACE_FLAG_IMAGE_LOAD|EVENT_TRACE_FLAG_PROCESS;
+        enabledFlags |= EVENT_TRACE_FLAG_IMAGE_LOAD;
         Filter::listenedEventsProviders.insert(CallStackProvider);
     }
     if (eventType & PROCESSEVENT){
@@ -64,8 +65,7 @@ STATUS Initializer::initEnabledEvent(ULONG64 eventType) {
     }
     if (eventType & FILEEVENT){
 
-        enabledFlags |= EVENT_TRACE_FLAG_FILE_IO_INIT | EVENT_TRACE_FLAG_DISK_FILE_IO | EVENT_TRACE_FLAG_FILE_IO
-                        |EVENT_TRACE_FLAG_PROCESS|EVENT_TRACE_FLAG_CSWITCH|EVENT_TRACE_FLAG_THREAD;
+        enabledFlags |= EVENT_TRACE_FLAG_FILE_IO_INIT | EVENT_TRACE_FLAG_DISK_FILE_IO | EVENT_TRACE_FLAG_FILE_IO|EVENT_TRACE_FLAG_CSWITCH;
         Filter::listenedEventsProviders.insert(FileProvider);
     }
     if (eventType & DISKEVENT){
@@ -79,8 +79,7 @@ STATUS Initializer::initEnabledEvent(ULONG64 eventType) {
         Filter::listenedEventsProviders.insert(ImageProvider);
     }
     if (eventType & TCPIPEVENT){
-        enabledFlags |= EVENT_TRACE_FLAG_NETWORK_TCPIP|EVENT_TRACE_FLAG_PROCESS|EVENT_TRACE_FLAG_CSWITCH
-                |EVENT_TRACE_FLAG_THREAD;
+        enabledFlags |= EVENT_TRACE_FLAG_NETWORK_TCPIP|EVENT_TRACE_FLAG_CSWITCH;
         Filter::listenedEventsProviders.insert(TcpIpProvider);
     }
 
@@ -337,12 +336,12 @@ void Initializer::initEventPropertiesMap(std::string confFile) {
         tempList.clear();
     }
 
-    //for debug: get propertyIndex
-    //for (auto item : BaseEvent::propertyNameVector) {
-    //    std::wcout << item << L",";
-    //}
-
-    //int a = 0;
+//    for debug: get propertyIndex
+//    for (auto item : BaseEvent::propertyNameVector) {
+//        std::cout << item << ",";
+//    }
+//
+//    int a = 0;
 }
 
 /*
@@ -354,6 +353,7 @@ void Initializer::initPrasePool() {
     //EventParser::parsePools = new ThreadPool(1, 50000);
 }
 void Initializer::initOutputThread() {
+
     std::thread outputThread(&OutPut::outputStrings, EventParser::op);
     outputThread.detach();
 }
@@ -363,7 +363,7 @@ void Initializer::initThreadParseProviders() {
     EventParser::threadParseProviders.insert(TcpIpProvider);
     EventParser::threadParseProviders.insert(DiskProvider);
     {
-        //EventParser::threadParseProviders.insert(ProviderStackWalk);
+//        EventParser::threadParseProviders.insert(CallStackProvider);
         EventParser::threadParseProviders.insert(RegistryProvider);
 //        std::cout << "parse registry events in thread" << std::endl;
     }
@@ -384,15 +384,103 @@ void Initializer::initProcessor2ThreadAndThread2Process(){
         EventProcess::processID2ParentProcessID[i] = -1;
 }
 
+STATUS Initializer::initThreadProcessMap() {
+
+    STATUS status = STATUS_SUCCESS;
+
+    THREADENTRY32 te32;
+    te32.dwSize = sizeof(te32);
+    HANDLE hThreadSnap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+
+    if (hThreadSnap == INVALID_HANDLE_VALUE){
+        MyLogger::writeLog("CreateToolhelp32Snapshot of thread failed.\n");
+        status = STATUS_FAIL;
+
+    }else{
+        BOOL tMore = Thread32First(hThreadSnap, &te32);
+
+        while (tMore) {
+            //ReadWriteMap will OverWrite the item if the key is exist.
+            //EventThread::threadId2processId.insert(te32.th32ThreadID, pid);
+            EventThread::threadId2processId[te32.th32ThreadID] = te32.th32OwnerProcessID;
+
+//            std::cout<<te32.th32ThreadID<<","<<te32.th32OwnerProcessID<<std::endl;
+            EventThread::threadSet.insert(te32.th32ThreadID);
+            tMore = Thread32Next(hThreadSnap, &te32);
+        }
+        CloseHandle(hThreadSnap);
+    }
+
+    return status;
+}
+
+STATUS Initializer:: InitProcessMap() {
+
+    STATUS status = STATUS_SUCCESS;
+
+    PROCESSENTRY32 pe32;
+    pe32.dwSize = sizeof(pe32);
+
+    //get the snapshot current processes
+    HANDLE hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (hProcessSnap == INVALID_HANDLE_VALUE)
+    {
+        printf("CreateToolhelp32Snapshot of process failed.\n");
+        status = STATUS_FAIL;
+
+    }else{
+        std::cout << "------Begin to initialize datas of process and thread...------" << std::endl;
+
+        //search first process infomation by snapshot got before
+        BOOL bMore = Process32First(hProcessSnap, &pe32);
+        while (bMore)
+        {
+            //printf("processName:%ls\n", pe32.szExeFile);
+            //printf("processID:%u\n\n", pe32.th32ProcessID);
+            if (pe32.th32ProcessID != 0) {		//skip pid=0, which is idle process
+                EventProcess::processID2Name[pe32.th32ProcessID] = pe32.szExeFile;
+                EventProcess::processID2ParentProcessID[pe32.th32ProcessID] = pe32.th32ParentProcessID;
+                //EventProcess::processID2Name.insert(pe32.th32ProcessID,Tools::WString2String((LPCWSTR)pe32.szExeFile));
+                //EventProcess::processIDSet.insert(pe32.th32ProcessID);
+
+                //std::wcout << EventProcess::processID2Name[pe32.th32ProcessID] << std::endl;
+            }
+
+            //search next process infomation by snapshot got before
+            bMore = Process32Next(hProcessSnap, &pe32);
+        }
+        //set idle process mapping
+        EventProcess::processID2Name[0] = "idle";
+        EventProcess::processID2Name[INIT_PROCESS_ID] =  "Unknown" ;
+        //EventProcess::processID2Name.insert(EventProcess::UnknownProcess, "Unknown" );
+        //EventProcess::processID2Name.insert(0, "idle" );
+
+        std::cout << "------Initialize datas of process and thread end...------" << std::endl;
+
+        //release snapshot
+        CloseHandle(hProcessSnap);
+    }
+
+    return status;
+}
+
+//TODO
+void Initializer::initTerminalListening() {
+
+}
+
 void Initializer::initNeededStruct() {
 
     initOutputThread();
     initImages();
     MyLogger::initLogger();
     Tools::initVolume2DiskMap();
+    initProcessor2ThreadAndThread2Process();
+
     //initSysNameMap();
     //EventPerfInfo::initSystemCallMap();
-    if (InitProcessMap()) {
+    if (InitProcessMap() || initThreadProcessMap()) {
+        std::cout << "------Initialize process and thread failed!------" << std::endl;
         exit(-1);
     }
     initEventPropertiesMap();
@@ -402,17 +490,18 @@ void Initializer::initNeededStruct() {
         initDefaultEnabledEvents();
     else{
         initEnabledEvent(userEnabledFlags);
-        initOutputThreashold(userEnabledFlags);
+//        initOutputThreashold(userEnabledFlags);
     }
 
     initFilter();
     initProcessID2ModulesMap();
     initPrasePool();
     initThreadParseProviders();
-    initProcessor2ThreadAndThread2Process();
 
-    //set output threashold value, which depends on the event type we tracing
-    EventParser::op->setOutputThreashold(outputThreashold);
+    //set output threashold value, which depends on the event type we traced
+    EventParser::op->setOutputThreashold(opThreashold);
+//    std::cout<<EventParser::op->getOutputThreashold()<<std::endl;
+//    initTerminalListening();
 }
 
 void Initializer::showCommandList() {
@@ -459,29 +548,29 @@ inline bool Initializer::isOutPutOption(char* option) {
     return !strcmp(option, "-c") || !strcmp(option, "-f") || !strcmp(option, "-s");
 }
 
-//change the outputThreashold accroing to the event type we traced.
+//change the opThreashold accroing to the event type we traced.
 STATUS Initializer::initOutputThreashold(ULONG64 eventType) {
-    outputThreashold = 0;
+    opThreashold = 0;
 
     //the accumulated value was not tested experimentally, all based on experience
     if (eventType & PROCESSEVENT)
-        outputThreashold += 10;
+        opThreashold += 10;
     if (eventType & THREADEVENT)
-        outputThreashold += 100;
+        opThreashold += 100;
     if (eventType & REGISTEREVENT)
-        outputThreashold += 300;
+        opThreashold += 300;
     if (eventType & FILEEVENT)
-        outputThreashold += 100;
+        opThreashold += 100;
     if (eventType & DISKEVENT)
-        outputThreashold += 10;
+        opThreashold += 10;
 //    if (eventType & SYSTEMCALLEVENT)
-//        outputThreashold += 1000;
+//        opThreashold += 1000;
     if (eventType & IMAGEEVENT)
-        outputThreashold += 30;
+        opThreashold += 30;
     if (eventType & TCPIPEVENT)
-        outputThreashold += 50;
+        opThreashold += 50;
     if (eventType & CALLSTACKEVENT)
-        outputThreashold += 50;
+        opThreashold += 50;
 
     return STATUS_SUCCESS;
 }
