@@ -363,7 +363,7 @@ void Initializer::initThreadParseProviders() {
     EventParser::threadParseProviders.insert(TcpIpProvider);
     EventParser::threadParseProviders.insert(DiskProvider);
     {
-        //EventParser::threadParseProviders.insert(ProviderStackWalk);
+//        EventParser::threadParseProviders.insert(CallStackProvider);
         EventParser::threadParseProviders.insert(RegistryProvider);
 //        std::cout << "parse registry events in thread" << std::endl;
     }
@@ -464,6 +464,11 @@ STATUS Initializer:: InitProcessMap() {
     return status;
 }
 
+//TODO
+void Initializer::initTerminalListening() {
+
+}
+
 void Initializer::initNeededStruct() {
 
     initOutputThread();
@@ -485,7 +490,7 @@ void Initializer::initNeededStruct() {
         initDefaultEnabledEvents();
     else{
         initEnabledEvent(userEnabledFlags);
-        initOutputThreashold(userEnabledFlags);
+//        initOutputThreashold(userEnabledFlags);
     }
 
     initFilter();
@@ -493,8 +498,10 @@ void Initializer::initNeededStruct() {
     initPrasePool();
     initThreadParseProviders();
 
-    //set output threashold value, which depends on the event type we tracing
-    EventParser::op->setOutputThreashold(outputThreashold);
+    //set output threashold value, which depends on the event type we traced
+    EventParser::op->setOutputThreashold(opThreashold);
+//    std::cout<<EventParser::op->getOutputThreashold()<<std::endl;
+//    initTerminalListening();
 }
 
 void Initializer::showCommandList() {
@@ -541,29 +548,29 @@ inline bool Initializer::isOutPutOption(char* option) {
     return !strcmp(option, "-c") || !strcmp(option, "-f") || !strcmp(option, "-s");
 }
 
-//change the outputThreashold accroing to the event type we traced.
+//change the opThreashold accroing to the event type we traced.
 STATUS Initializer::initOutputThreashold(ULONG64 eventType) {
-    outputThreashold = 0;
+    opThreashold = 0;
 
     //the accumulated value was not tested experimentally, all based on experience
     if (eventType & PROCESSEVENT)
-        outputThreashold += 10;
+        opThreashold += 10;
     if (eventType & THREADEVENT)
-        outputThreashold += 100;
+        opThreashold += 100;
     if (eventType & REGISTEREVENT)
-        outputThreashold += 300;
+        opThreashold += 300;
     if (eventType & FILEEVENT)
-        outputThreashold += 100;
+        opThreashold += 100;
     if (eventType & DISKEVENT)
-        outputThreashold += 10;
+        opThreashold += 10;
 //    if (eventType & SYSTEMCALLEVENT)
-//        outputThreashold += 1000;
+//        opThreashold += 1000;
     if (eventType & IMAGEEVENT)
-        outputThreashold += 30;
+        opThreashold += 30;
     if (eventType & TCPIPEVENT)
-        outputThreashold += 50;
+        opThreashold += 50;
     if (eventType & CALLSTACKEVENT)
-        outputThreashold += 50;
+        opThreashold += 50;
 
     return STATUS_SUCCESS;
 }
