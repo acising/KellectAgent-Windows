@@ -1,10 +1,10 @@
-## **Kellect** :a **K**ernel-based efficient and **L**oss**l**ess event log coll**ec**tor
+# **Kellect** :a **K**ernel-based Efficient and **L**oss**l**ess Event Log Coll**ec**tor
 
 [简体中文](./README.zh-CN.md) | English 
 
 ![](http://121.40.168.60/kellect/kellect.jpeg)
 
-# kellect Introduction
+## kellect Introduction
 
 
 **Kellect** means a **K**ernel-based efficient and **L**oss**l**ess event log coll**ec**tor which is a systematic framework for the full processing on kernel level logs, including collection, cleanup, confusion, storage, and analysis. 
@@ -19,7 +19,7 @@ For more information on the future of kellect, see the [Future Work]() section.
 
 
 
-# **Implementation Details**
+## **Implementation Details**
 
 kellect uses a number of 3rd party libraries, as shown below. Please see LICENSE-3RD-PARTY for further details.
 
@@ -48,9 +48,9 @@ The directory of kellect is shown as blew:
 | source/config     | config files             |
 | release           | executable file   |
 
-# **kellect Manual**
+## **kellect Manual**
 
-## **Usage of the command-line**
+### **Usage of the command-line**
 
 After testing ,kellect can run on OS versions above win7(x64). 
 
@@ -68,7 +68,7 @@ We can collect the require data with the following command：
 **Notes:** The argument to the ‘-e’ option is in the form of a decimal sum.
 
 
-## **Usage of the configuration file**
+### **Usage of the configuration file**
 
 There are one file users can configure: filter.txt. **Usually no modification is required unless you have customized needs.**
 
@@ -126,7 +126,7 @@ whitelistOfImageFiles
 
    means that we can **reserve** Image and CallStack type events by the images listed in this label.
 
-# **Output Format**
+## **Output Format**
 
 We output event records in the format of JSON. Each BaseEvent has two parts of properties: common properties and private properties. The description of each part as follows:
 
@@ -220,7 +220,7 @@ The output case are as follows:
 
 ```
 
-# Future Work
+## Future Work
 
 1. <s>ETW-based Windows kernel events log collector（V1.0，released）</s>
 2. eBPF-based Linux kernel events log collector（V1.1，developing）
