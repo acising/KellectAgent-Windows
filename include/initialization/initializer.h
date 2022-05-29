@@ -147,7 +147,7 @@ public:
 	}
 
 	ULONG64 init();
-
+    inline void initTerminalListening();
 	inline bool validArgLength(int i, STATUS& status);
     inline bool isOutPutOption(char* option);
     inline void initDefaultEnabledEvents();
@@ -191,7 +191,8 @@ private:
     const char* eventStructFile = "config/eventstruct.txt";
     const char* filterFileName = "config/filter.txt";
     const char* imagesFile = "config/initImages.txt";
-    ULONG64 outputThreashold = 500;
+    ULONG64 opThreashold = 20;
+//    ULONG64 opThreashold = 3452816845;
 
     //user specify in the argument of option "-e"
     ULONG64 userEnabledFlags;

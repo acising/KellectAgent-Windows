@@ -19,8 +19,8 @@ class OutPut {
 
 private:
 	ConcurrentQueue<std::string*> q;
-	std::atomic<int> count;
-    int outputThreshold;	//max number of events output to the destination
+	std::atomic<ULONG64> count;
+    ULONG outputThreshold;	//max number of events output to the destination
 
     //const int outputThreshold = 5000;
 	std::mutex m;
@@ -43,10 +43,17 @@ public:
         outputThreshold = threashold;
     };
 
+    ULONG getOutputThreashold(){
+        return outputThreshold;
+    }
+
 	void pushOutputQueue(std::string* res) {
 		q.enqueue(res);
 		//count++;
-		if (count.fetch_add(1) > outputThreshold)	cv.notify_one();
+		if (count.fetch_add(1) > outputThreshold){
+//            std::cout<<count.fetch_add(0) <<std::endl;
+            cv.notify_one();
+        }
 	}
 	void outputStrings();
 };
