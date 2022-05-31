@@ -76,9 +76,12 @@ void EventFile::parse() {
 	case FILECREATE: {
 
         setTIDAndPID(this);
+
+        removeQuotesFromProperty(FileName);
+
 		//ReadWriteMap will OverWrite the item if the key is exist.
 		//fileKey2Name.insertOverwirte(fileObject, fileName);
-		fileKey2Name.insert(std::map<ULONG64, std::string>::value_type(fileObject, getProperty(FileName)->getString()));
+		fileKey2Name[fileObject] =getProperty(FileName)->getString();
 
         break;
 	}
@@ -94,6 +97,7 @@ void EventFile::parse() {
 		//ReadWriteMap will OverWrite the item if the key is exist.
 		//fileObject2Name.insertOverwirte(fileObject, getProperty(OpenPath)->getString());
 
+        removeQuotesFromProperty(OpenPath);
 		fileObject2Name[fileObject] = getProperty(OpenPath)->getString();
 
 		break;
@@ -103,13 +107,19 @@ void EventFile::parse() {
         // do nothing in directory enumeration and directory notification events
 
         removeQuotesFromProperty(FileName);
+
+        //To be verified
+        std::string fileName = getProperty(FileName)->getString();
+        ULONG64 fileKey = getProperty(FileKey)->getULONG64();
+        fileKey2Name[fileKey] = fileName;
+        fileObject2Name[fileObject] = fileName;
+
 //        std::cout<<getProperty(FileName)->getString()<<std::endl;
 		break;
 	}
 	case CLEANUP:{
-        ULONG64 fileKey = getProperty(FileKey)->getULONG64();
+//        ULONG64 fileKey = getProperty(FileKey)->getULONG64();
         setFileName(this);
-
         break;
     }
     case READ:
@@ -131,6 +141,7 @@ void EventFile::parse() {
 
 	if (isValueableEvent()) {
 
+        //set tid and pid according to 'EventThread::threadId2processId'
 		dataType* tmp = getProperty(TTID);
 		if(tmp){
 			int threadId = tmp->getULONG64();
@@ -142,12 +153,8 @@ void EventFile::parse() {
 			}
 		}
 
-        fillProcessInfo(); //fill parentProcess Information
-		auto res = EventProcess::processID2Name.find(getProcessID());
-		if (res != EventProcess::processID2Name.end())
-			setProcessName(res->second);
-		else
-			setProcessName("Unknown");
+        //fill parentProcess Information
+        fillProcessInfo();
 	}
 }
 
@@ -433,7 +440,7 @@ void  EventImage::parse() {
 	default:
 		break;
 	}
-	
+
 }
 
 //start tracing callstack configuration
@@ -650,6 +657,7 @@ void  EventProcess::parse() {
 	case PROCESSDCSTART: {
 		//int pid = getProcessID();
 
+        removeQuotesFromProperty(ImageFileName);
 		// for both update and add value
 		processID2Name[pid] = getProperty(ImageFileName)->getString();
 
@@ -696,8 +704,10 @@ void  EventProcess::parse() {
         //change the format of commandLine property.
         removeQuotesFromProperty(CommandLine);
 
+        //insert the mapping of pid and ppid
 		ULONG64 ppid = getProperty(ParentId)->getULONG64();
         EventProcess::processID2ParentProcessID[pid] = ppid;    //set ppid to each pid
+        setParentProcessID(ppid);
 
 		//second filter, filter according to revised processID
 		if (!Filter::secondFilter(this)) {

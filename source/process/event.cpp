@@ -41,10 +41,13 @@ void BaseEvent::fillProcessInfo(){
     if (res != EventProcess::processID2Name.end())
         setProcessName(res->second);
     else{
-//        std::string rtVal = Tools::getProcessNameByPID(pid);
-//        EventProcess::processID2Name[pid] = rtVal;
-//        setProcessName(rtVal);
-        setProcessName("");
+        std::string rtVal = Tools::getProcessNameByPID(pid);
+        EventProcess::processID2Name[pid] = rtVal;
+        setProcessName(rtVal);
+
+        std::cout<<"pid:"<<pid<<"  pname:"<<rtVal <<std::endl;
+
+//        setProcessName("");
     }
 
     if(ppid != -1){
@@ -52,10 +55,12 @@ void BaseEvent::fillProcessInfo(){
         if(res != EventProcess::processID2Name.end())
             setParentProcessName(res->second);
         else{
-//            std::string rtVal = Tools::getProcessNameByPID(pid);
-//            EventProcess::processID2Name[pid] = rtVal;
-//            setParentProcessName(rtVal);
-            setParentProcessName("");
+            std::string ppName = Tools::getProcessNameByPID(ppid);
+            EventProcess::processID2Name[pid] = ppName;
+            setParentProcessName(ppName);
+            std::cout<<"ppid:"<<ppid<<"  ppname:"<<ppName <<std::endl;
+
+//            setParentProcessName("");
         }
     }else{
         setParentProcessName("Unknown");
@@ -115,7 +120,7 @@ void BaseEvent::removeQuotesFromProperty(int propertyIndex){
             }
         }
 
-        Tools::convertFileNameInDiskFormat(propertyValue);
+//        Tools::convertFileNameInDiskFormat(propertyValue);
         delete tempDataType;
         setProperty( propertyIndex,new dataType(propertyValue));
     }

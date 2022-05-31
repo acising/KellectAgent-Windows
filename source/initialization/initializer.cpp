@@ -416,6 +416,8 @@ STATUS Initializer::initThreadProcessMap() {
 
 STATUS Initializer:: InitProcessMap() {
 
+    std::vector<int> parentProcessIDs = std::vector<int>();
+
     STATUS status = STATUS_SUCCESS;
 
     PROCESSENTRY32 pe32;
@@ -440,6 +442,9 @@ STATUS Initializer:: InitProcessMap() {
             if (pe32.th32ProcessID != 0) {		//skip pid=0, which is idle process
                 EventProcess::processID2Name[pe32.th32ProcessID] = pe32.szExeFile;
                 EventProcess::processID2ParentProcessID[pe32.th32ProcessID] = pe32.th32ParentProcessID;
+
+                parentProcessIDs.push_back(pe32.th32ParentProcessID);
+
                 //EventProcess::processID2Name.insert(pe32.th32ProcessID,Tools::WString2String((LPCWSTR)pe32.szExeFile));
                 //EventProcess::processIDSet.insert(pe32.th32ProcessID);
 
@@ -448,6 +453,18 @@ STATUS Initializer:: InitProcessMap() {
 
             //search next process infomation by snapshot got before
             bMore = Process32Next(hProcessSnap, &pe32);
+        }
+
+        int len = parentProcessIDs.size();
+        for(int i = 0;i<len;i++){
+
+            int ppid = parentProcessIDs[i];
+            std::string ppname = EventProcess::processID2Name[ppid];
+            if(ppname.empty()){
+                //fill parentProcessName
+                EventProcess::processID2Name[ppid] = Tools::getProcessNameByPID(ppid);
+            }
+
         }
         //set idle process mapping
         EventProcess::processID2Name[0] = "idle";
