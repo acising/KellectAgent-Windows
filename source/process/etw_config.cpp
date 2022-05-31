@@ -134,28 +134,28 @@ start:
         if (Initializer::getListenCallStack())
             EventCallstack::initCallStackTracing(SessionHandle);
 
-//    SetupEventConsumer((LPWSTR)KERNEL_LOGGER_NAME,TRUE);
-        std::thread tt(&ETWConfiguration::SetupEventConsumer, this, (LPWSTR) KERNEL_LOGGER_NAME, TRUE);
-        tt.detach();
+    SetupEventConsumer((LPWSTR)KERNEL_LOGGER_NAME,TRUE);
+//        std::thread tt(&ETWConfiguration::SetupEventConsumer, this, (LPWSTR) KERNEL_LOGGER_NAME, TRUE);
+//        tt.detach();
 
 //         for test events lost
 
-        while (1) {
-            std::this_thread::sleep_for(std::chrono::microseconds(1000000));
-            status = ControlTrace(SessionHandle, KERNEL_LOGGER_NAME, mainSessionProperties, EVENT_TRACE_CONTROL_QUERY);
-            if (ERROR_SUCCESS == status) {
-                std::this_thread::sleep_for(std::chrono::microseconds(20000000));
-                std::cout <<
-                          "  BuffersWritten:" << mainSessionProperties->BuffersWritten <<
-                          "  FreeBuffers:" << mainSessionProperties->FreeBuffers <<
-                          "  NumberOfBuffers:" << mainSessionProperties->NumberOfBuffers <<
-                          "  EventsLost:" << mainSessionProperties->EventsLost
-                          << std::endl;
-
-                if (mainSessionProperties->EventsLost > 0)
-                    int a = 0;
-            }
-        }
+//        while (1) {
+//            std::this_thread::sleep_for(std::chrono::microseconds(1000000));
+//            status = ControlTrace(SessionHandle, KERNEL_LOGGER_NAME, mainSessionProperties, EVENT_TRACE_CONTROL_QUERY);
+//            if (ERROR_SUCCESS == status) {
+//                std::this_thread::sleep_for(std::chrono::microseconds(20000000));
+//                std::cout <<
+//                          "  BuffersWritten:" << mainSessionProperties->BuffersWritten <<
+//                          "  FreeBuffers:" << mainSessionProperties->FreeBuffers <<
+//                          "  NumberOfBuffers:" << mainSessionProperties->NumberOfBuffers <<
+//                          "  EventsLost:" << mainSessionProperties->EventsLost
+//                          << std::endl;
+//
+//                if (mainSessionProperties->EventsLost > 0)
+//                    int a = 0;
+//            }
+//        }
     }else {
         getchar();
     }
