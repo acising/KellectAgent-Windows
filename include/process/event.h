@@ -181,6 +181,7 @@ public:
 		return properties.count(propertyNameVector[propertyNameIndex]) != 0;
 	}
 	int setTIDAndPID(BaseEvent* event);
+    void replaceCharacterFromProperty(int propertyIndex,char target ,std::string substitute);
     void removeQuotesFromProperty(int propertyIndex);
 
 	friend std::wostream& operator<< (std::wostream& os, BaseEvent& rec);
