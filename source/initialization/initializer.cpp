@@ -443,7 +443,7 @@ STATUS Initializer:: InitProcessMap() {
                 EventProcess::processID2Name[pe32.th32ProcessID] = pe32.szExeFile;
                 EventProcess::processID2ParentProcessID[pe32.th32ProcessID] = pe32.th32ParentProcessID;
 
-                parentProcessIDs.push_back(pe32.th32ParentProcessID);
+//                parentProcessIDs.push_back(pe32.th32ParentProcessID);
 
                 //EventProcess::processID2Name.insert(pe32.th32ProcessID,Tools::WString2String((LPCWSTR)pe32.szExeFile));
                 //EventProcess::processIDSet.insert(pe32.th32ProcessID);
@@ -455,17 +455,20 @@ STATUS Initializer:: InitProcessMap() {
             bMore = Process32Next(hProcessSnap, &pe32);
         }
 
-        int len = parentProcessIDs.size();
-        for(int i = 0;i<len;i++){
-
-            int ppid = parentProcessIDs[i];
-            std::string ppname = EventProcess::processID2Name[ppid];
-            if(ppname.empty()){
-                //fill parentProcessName
-                EventProcess::processID2Name[ppid] = Tools::getProcessNameByPID(ppid);
-            }
-
-        }
+//        int len = parentProcessIDs.size();
+//        for(int i = 0;i<len;i++){
+//
+//            int ppid = parentProcessIDs[i];
+//            std::string ppname = EventProcess::processID2Name[ppid];
+//            if(ppname.empty()){
+//                //fill parentProcessName
+//                std::string ppName = Tools::getProcessNameByPID(ppid);
+//
+//                EventProcess::processID2Name[ppid] = ppName;
+////                std::cout<<"ppid:" << ppid <<"  ppName:"<< ppName <<std::endl;
+//            }
+//
+//        }
         //set idle process mapping
         EventProcess::processID2Name[0] = "idle";
         EventProcess::processID2Name[INIT_PROCESS_ID] =  "Unknown" ;

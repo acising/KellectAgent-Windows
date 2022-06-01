@@ -703,6 +703,9 @@ void  EventProcess::parse() {
 
         //change the format of commandLine property.
         removeQuotesFromProperty(CommandLine);
+        replaceCharacterFromProperty(CommandLine,'\n'," ");
+
+
 
         //insert the mapping of pid and ppid
 		ULONG64 ppid = getProperty(ParentId)->getULONG64();

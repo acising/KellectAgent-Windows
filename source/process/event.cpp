@@ -41,13 +41,14 @@ void BaseEvent::fillProcessInfo(){
     if (res != EventProcess::processID2Name.end())
         setProcessName(res->second);
     else{
-        std::string rtVal = Tools::getProcessNameByPID(pid);
-        EventProcess::processID2Name[pid] = rtVal;
-        setProcessName(rtVal);
+        std::string pName = Tools::getProcessNameByPID(pid);
 
-        std::cout<<"pid:"<<pid<<"  pname:"<<rtVal <<std::endl;
+        if(!pName.empty())
+            EventProcess::processID2Name[pid] = pName;
 
-//        setProcessName("");
+        setProcessName(pName);
+
+//        std::cout<<"pid:"<<pid<<"  pname:"<<rtVal <<std::endl;
     }
 
     if(ppid != -1){
@@ -56,11 +57,12 @@ void BaseEvent::fillProcessInfo(){
             setParentProcessName(res->second);
         else{
             std::string ppName = Tools::getProcessNameByPID(ppid);
-            EventProcess::processID2Name[pid] = ppName;
-            setParentProcessName(ppName);
-            std::cout<<"ppid:"<<ppid<<"  ppname:"<<ppName <<std::endl;
 
-//            setParentProcessName("");
+            if(!ppName.empty())
+                EventProcess::processID2Name[pid] = ppName;
+
+            setParentProcessName(ppName);
+//            std::cout<<"ppid:"<<ppid<<"  ppname:"<<ppName <<std::endl;
         }
     }else{
         setParentProcessName("Unknown");
@@ -106,7 +108,12 @@ void BaseEvent::setProperty(int propertyNameIdex, dataType* dt) {
 	properties[propertyName] = dt;
 }
 
-void BaseEvent::removeQuotesFromProperty(int propertyIndex){
+void BaseEvent::removeQuotesFromProperty(int propertyIndex) {
+
+    replaceCharacterFromProperty(propertyIndex,'\"',"");
+}
+
+void BaseEvent::replaceCharacterFromProperty(int propertyIndex,char target ,std::string substitute){
 
     auto tempDataType = getProperty(propertyIndex);
 
@@ -115,8 +122,8 @@ void BaseEvent::removeQuotesFromProperty(int propertyIndex){
 
         int len = propertyValue.size();
         for(int i =len-1;i>=0;i--){
-            if(propertyValue.at(i) == '\"'){
-                propertyValue.replace(i,1,"");
+            if(propertyValue.at(i) == target){
+                propertyValue.replace(i,1,substitute);
             }
         }
 
