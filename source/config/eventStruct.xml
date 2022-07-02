@@ -1,0 +1,734 @@
+<?xml version="1.0" encoding="gb2312"?>
+
+<Events>
+    <Event>
+        <ProviderID>1030727888</ProviderID>
+        <OpCode>1</OpCode>
+        <EventName>ProcessStart</EventName>
+        <Attributes>
+            <Attribute type="4">ParentId</Attribute>
+            <Attribute type="4">ExitStatus</Attribute>
+            <Attribute type="12">UserSID</Attribute>
+            <Attribute type="10">CommandLine</Attribute>
+            <Attribute type="11">ImageFileName</Attribute>
+            <Attribute type="1">PackageFullName</Attribute>
+            <Attribute type="8">UniqueProcessKey</Attribute>
+            <Attribute type="4">ProcessId</Attribute>
+            <Attribute type="4">Flags</Attribute>
+            <Attribute type="1">ApplicationId</Attribute>
+            <Attribute type="4">SessionId</Attribute>
+            <Attribute type="8">DirectoryTableBase</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>1030727888</ProviderID>
+        <OpCode>2</OpCode>
+        <EventName>ProcessEnd</EventName>
+        <Attributes>
+            <Attribute type="4">ParentId</Attribute>
+            <Attribute type="4">ExitStatus</Attribute>
+            <Attribute type="12">UserSID</Attribute>
+            <Attribute type="10">CommandLine</Attribute>
+            <Attribute type="11">ImageFileName</Attribute>
+            <Attribute type="1">PackageFullName</Attribute>
+            <Attribute type="8">UniqueProcessKey</Attribute>
+            <Attribute type="4">ProcessId</Attribute>
+            <Attribute type="4">Flags</Attribute>
+            <Attribute type="1">ApplicationId</Attribute>
+            <Attribute type="4">SessionId</Attribute>
+            <Attribute type="8">DirectoryTableBase</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>1030727888</ProviderID>
+        <OpCode>3</OpCode>
+        <EventName>ProcessDCStart</EventName>
+        <Attributes>
+            <Attribute type="4">ParentId</Attribute>
+            <Attribute type="4">ExitStatus</Attribute>
+            <Attribute type="12">UserSID</Attribute>
+            <Attribute type="10">CommandLine</Attribute>
+            <Attribute type="11">ImageFileName</Attribute>
+            <Attribute type="1">PackageFullName</Attribute>
+            <Attribute type="8">UniqueProcessKey</Attribute>
+            <Attribute type="4">ProcessId</Attribute>
+            <Attribute type="4">Flags</Attribute>
+            <Attribute type="1">ApplicationId</Attribute>
+            <Attribute type="4">SessionId</Attribute>
+            <Attribute type="8">DirectoryTableBase</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>1030727888</ProviderID>
+        <OpCode>4</OpCode>
+        <EventName>ProcessDCEnd</EventName>
+        <Attributes>
+            <Attribute type="4">ParentId</Attribute>
+            <Attribute type="4">ExitStatus</Attribute>
+            <Attribute type="12">UserSID</Attribute>
+            <Attribute type="10">CommandLine</Attribute>
+            <Attribute type="11">ImageFileName</Attribute>
+            <Attribute type="1">PackageFullName</Attribute>
+            <Attribute type="8">UniqueProcessKey</Attribute>
+            <Attribute type="4">ProcessId</Attribute>
+            <Attribute type="4">Flags</Attribute>
+            <Attribute type="1">ApplicationId</Attribute>
+            <Attribute type="4">SessionId</Attribute>
+            <Attribute type="8">DirectoryTableBase</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>1030727888</ProviderID>
+        <OpCode>39</OpCode>
+        <EventName>ProcessDefunct</EventName>
+        <Attributes>
+            <Attribute type="4">ParentId</Attribute>
+            <Attribute type="4">ExitStatus</Attribute>
+            <Attribute type="12">UserSID</Attribute>
+            <Attribute type="10">CommandLine</Attribute>
+            <Attribute type="11">ImageFileName</Attribute>
+            <Attribute type="1">PackageFullName</Attribute>
+            <Attribute type="8">UniqueProcessKey</Attribute>
+            <Attribute type="4">ProcessId</Attribute>
+            <Attribute type="4">Flags</Attribute>
+            <Attribute type="1">ApplicationId</Attribute>
+            <Attribute type="4">SessionId</Attribute>
+            <Attribute type="8">DirectoryTableBase</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>1030727889</ProviderID>
+        <OpCode>1</OpCode>
+        <EventName>ThreadStart</EventName>
+        <Attributes>
+            <Attribute type="8">Win32StartAddr</Attribute>
+            <Attribute type="1">BasePriority</Attribute>
+            <Attribute type="1">ThreadFlags</Attribute>
+            <Attribute type="1">PagePriority</Attribute>
+            <Attribute type="1">IoPriority</Attribute>
+            <Attribute type="8">UserStackBase</Attribute>
+            <Attribute type="8">TebBase</Attribute>
+            <Attribute type="8">UserStackLimit</Attribute>
+            <Attribute type="8">StackLimit</Attribute>
+            <Attribute type="4">SubProcessTag</Attribute>
+            <Attribute type="8">Affinity</Attribute>
+            <Attribute type="4">ProcessId</Attribute>
+            <Attribute type="4">TThreadId</Attribute>
+            <Attribute type="8">StackBase</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>1030727889</ProviderID>
+        <OpCode>2</OpCode>
+        <EventName>ThreadEnd</EventName>
+        <Attributes>
+            <Attribute type="8">Win32StartAddr</Attribute>
+            <Attribute type="1">BasePriority</Attribute>
+            <Attribute type="1">ThreadFlags</Attribute>
+            <Attribute type="1">PagePriority</Attribute>
+            <Attribute type="1">IoPriority</Attribute>
+            <Attribute type="8">UserStackBase</Attribute>
+            <Attribute type="8">TebBase</Attribute>
+            <Attribute type="8">UserStackLimit</Attribute>
+            <Attribute type="8">StackLimit</Attribute>
+            <Attribute type="4">SubProcessTag</Attribute>
+            <Attribute type="8">Affinity</Attribute>
+            <Attribute type="4">ProcessId</Attribute>
+            <Attribute type="4">TThreadId</Attribute>
+            <Attribute type="8">StackBase</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>1030727889</ProviderID>
+        <OpCode>3</OpCode>
+        <EventName>ThreadDCStart</EventName>
+        <Attributes>
+            <Attribute type="8">Win32StartAddr</Attribute>
+            <Attribute type="1">BasePriority</Attribute>
+            <Attribute type="1">ThreadFlags</Attribute>
+            <Attribute type="1">PagePriority</Attribute>
+            <Attribute type="1">IoPriority</Attribute>
+            <Attribute type="8">UserStackBase</Attribute>
+            <Attribute type="8">TebBase</Attribute>
+            <Attribute type="8">UserStackLimit</Attribute>
+            <Attribute type="8">StackLimit</Attribute>
+            <Attribute type="4">SubProcessTag</Attribute>
+            <Attribute type="8">Affinity</Attribute>
+            <Attribute type="4">ProcessId</Attribute>
+            <Attribute type="4">TThreadId</Attribute>
+            <Attribute type="8">StackBase</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>1030727889</ProviderID>
+        <OpCode>4</OpCode>
+        <EventName>ThreadDCEnd</EventName>
+        <Attributes>
+            <Attribute type="8">Win32StartAddr</Attribute>
+            <Attribute type="1">BasePriority</Attribute>
+            <Attribute type="1">ThreadFlags</Attribute>
+            <Attribute type="1">PagePriority</Attribute>
+            <Attribute type="1">IoPriority</Attribute>
+            <Attribute type="8">UserStackBase</Attribute>
+            <Attribute type="8">TebBase</Attribute>
+            <Attribute type="8">UserStackLimit</Attribute>
+            <Attribute type="8">StackLimit</Attribute>
+            <Attribute type="4">SubProcessTag</Attribute>
+            <Attribute type="8">Affinity</Attribute>
+            <Attribute type="4">ProcessId</Attribute>
+            <Attribute type="4">TThreadId</Attribute>
+            <Attribute type="8">StackBase</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>1030727889</ProviderID>
+        <OpCode>36</OpCode>
+        <EventName>ThreadCSwitch</EventName>
+        <Attributes>
+            <Attribute type="4">NewThreadWaitTime</Attribute>
+            <Attribute type="4">NewThreadId</Attribute>
+            <Attribute type="1">PreviousCState</Attribute>
+            <Attribute type="1">ThreadFlags</Attribute>
+            <Attribute type="1">OldThreadPriority</Attribute>
+            <Attribute type="1">OldThreadWaitIdealProcessor</Attribute>
+            <Attribute type="4">OldThreadId</Attribute>
+            <Attribute type="1">OldThreadState</Attribute>
+            <Attribute type="1">SpareByte</Attribute>
+            <Attribute type="1">NewThreadPriority</Attribute>
+            <Attribute type="1">OldThreadWaitReason</Attribute>
+            <Attribute type="4">Reserved</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>1030727888</ProviderID>
+        <OpCode>32</OpCode>
+        <EventName>ProcessPerfCtr</EventName>
+        <Attributes>
+            <Attribute type="8">VirtualSize</Attribute>
+            <Attribute type="8">PeakPagefileUsage</Attribute>
+            <Attribute type="4">HandleCount</Attribute>
+            <Attribute type="8">QuotaPeakNonPagedPoolUsage</Attribute>
+            <Attribute type="8">PeakVirtualSize</Attribute>
+            <Attribute type="8">PagefileUsage</Attribute>
+            <Attribute type="8">QuotaNonPagedPoolUsage</Attribute>
+            <Attribute type="4">PageFaultCount</Attribute>
+            <Attribute type="8">QuotaPagedPoolUsage</Attribute>
+            <Attribute type="8">PeakWorkingSetSize</Attribute>
+            <Attribute type="8">WorkingSetSize</Attribute>
+            <Attribute type="4">ProcessId</Attribute>
+            <Attribute type="8">QuotaPeakPagedPoolUsage</Attribute>
+            <Attribute type="8">PrivatePageCount</Attribute>
+            <Attribute type="4">Reserved</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>1030727888</ProviderID>
+        <OpCode>33</OpCode>
+        <EventName>ProcessPerfCtrRundown</EventName>
+        <Attributes>
+            <Attribute type="8">VirtualSize</Attribute>
+            <Attribute type="8">PeakPagefileUsage</Attribute>
+            <Attribute type="4">HandleCount</Attribute>
+            <Attribute type="8">QuotaPeakNonPagedPoolUsage</Attribute>
+            <Attribute type="8">PeakVirtualSize</Attribute>
+            <Attribute type="8">PagefileUsage</Attribute>
+            <Attribute type="8">QuotaNonPagedPoolUsage</Attribute>
+            <Attribute type="4">PageFaultCount</Attribute>
+            <Attribute type="8">QuotaPagedPoolUsage</Attribute>
+            <Attribute type="8">PeakWorkingSetSize</Attribute>
+            <Attribute type="8">WorkingSetSize</Attribute>
+            <Attribute type="4">ProcessId</Attribute>
+            <Attribute type="8">QuotaPeakPagedPoolUsage</Attribute>
+            <Attribute type="8">PrivatePageCount</Attribute>
+            <Attribute type="4">Reserved</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>2924704302</ProviderID>
+        <OpCode>10</OpCode>
+        <EventName>RegistryCreate</EventName>
+        <Attributes>
+            <Attribute type="4">Status</Attribute>
+            <Attribute type="4">Index</Attribute>
+            <Attribute type="10">KeyName</Attribute>
+            <Attribute type="8">KeyHandle</Attribute>
+            <Attribute type="8">InitialTime</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>2924704302</ProviderID>
+        <OpCode>11</OpCode>
+        <EventName>RegistryOpen</EventName>
+        <Attributes>
+            <Attribute type="4">Status</Attribute>
+            <Attribute type="4">Index</Attribute>
+            <Attribute type="10">KeyName</Attribute>
+            <Attribute type="8">KeyHandle</Attribute>
+            <Attribute type="8">InitialTime</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>2924704302</ProviderID>
+        <OpCode>12</OpCode>
+        <EventName>RegistryDelete</EventName>
+        <Attributes>
+            <Attribute type="4">Status</Attribute>
+            <Attribute type="4">Index</Attribute>
+            <Attribute type="10">KeyName</Attribute>
+            <Attribute type="8">KeyHandle</Attribute>
+            <Attribute type="8">InitialTime</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>2924704302</ProviderID>
+        <OpCode>13</OpCode>
+        <EventName>RegistryQuery</EventName>
+        <Attributes>
+            <Attribute type="4">Status</Attribute>
+            <Attribute type="4">Index</Attribute>
+            <Attribute type="10">KeyName</Attribute>
+            <Attribute type="8">KeyHandle</Attribute>
+            <Attribute type="8">InitialTime</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>2924704302</ProviderID>
+        <OpCode>14</OpCode>
+        <EventName>RegistrySetValue</EventName>
+        <Attributes>
+            <Attribute type="4">Status</Attribute>
+            <Attribute type="4">Index</Attribute>
+            <Attribute type="10">KeyName</Attribute>
+            <Attribute type="8">KeyHandle</Attribute>
+            <Attribute type="8">InitialTime</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>2924704302</ProviderID>
+        <OpCode>15</OpCode>
+        <EventName>RegistryDeleteValue</EventName>
+        <Attributes>
+            <Attribute type="4">Status</Attribute>
+            <Attribute type="4">Index</Attribute>
+            <Attribute type="10">KeyName</Attribute>
+            <Attribute type="8">KeyHandle</Attribute>
+            <Attribute type="8">InitialTime</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>2924704302</ProviderID>
+        <OpCode>16</OpCode>
+        <EventName>RegistryQueryValue</EventName>
+        <Attributes>
+            <Attribute type="4">Status</Attribute>
+            <Attribute type="4">Index</Attribute>
+            <Attribute type="10">KeyName</Attribute>
+            <Attribute type="8">KeyHandle</Attribute>
+            <Attribute type="8">InitialTime</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>2924704302</ProviderID>
+        <OpCode>17</OpCode>
+        <EventName>RegistryEnumerateKey</EventName>
+        <Attributes>
+            <Attribute type="4">Status</Attribute>
+            <Attribute type="4">Index</Attribute>
+            <Attribute type="10">KeyName</Attribute>
+            <Attribute type="8">KeyHandle</Attribute>
+            <Attribute type="8">InitialTime</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>2924704302</ProviderID>
+        <OpCode>18</OpCode>
+        <EventName>RegistryEnumerateValueKey</EventName>
+        <Attributes>
+            <Attribute type="4">Status</Attribute>
+            <Attribute type="4">Index</Attribute>
+            <Attribute type="10">KeyName</Attribute>
+            <Attribute type="8">KeyHandle</Attribute>
+            <Attribute type="8">InitialTime</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>2924704302</ProviderID>
+        <OpCode>19</OpCode>
+        <EventName>RegistryQueryMultipleValue</EventName>
+        <Attributes>
+            <Attribute type="4">Status</Attribute>
+            <Attribute type="4">Index</Attribute>
+            <Attribute type="10">KeyName</Attribute>
+            <Attribute type="8">KeyHandle</Attribute>
+            <Attribute type="8">InitialTime</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>2924704302</ProviderID>
+        <OpCode>20</OpCode>
+        <EventName>RegistrySetInformation</EventName>
+        <Attributes>
+            <Attribute type="4">Status</Attribute>
+            <Attribute type="4">Index</Attribute>
+            <Attribute type="10">KeyName</Attribute>
+            <Attribute type="8">KeyHandle</Attribute>
+            <Attribute type="8">InitialTime</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>2924704302</ProviderID>
+        <OpCode>21</OpCode>
+        <EventName>RegistryFlush</EventName>
+        <Attributes>
+            <Attribute type="4">Status</Attribute>
+            <Attribute type="4">Index</Attribute>
+            <Attribute type="10">KeyName</Attribute>
+            <Attribute type="8">KeyHandle</Attribute>
+            <Attribute type="8">InitialTime</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>2924704302</ProviderID>
+        <OpCode>22</OpCode>
+        <EventName>RegistryKCBCreate</EventName>
+        <Attributes>
+            <Attribute type="4">Status</Attribute>
+            <Attribute type="4">Index</Attribute>
+            <Attribute type="10">KeyName</Attribute>
+            <Attribute type="8">KeyHandle</Attribute>
+            <Attribute type="8">InitialTime</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>2924704302</ProviderID>
+        <OpCode>23</OpCode>
+        <EventName>RegistryKCBDelete</EventName>
+        <Attributes>
+            <Attribute type="4">Status</Attribute>
+            <Attribute type="4">Index</Attribute>
+            <Attribute type="10">KeyName</Attribute>
+            <Attribute type="8">KeyHandle</Attribute>
+            <Attribute type="8">InitialTime</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>2924704302</ProviderID>
+        <OpCode>24</OpCode>
+        <EventName>RegistryKCBRundownBegin</EventName>
+        <Attributes>
+            <Attribute type="4">Status</Attribute>
+            <Attribute type="4">Index</Attribute>
+            <Attribute type="10">KeyName</Attribute>
+            <Attribute type="8">KeyHandle</Attribute>
+            <Attribute type="8">InitialTime</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>2924704302</ProviderID>
+        <OpCode>25</OpCode>
+        <EventName>RegistryKCBRundownEnd</EventName>
+        <Attributes>
+            <Attribute type="4">Status</Attribute>
+            <Attribute type="4">Index</Attribute>
+            <Attribute type="10">KeyName</Attribute>
+            <Attribute type="8">KeyHandle</Attribute>
+            <Attribute type="8">InitialTime</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>2924704302</ProviderID>
+        <OpCode>26</OpCode>
+        <EventName>RegistryVirtualize</EventName>
+        <Attributes>
+            <Attribute type="4">Status</Attribute>
+            <Attribute type="4">Index</Attribute>
+            <Attribute type="10">KeyName</Attribute>
+            <Attribute type="8">KeyHandle</Attribute>
+            <Attribute type="8">InitialTime</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>2924704302</ProviderID>
+        <OpCode>27</OpCode>
+        <EventName>RegistryClose</EventName>
+        <Attributes>
+            <Attribute type="4">Status</Attribute>
+            <Attribute type="4">Index</Attribute>
+            <Attribute type="10">KeyName</Attribute>
+            <Attribute type="8">KeyHandle</Attribute>
+            <Attribute type="8">InitialTime</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>2586315456</ProviderID>
+        <OpCode>10</OpCode>
+        <EventName>TcpIpSendIPV4</EventName>
+        <Attributes>
+            <Attribute type="4">startime</Attribute>
+            <Attribute type="4">saddr</Attribute>
+            <Attribute type="4">seqnum</Attribute>
+            <Attribute type="4">endtime</Attribute>
+            <Attribute type="4">PID</Attribute>
+            <Attribute type="2">dport</Attribute>
+            <Attribute type="4">size</Attribute>
+            <Attribute type="8">connid</Attribute>
+            <Attribute type="4">daddr</Attribute>
+            <Attribute type="2">sport</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>2586315456</ProviderID>
+        <OpCode>26</OpCode>
+        <EventName>TcpIpSendIPV6</EventName>
+        <Attributes>
+            <Attribute type="4">startime</Attribute>
+            <Attribute type="4">saddr</Attribute>
+            <Attribute type="4">seqnum</Attribute>
+            <Attribute type="4">endtime</Attribute>
+            <Attribute type="4">PID</Attribute>
+            <Attribute type="2">dport</Attribute>
+            <Attribute type="4">size</Attribute>
+            <Attribute type="8">connid</Attribute>
+            <Attribute type="4">daddr</Attribute>
+            <Attribute type="2">sport</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>2586315456</ProviderID>
+        <OpCode>11</OpCode>
+        <EventName>TcpIpRecvIPV4</EventName>
+        <Attributes>
+            <Attribute type="4">saddr</Attribute>
+            <Attribute type="4">seqnum</Attribute>
+            <Attribute type="4">PID</Attribute>
+            <Attribute type="2">dport</Attribute>
+            <Attribute type="4">size</Attribute>
+            <Attribute type="8">connid</Attribute>
+            <Attribute type="4">daddr</Attribute>
+            <Attribute type="2">sport</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>2586315456</ProviderID>
+        <OpCode>13</OpCode>
+        <EventName>TcpIpDisconnectIPV4</EventName>
+        <Attributes>
+            <Attribute type="4">saddr</Attribute>
+            <Attribute type="4">seqnum</Attribute>
+            <Attribute type="4">PID</Attribute>
+            <Attribute type="2">dport</Attribute>
+            <Attribute type="4">size</Attribute>
+            <Attribute type="8">connid</Attribute>
+            <Attribute type="4">daddr</Attribute>
+            <Attribute type="2">sport</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>2586315456</ProviderID>
+        <OpCode>14</OpCode>
+        <EventName>TcpIpRetransmitIPV4</EventName>
+        <Attributes>
+            <Attribute type="4">saddr</Attribute>
+            <Attribute type="4">seqnum</Attribute>
+            <Attribute type="4">PID</Attribute>
+            <Attribute type="2">dport</Attribute>
+            <Attribute type="4">size</Attribute>
+            <Attribute type="8">connid</Attribute>
+            <Attribute type="4">daddr</Attribute>
+            <Attribute type="2">sport</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>2586315456</ProviderID>
+        <OpCode>16</OpCode>
+        <EventName>TcpIpReconnectIPV4</EventName>
+        <Attributes>
+            <Attribute type="4">saddr</Attribute>
+            <Attribute type="4">seqnum</Attribute>
+            <Attribute type="4">PID</Attribute>
+            <Attribute type="2">dport</Attribute>
+            <Attribute type="4">size</Attribute>
+            <Attribute type="8">connid</Attribute>
+            <Attribute type="4">daddr</Attribute>
+            <Attribute type="2">sport</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>2586315456</ProviderID>
+        <OpCode>18</OpCode>
+        <EventName>TcpIpTCPCopyIPV4</EventName>
+        <Attributes>
+            <Attribute type="4">saddr</Attribute>
+            <Attribute type="4">seqnum</Attribute>
+            <Attribute type="4">PID</Attribute>
+            <Attribute type="2">dport</Attribute>
+            <Attribute type="4">size</Attribute>
+            <Attribute type="8">connid</Attribute>
+            <Attribute type="4">daddr</Attribute>
+            <Attribute type="2">sport</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>2586315456</ProviderID>
+        <OpCode>27</OpCode>
+        <EventName>TcpIpRecvIPV6</EventName>
+        <Attributes>
+            <Attribute type="4">saddr</Attribute>
+            <Attribute type="4">seqnum</Attribute>
+            <Attribute type="4">PID</Attribute>
+            <Attribute type="2">dport</Attribute>
+            <Attribute type="4">size</Attribute>
+            <Attribute type="8">connid</Attribute>
+            <Attribute type="4">daddr</Attribute>
+            <Attribute type="2">sport</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>2586315456</ProviderID>
+        <OpCode>29</OpCode>
+        <EventName>TcpIpDisconnectIPV6</EventName>
+        <Attributes>
+            <Attribute type="4">saddr</Attribute>
+            <Attribute type="4">seqnum</Attribute>
+            <Attribute type="4">PID</Attribute>
+            <Attribute type="2">dport</Attribute>
+            <Attribute type="4">size</Attribute>
+            <Attribute type="8">connid</Attribute>
+            <Attribute type="4">daddr</Attribute>
+            <Attribute type="2">sport</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>2586315456</ProviderID>
+        <OpCode>30</OpCode>
+        <EventName>TcpIpRetransmitIPV6</EventName>
+        <Attributes>
+            <Attribute type="4">saddr</Attribute>
+            <Attribute type="4">seqnum</Attribute>
+            <Attribute type="4">PID</Attribute>
+            <Attribute type="2">dport</Attribute>
+            <Attribute type="4">size</Attribute>
+            <Attribute type="8">connid</Attribute>
+            <Attribute type="4">daddr</Attribute>
+            <Attribute type="2">sport</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>2586315456</ProviderID>
+        <OpCode>32</OpCode>
+        <EventName>TcpIpReconnectIPV6</EventName>
+        <Attributes>
+            <Attribute type="4">saddr</Attribute>
+            <Attribute type="4">seqnum</Attribute>
+            <Attribute type="4">PID</Attribute>
+            <Attribute type="2">dport</Attribute>
+            <Attribute type="4">size</Attribute>
+            <Attribute type="8">connid</Attribute>
+            <Attribute type="4">daddr</Attribute>
+            <Attribute type="2">sport</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>2586315456</ProviderID>
+        <OpCode>34</OpCode>
+        <EventName>TcpIpTCPCopyIPV6</EventName>
+        <Attributes>
+            <Attribute type="4">saddr</Attribute>
+            <Attribute type="4">seqnum</Attribute>
+            <Attribute type="4">PID</Attribute>
+            <Attribute type="2">dport</Attribute>
+            <Attribute type="4">size</Attribute>
+            <Attribute type="8">connid</Attribute>
+            <Attribute type="4">daddr</Attribute>
+            <Attribute type="2">sport</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>2586315456</ProviderID>
+        <OpCode>12</OpCode>
+        <EventName>TcpIpConnectIPV4</EventName>
+        <Attributes>
+            <Attribute type="2">sackopt</Attribute>
+            <Attribute type="4">rcvwin</Attribute>
+            <Attribute type="4">saddr</Attribute>
+            <Attribute type="4">seqnum</Attribute>
+            <Attribute type="2">rcvwinscale</Attribute>
+            <Attribute type="4">PID</Attribute>
+            <Attribute type="2">mss</Attribute>
+            <Attribute type="2">tsopt</Attribute>
+            <Attribute type="2">sndwinscale</Attribute>
+            <Attribute type="2">dport</Attribute>
+            <Attribute type="4">size</Attribute>
+            <Attribute type="2">wsopt</Attribute>
+            <Attribute type="8">connid</Attribute>
+            <Attribute type="4">daddr</Attribute>
+            <Attribute type="2">sport</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>2586315456</ProviderID>
+        <OpCode>15</OpCode>
+        <EventName>TcpIpAcceptIPV4</EventName>
+        <Attributes>
+            <Attribute type="2">sackopt</Attribute>
+            <Attribute type="4">rcvwin</Attribute>
+            <Attribute type="4">saddr</Attribute>
+            <Attribute type="4">seqnum</Attribute>
+            <Attribute type="2">rcvwinscale</Attribute>
+            <Attribute type="4">PID</Attribute>
+            <Attribute type="2">mss</Attribute>
+            <Attribute type="2">tsopt</Attribute>
+            <Attribute type="2">sndwinscale</Attribute>
+            <Attribute type="2">dport</Attribute>
+            <Attribute type="4">size</Attribute>
+            <Attribute type="2">wsopt</Attribute>
+            <Attribute type="8">connid</Attribute>
+            <Attribute type="4">daddr</Attribute>
+            <Attribute type="2">sport</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>2586315456</ProviderID>
+        <OpCode>28</OpCode>
+        <EventName>TcpIpConnectIPV6</EventName>
+        <Attributes>
+            <Attribute type="2">sackopt</Attribute>
+            <Attribute type="4">rcvwin</Attribute>
+            <Attribute type="4">saddr</Attribute>
+            <Attribute type="4">seqnum</Attribute>
+            <Attribute type="2">rcvwinscale</Attribute>
+            <Attribute type="4">PID</Attribute>
+            <Attribute type="2">mss</Attribute>
+            <Attribute type="2">tsopt</Attribute>
+            <Attribute type="2">sndwinscale</Attribute>
+            <Attribute type="2">dport</Attribute>
+            <Attribute type="4">size</Attribute>
+            <Attribute type="2">wsopt</Attribute>
+            <Attribute type="8">connid</Attribute>
+            <Attribute type="4">daddr</Attribute>
+            <Attribute type="2">sport</Attribute>
+        </Attributes>
+    </Event>
+    <Event>
+        <ProviderID>2586315456</ProviderID>
+        <OpCode>31</OpCode>
+        <EventName>TcpIpAcceptIPV6</EventName>
+        <Attributes>
+            <Attribute type="2">sackopt</Attribute>
+            <Attribute type="4">rcvwin</Attribute>
+            <Attribute type="4">saddr</Attribute>
+            <Attribute type="4">seqnum</Attribute>
+            <Attribute type="2">rcvwinscale</Attribute>
+            <Attribute type="4">PID</Attribute>
+            <Attribute type="2">mss</Attribute>
+            <Attribute type="2">tsopt</Attribute>
+            <Attribute type="2">sndwinscale</Attribute>
+            <Attribute type="2">dport</Attribute>
+            <Attribute type="4">size</Attribute>
+            <Attribute type="2">wsopt</Attribute>
+            <Attribute type="8">connid</Attribute>
+            <Attribute type="4">daddr</Attribute>
+            <Attribute type="2">sport</Attribute>
+        </Attributes>
+    </Event>
+</Events>
