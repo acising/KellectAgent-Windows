@@ -264,8 +264,8 @@ void Initializer::initImages(std::string confFile) {
 */
 void Initializer::initEventPropertiesMap(std::string confFile) {
 
-    std::string propertyName;
-    std::string tempString = "";
+//    std::string propertyName;
+//    std::string tempString = "";
     std::set <EventIdentifier*> tempEventIdentifierSet;
     std::list<BaseEvent::PropertyInfo> tempList;
     BaseEvent::PropertyInfo propertyInfo;
@@ -309,7 +309,7 @@ void Initializer::initEventPropertiesMap(std::string confFile) {
                 //BaseEvent::propertyName2IndexMap.insert()
             }
 
-            propertyInfo = make_pair(propertyName, type);
+            propertyInfo = make_pair(attrName, type);
             tempList.push_back(propertyInfo);
             attrElement = attrElement->NextSiblingElement();
         }
@@ -327,7 +327,6 @@ void Initializer::initEventPropertiesMap(std::string confFile) {
 //        std::cout << item << ",";
 //    }
 //
-    int a = 0;
 }
 
 /*
