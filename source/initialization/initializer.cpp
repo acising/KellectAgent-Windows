@@ -8,9 +8,11 @@
 #include <TlHelp32.h>
 #include "filter.h"
 #include "tools/providerInfo.h"
+#include "tools/tinyxml2.h"
 
 INITIALIZE_EASYLOGGINGPP
 using namespace std;
+using namespace tinyxml2;
 
 IMAGEUNLOAD pImageUnload;
 IMAGELOAD pImageLoad;
@@ -262,13 +264,6 @@ void Initializer::initImages(std::string confFile) {
 */
 void Initializer::initEventPropertiesMap(std::string confFile) {
 
-    std::ifstream myfile(confFile);
-
-    if (!myfile.is_open()) {
-        MyLogger::writeLog("file initEventPropertiesMap open failed!");
-        exit(-1);
-    }
-
     std::string propertyName;
     std::string tempString = "";
     std::set <EventIdentifier*> tempEventIdentifierSet;
@@ -276,64 +271,55 @@ void Initializer::initEventPropertiesMap(std::string confFile) {
     BaseEvent::PropertyInfo propertyInfo;
     //std::vector<std::wstring> testPropertyIndex;
 
+    tinyxml2::XMLDocument doc;
+    int res = doc.LoadFile(confFile.c_str()); //load xml file
+    if(res!=0){
+        cout<<"load xml file failed"<<endl;
+        return;
+    }
 
-    while (getline(myfile, tempString) && tempString != "") {
-        //MyLogger::writeLog("file initEventPropertiesMap read failed!");
-        //exit(-1);
+    EventIdentifier* ei;
+    XMLElement* root = doc.RootElement();
+    XMLElement* evnt = root->FirstChildElement("Event");
+    while(evnt!= nullptr){
+        XMLElement* opCodeElement = evnt->FirstChildElement("OpCode");
+        XMLElement* providerIDElement = evnt->FirstChildElement("ProviderID");
+        XMLElement* eventNameElement = evnt->FirstChildElement("EventName");
+        XMLElement* attributesElement = evnt->FirstChildElement("Attributes");
 
-        std::regex re(";");
-        std::sregex_token_iterator p(tempString.begin(), tempString.end(), re, -1);
-        std::sregex_token_iterator end;
-        EventIdentifier* ei;
+        int opCode = opCodeElement->Int64Text();
+        const char *pidstring = providerIDElement->GetText();
+        ULONG64 providerID = Tools::String2ULONG64(providerIDElement->GetText());
+        const char *eventName = eventNameElement->GetText();
+        ei = new EventIdentifier(providerID , opCode, eventName);
 
-        while (p != end) {
+//        BaseEvent::eventProviderID2Opcodes[providerID].insert(ei);
+//        tempEventIdentifierSet.insert(ei);
 
-            std::string ss = *p;
+        XMLElement * attrElement = attributesElement->FirstChildElement("Attribute");
 
-            std::regex re(" ");
-            std::sregex_token_iterator sp(ss.begin(), ss.end(), re, -1);
-            std::sregex_token_iterator end;
-            //std::wstring ws = Tools::StringToWString(*p);
-            ULONG64 providerID = Tools::String2ULONG64(*sp);
-            int opCode = Tools::String2Int(*(++sp));
-            std::string eventTypeName = *(++sp);
+        while(attrElement!=nullptr){        //get attributes of current event
 
-            ei = new EventIdentifier(providerID, opCode, eventTypeName);
-//            BaseEvent::eventProviderID2Opcodes[providerID].insert(ei);
-            ++p;
-            tempEventIdentifierSet.insert(ei);
-        }
+            const char *attrName = attrElement->GetText();
+            int type = attrElement->Int64Attribute("type");
 
-        while (getline(myfile, tempString) && tempString != "") {
-
-            std::regex re(" ");
-            std::sregex_token_iterator p(tempString.begin(), tempString.end(), re, -1);
-            std::sregex_token_iterator end;
-
-            if (p != end) {
-                //std::wstring propertyName = Tools::StringToWString(*p);
-                propertyName = *p;
-
-                if (BaseEvent::propertyNameSet.find(propertyName) == BaseEvent::propertyNameSet.end()) {
-                    BaseEvent::propertyNameVector.push_back(propertyName);
-                    BaseEvent::propertyNameSet.insert(propertyName);
-                    //BaseEvent::propertyName2IndexMap.insert()
-                }
-
-                propertyInfo = make_pair(propertyName, Tools::String2Int(*(++p)));
-                tempList.push_back(propertyInfo);
+            if (BaseEvent::propertyNameSet.find(attrName) == BaseEvent::propertyNameSet.end()) {
+                BaseEvent::propertyNameVector.push_back(attrName);
+                BaseEvent::propertyNameSet.insert(attrName);
+                //BaseEvent::propertyName2IndexMap.insert()
             }
+
+            propertyInfo = make_pair(propertyName, type);
+            tempList.push_back(propertyInfo);
+            attrElement = attrElement->NextSiblingElement();
         }
 
-        for (auto ei : tempEventIdentifierSet) {
-
-            BaseEvent::eventIdentifierSet.insert(ei);
-            BaseEvent::eventStructMap.insert(
+        BaseEvent::eventIdentifierSet.insert(ei);
+        BaseEvent::eventStructMap.insert(
                     std::map<EventIdentifier*, std::list<BaseEvent::PropertyInfo>, EventIdentifierSortCriterion>::value_type(ei, tempList));
-        }
-
-        tempEventIdentifierSet.clear();
         tempList.clear();
+
+        evnt = evnt->NextSiblingElement();  //next sibling node
     }
 
 //    for debug: get propertyIndex
@@ -341,7 +327,7 @@ void Initializer::initEventPropertiesMap(std::string confFile) {
 //        std::cout << item << ",";
 //    }
 //
-//    int a = 0;
+    int a = 0;
 }
 
 /*
