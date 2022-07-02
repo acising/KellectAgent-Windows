@@ -28,6 +28,7 @@ kellect uses a number of 3rd party libraries, as shown below. Please see LICENSE
 | easyloggingpp               | v9.96.7        | https://github.com/amraynonweb/easyloggingpp  |
 | moodycamel::ConcurrentQueue | /              | https://github.com/cameron314/concurrentqueue |
 | nlohmann::json              | v3.10.4        | https://github.com/nlohmann/json              |
+| TinyXML-2                   | v2             | https://github.com/leethomason/tinyxml2              |
 
 The development of kellect  depends on the Clion, but the compilation depends on the MSVC compiler. The software and versions used for development are shown as blew:
 
