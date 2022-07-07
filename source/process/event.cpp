@@ -43,11 +43,10 @@ void BaseEvent::fillProcessInfo(){
     else{
         std::string pName = Tools::getProcessNameByPID(pid);
 
-        if(!pName.empty())
-            EventProcess::processID2Name[pid] = pName;
+        if(pName.empty())   pName = "unknown";
 
+        EventProcess::processID2Name[pid] = pName;
         setProcessName(pName);
-
 //        std::cout<<"pid:"<<pid<<"  pname:"<<rtVal <<std::endl;
     }
 
@@ -57,10 +56,11 @@ void BaseEvent::fillProcessInfo(){
             setParentProcessName(res->second);
         else{
             std::string ppName = Tools::getProcessNameByPID(ppid);
-
-            if(!ppName.empty())
-                EventProcess::processID2Name[pid] = ppName;
-
+//
+            if(ppName.empty())
+                ppName = "unknown";
+//
+            EventProcess::processID2Name[ppid] = ppName;
             setParentProcessName(ppName);
 //            std::cout<<"ppid:"<<ppid<<"  ppname:"<<ppName <<std::endl;
         }

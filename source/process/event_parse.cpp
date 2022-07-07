@@ -51,7 +51,7 @@ VOID WINAPI EventParser::ConsumeEventMain(PEVENT_RECORD pEvent) {
 		BaseEvent* event = ETWConfiguration::eventParser.getEventWithIdentifier(pEvent);
 
 		if (event) {	//correctly parse EventIdentifer.
-			
+
 			if (threadParseFlag && inThreadParseProviders(event->getEventIdentifier()->getProviderID()))
 			{
 				event->setRawProperty(pEvent->UserDataLength, pEvent->UserData);
