@@ -61,7 +61,7 @@ public:
 
 private:
     static Filter filter;
-    static OutPut* op;
+    static Output* op;
     static ThreadPool* parsePools;	//thread pool, each thread in pool used to parse event.
     enum PropertyType { PBYTE_ = 1, PUSHORT_ = 2, PULONG4_ = 4, PULONG8_ = 8, PULONGLONG_ = 13, PWSTRING_ = 10, SID_ = 12, PSTRING_ = 11 };
     static PropertyType propertyType;

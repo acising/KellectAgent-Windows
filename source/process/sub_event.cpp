@@ -942,7 +942,7 @@ void  EventTCPIP::parse() {
 	//setProcessName(EventProcess::processID2Name[pid]);
 }
 
-//using nlohmann::json library to format jsonstring
+//using nlohmann::json library to format json String
 nlohmann::json getCommonJson(BaseEvent* event) {
 
 	nlohmann::json tempJson;

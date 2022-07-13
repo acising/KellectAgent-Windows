@@ -13,9 +13,8 @@ using namespace moodycamel;
 #define STATUS int
 #define STATUS_FAILED -1
 //#define STATUS_SUCCESS 0
-#define STATUS_SOCKET_ERROR -2
 
-class OutPut {
+class Output {
 
 private:
 	ConcurrentQueue<std::string*> q;
@@ -28,17 +27,22 @@ private:
 	const int maxDequeNumber = 15000;
 
 protected:
+	std::string ip;
+	unsigned short port;
+	std::string ip_port;
+
 	bool ini = false;
 	//boost::lockfree::queue<std::string, boost::lockfree::fixed_sized<false> > queue(5000);
 	virtual void output(std::string outputString) {};
 public:
-	OutPut() :count(0) {};
-	~OutPut() {};
+	Output() :count(0) {};
+	~Output() {};
 
 	virtual STATUS init() { return STATUS_SUCCESS; };
 	bool initialized() { return ini; };
 	void setInit(bool i) { ini = i; };
 
+	STATUS parseIPAndPort();
     void setOutputThreashold(int threashold){
         outputThreshold = threashold;
     };
@@ -58,7 +62,7 @@ public:
 	void outputStrings();
 };
 
-class FileOutPut : public OutPut {
+class FileOutPut : public Output {
 
 private:
 	std::string fileName;
@@ -75,26 +79,21 @@ public:
 	virtual STATUS init() override;
 };
 
-class ConsoleOutPut : public OutPut {
+class ConsoleOutPut : public Output {
 
 public:
 	virtual void output(std::string outputString) override;
 	virtual STATUS init() override;
 };
 
-class KafkaOutPut : public OutPut {
-
+class SocketOutPut : public Output {
 public:
-	virtual void output(std::string outputString) override;
-	virtual STATUS init() override;
-};
-
-class SocketOutPut : public OutPut {
-public:
-	SocketOutPut(std::string ss) :ss(ss) {};
+	SocketOutPut(std::string ip_port) {
+		this->ip_port = ip_port;
+	};
 	//~SocketOutPut() { outputStream.close(); };
 
-	STATUS parseIPAndPort();
+//	STATUS parseIPAndPort();
 	virtual void output(std::string outputString) override;
 	virtual STATUS init() override;
 
@@ -103,10 +102,6 @@ private:
 	SOCKADDR_IN addr_serv = { 0 };
 	//SOCKADDR_IN addr_clie = { 0 };
 
-	std::string ip;
-	int port;
 	int sendLen;
-
-	std::string ss;
 };
 

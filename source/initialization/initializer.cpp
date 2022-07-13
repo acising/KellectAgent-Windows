@@ -9,6 +9,7 @@
 #include "filter.h"
 #include "tools/providerInfo.h"
 #include "tools/tinyxml2.h"
+#include "output/KafkaOutput.h"
 
 INITIALIZE_EASYLOGGINGPP
 using namespace std;
@@ -339,7 +340,7 @@ void Initializer::initPrasePool() {
 }
 void Initializer::initOutputThread() {
 
-    std::thread outputThread(&OutPut::outputStrings, EventParser::op);
+    std::thread outputThread(&Output::outputStrings, EventParser::op);
     outputThread.detach();
 }
 
@@ -477,7 +478,7 @@ void Initializer::initTerminalListening() {
 void Initializer::initNeededStruct() {
 
     initOutputThread();
-    initImages();
+    initImages();       //1
     MyLogger::initLogger();
     Tools::initVolume2DiskMap();
     initProcessor2ThreadAndThread2Process();
@@ -488,7 +489,7 @@ void Initializer::initNeededStruct() {
         std::cout << "------Initialize process and thread failed!------" << std::endl;
         exit(-1);
     }
-    initEventPropertiesMap();
+    initEventPropertiesMap();       //2
 
     //default trace all events
     if(!enbaleFlagsInited)
@@ -498,7 +499,7 @@ void Initializer::initNeededStruct() {
 //        initOutputThreashold(userEnabledFlags);
     }
 
-    initFilter();
+    initFilter();       //3
     initProcessID2ModulesMap();
     initPrasePool();
     initThreadParseProviders();
@@ -527,10 +528,12 @@ void Initializer::showCommandList() {
                    "\tusage:-e 0x11 ,which will trace events of Process and Disk.\n"
     );
     cmdList.append("-f , the file path that you want to output the events\n"
-                   "\tusage:c:\\123.txt ,which will output events to file c:\\123.txt\n");
+                   "\tusage: c:\\123.txt ,which will output events to file c:\\123.txt\n");
     cmdList.append("-c , output events to the console \n");
+    cmdList.append("-k , output events to the kafka server, \n"
+                   "\tusage: 192.168.1.2:9092/test ,which will output events to server which address is 192.168.1.2:9092 and topic is \"test\"\n");
     cmdList.append("-s , the socket that you want to transmission events\n"
-                   "\tusage:example:192.168.1.2:66 which will output events to host whose ip is 192.168.1.2:66 \n");
+                   "\tusage: 192.168.1.2:66 ,which will output events to host which address is 192.168.1.2 \n");
     cmdList.append("-h , get the manual\n");
 
     std::cout << cmdList;
@@ -553,7 +556,7 @@ inline bool Initializer::isOutPutOption(char* option) {
     return !strcmp(option, "-c") || !strcmp(option, "-f") || !strcmp(option, "-s");
 }
 
-//change the opThreashold accroing to the event type we traced.
+//change the opThreashold according to the event type we traced.
 STATUS Initializer::initOutputThreashold(ULONG64 eventType) {
     opThreashold = 0;
 
@@ -621,8 +624,28 @@ ULONG64 Initializer::init() {
             EventParser::op = new SocketOutPut(argV[i++]);
             status = EventParser::op->init();
             //EventParser::op->beginOutputThread();
-//            if (status != STATUS_SUCCESS)   break;
+            if (status != STATUS_SUCCESS)   break;
+
             outputInited = true;
+        }
+        else if(strcmp(currentArv,"-k") == 0){
+            if (!validArgLength(i, status))   break;
+
+            int idx = -1;
+            std::string arg = argV[i++];
+            idx = arg.find("/");
+            if(idx > 0){
+                std::string ip_port = arg.substr(0,idx);
+                std::string topicValue = arg.substr(idx+1);
+                EventParser::op = new KafkaOutPut(ip_port,topicValue);
+                status = EventParser::op->init();
+
+                if (status != STATUS_SUCCESS)   break;
+                outputInited = true;
+            }else{
+                status = STATUS_KAFKA_FORMAT_ERROR;
+                break;
+            }
         }
         else if (strcmp(currentArv, "-e") == 0) {
 
@@ -644,24 +667,22 @@ ULONG64 Initializer::init() {
         if (status != STATUS_SUCCESS)   break;
     }
 
-
     if (status == STATUS_SUCCESS && outputInited) {
-        initNeededStruct();
+        initNeededStruct();     //init config files
     }
     else {
 
-        //if(output)
         switch (status) {
             case STATUS_FILE_OPEN_FAILED: {
                 MyLogger::writeLog("-f the file open failed.");
                 break;
             }
-            case STATUS_SOCKET_ERROR: {
+            case STATUS_SOCKET_CONNECT_ERROR: {
                 MyLogger::writeLog("-s socket connect filed.");
                 break;
             }
-            case STATUS_SOCKET_FORMAT_ERROR: {
-                MyLogger::writeLog("-s socket format error ,socket string should be like: \"ip:port\"(i.e 192.168.1.1:8888)");
+            case STATUS_FORMAT_ERROR: {
+                MyLogger::writeLog("ip:port format error ,the value should be like: \"ip:port\"(i.e 192.168.1.1:8888)");
                 break;
             }
             case STATUS_DUPLICATE_OUTPUT: {
@@ -682,6 +703,14 @@ ULONG64 Initializer::init() {
             }
             case STATUS_FAIL: {
                 MyLogger::writeLog("options or arguments error. ");
+                break;
+            }
+            case STATUS_KAFKA_FORMAT_ERROR:{
+                MyLogger::writeLog("kafka argument format error. ,the value should be like: \\\"ip:port\\topicValue\\\"(i.e 192.168.1.1:8888\\test)\"");
+                break;
+            }
+            case STATUS_SOCKET_FORMAT_ERROR:{
+                MyLogger::writeLog("socket argument format error. ");
                 break;
             }
         }
