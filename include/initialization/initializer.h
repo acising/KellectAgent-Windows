@@ -1,7 +1,7 @@
 #pragma once
 #define _CRT_SECURE_NO_WARNINGS
 #pragma comment(lib , "DbgHelp.lib")
-#pragma comment(lib, "diaguids.lib")
+//#pragma comment(lib, "diaguids.lib")
 #include <windows.h>
 #include <iostream>
 #include <fstream>
@@ -122,9 +122,12 @@ typedef struct _RTL_PROCESS_MODULES
 #define STATUS_SUCCESS             0x0
 #define STATUS_FAIL	               0x1
 #define STATUS_UNKNOWN_OPTION	   0xa
-#define STATUS_SOCKET_FORMAT_ERROR 0x8
+#define STATUS_FORMAT_ERROR        0x8
 #define STATUS_SHOW_MANUAL         0x2
 #define STATUS_FILE_OPEN_FAILED	   0x3
+#define STATUS_KAFKA_FORMAT_ERROR  0x10
+#define STATUS_SOCKET_FORMAT_ERROR  0x11
+#define STATUS_SOCKET_CONNECT_ERROR 0x12
 #define STATUS_DUPLICATE_OUTPUT	   0x4
 #define STATUS_SOCKET_OPEN_FAILED  0x5        //TODO
 #define STATUS_EVENT_TYPE_ERROR    0x6

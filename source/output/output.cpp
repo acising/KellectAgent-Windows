@@ -61,12 +61,11 @@ void SocketOutPut::output(std::string outputString) {
     //cout << "json长度：" << len << endl;
     if (sendLen < 0) {
         std::cout << "send failed, maybe server is disconnected" << std::endl;
-
     }
     //outputStream << outputString << std::endl;
 }
 
-STATUS SocketOutPut::parseIPAndPort() {
+STATUS Output::parseIPAndPort() {
     
     STATUS status = STATUS_SUCCESS;
     std::regex re(":");
@@ -74,7 +73,7 @@ STATUS SocketOutPut::parseIPAndPort() {
     std::sregex_token_iterator end;
 
     //parse ip and port from ss
-    p = std::sregex_token_iterator(ss.begin(), ss.end(), re, -1);
+    p = std::sregex_token_iterator(ip_port.begin(), ip_port.end(), re, -1);
      
     try{
         ip = *p;
@@ -84,7 +83,7 @@ STATUS SocketOutPut::parseIPAndPort() {
     catch (std::exception& e)
     {
         std::cout << "ip and port parse failed, Standard exception: " << e.what() << std::endl;
-        status = STATUS_SOCKET_FORMAT_ERROR;
+        status = STATUS_FORMAT_ERROR;
     }
 
     return status;
@@ -92,7 +91,7 @@ STATUS SocketOutPut::parseIPAndPort() {
 
 STATUS SocketOutPut::init() {
 
-    STATUS status = parseIPAndPort();
+    STATUS status = this->parseIPAndPort();
 
     if (status == STATUS_SUCCESS) {
 
@@ -107,13 +106,15 @@ STATUS SocketOutPut::init() {
 
         addr_serv.sin_addr.S_un.S_addr = inet_addr(ip.c_str());  //change the format of oct addr to bin addr
         addr_serv.sin_family = AF_INET;		//set the address family to IPV4
-        addr_serv.sin_port = htons(port);	//change the format of oct port to bin port
+        addr_serv.sin_port = port;	//change the format of oct port to bin port
 
         //connect the server,return STATUS_SOCKET_ERROR  if connect failed
         if (connect(socket_serv, (SOCKADDR*)&addr_serv, sizeof(addr_serv)) == SOCKET_ERROR)
         {
             std::cout << "connect server failed" << std::endl;
-            status = STATUS_SOCKET_ERROR;
+            status = STATUS_SOCKET_CONNECT_ERROR;
+
+            goto rt;
         }
         else {
             std::cout << "connect server succeed,the connection has established" << std::endl;
@@ -122,11 +123,14 @@ STATUS SocketOutPut::init() {
     }
     if(status == STATUS_SUCCESS)
         setInit(true);
+    else
+        status = STATUS_SOCKET_FORMAT_ERROR;
 
+    rt:
     return status;
 }
 
-void OutPut::outputStrings(){
+void Output::outputStrings(){
 
     while (true) {
 

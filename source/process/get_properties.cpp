@@ -38,7 +38,7 @@ BaseEvent* WINAPI EventParser::getEventWithIdentifier(PEVENT_RECORD pEvent) {
 
     BaseEvent* event = nullptr;
 
-    switch (pEvent->EventHeader.ProviderId.Data1) // init by event type
+    switch (pEvent->EventHeader.ProviderId.Data1) // init by event type ,data1 is providerid
     {
     case FileProvider:
         event = new EventFile;
@@ -73,7 +73,7 @@ BaseEvent* WINAPI EventParser::getEventWithIdentifier(PEVENT_RECORD pEvent) {
     };
 
     event->setProcessorID(pEvent->BufferContext.ProcessorIndex);
-    event->setProcessID(pEvent->EventHeader.ProcessId);
+    event->setProcessID(pEvent->EventHeader.ProcessId);     //TCPIP的pEvent中processID ThreadID
     event->setThreadID(pEvent->EventHeader.ThreadId);
     event->setTimeStamp(pEvent->EventHeader.TimeStamp.QuadPart);
     event->setEventIdentifier(

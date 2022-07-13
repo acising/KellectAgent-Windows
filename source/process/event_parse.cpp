@@ -8,7 +8,7 @@
 #include "process/etw_config.h"
 using namespace std;
 
-OutPut* EventParser::op;
+Output* EventParser::op;
 std::set<ULONG64> EventParser::threadParseProviders;
 atomic<ULONG64> EventParser::successParse(0);
 //atomic<ULONG64> threadParseEventsNum(0);
@@ -40,6 +40,7 @@ void EventParser::eventParseThreadFunc(BaseEvent* event) {
 	delete event;
 }
 
+//pEvent is original event stream structure
 VOID WINAPI EventParser::ConsumeEventMain(PEVENT_RECORD pEvent) {
 
 	if (++comingEventsNum % 1000000 == 0) {
@@ -48,9 +49,9 @@ VOID WINAPI EventParser::ConsumeEventMain(PEVENT_RECORD pEvent) {
 	if (!Filter::firstFilter(pEvent)) {
 
 		//BaseEvent* event = c.getPropertiesByTdh(pEvent);		//speed of TDH's parsing way is too low , will lead to events lost!
-		BaseEvent* event = ETWConfiguration::eventParser.getEventWithIdentifier(pEvent);
+		BaseEvent* event = ETWConfiguration::eventParser.getEventWithIdentifier(pEvent);    //simple parse
 
-		if (event) {	//correctly parse EventIdentifer.
+		if (event) {	//correctly parse EventIdentifier.
 
 			if (threadParseFlag && inThreadParseProviders(event->getEventIdentifier()->getProviderID()))
 			{
