@@ -829,7 +829,6 @@ void  EventDisk::parse() {
 //            setTIDAndPID(this);
 
 //            Filter::secondFilter(this);
-
             auto d = getProperty(IssuingThreadId);
             if (d != nullptr) {
 

@@ -974,7 +974,7 @@
     </Event>
     <Event>
         <ProviderID>1030727892</ProviderID>
-        <OpCode>11</OpCode>
+        <OpCode>10</OpCode>
         <EventName>DiskIORead</EventName>
         <Attributes>
             <Attribute type="4">DiskNumber</Attribute>
