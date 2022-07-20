@@ -47,7 +47,8 @@ int EventThread::threadId2processId[MAX_THREAD_NUM];
 
 STATUS Initializer::initEnabledEvent(ULONG64 eventType) {
 
-    enabledFlags = EVENT_TRACE_FLAG_PROCESS|EVENT_TRACE_FLAG_THREAD;
+    enabledFlags = EVENT_TRACE_FLAG_PROCESS|EVENT_TRACE_FLAG_THREAD;        //guarantee the fillProcessInfo() execute correctly
+
     //callstack initialize in
     if (eventType & CALLSTACKEVENT){
         setListenCallStack(true);   // set listenCallStack true;
@@ -97,20 +98,21 @@ inline void Initializer::initDefaultEnabledEvents() {
 
     Filter::listenAllEvents=true;
     setListenCallStack(true);
-    enabledFlags = 0
-                   | EVENT_TRACE_FLAG_PROCESS
-                   | EVENT_TRACE_FLAG_THREAD
-                   | EVENT_TRACE_FLAG_REGISTRY       //many events
-                   | EVENT_TRACE_FLAG_FILE_IO_INIT   //enable FileIo_OpEnd
-                   | EVENT_TRACE_FLAG_DISK_FILE_IO
-                   | EVENT_TRACE_FLAG_FILE_IO
-                   | EVENT_TRACE_FLAG_CSWITCH        //too many events
-                   | EVENT_TRACE_FLAG_DISK_IO
-                   |EVENT_TRACE_FLAG_DISK_IO_INIT
-                   //| EVENT_TRACE_FLAG_SYSTEMCALL     //too many events
-                   | EVENT_TRACE_FLAG_IMAGE_LOAD       //lead to memory keeps increasing
-                   | EVENT_TRACE_FLAG_NETWORK_TCPIP
-            ;
+    userEnabledFlags = ALLEVENT;
+//    enabledFlags = 0
+//                   | EVENT_TRACE_FLAG_PROCESS
+//                   | EVENT_TRACE_FLAG_THREAD
+//                   | EVENT_TRACE_FLAG_REGISTRY       //many events
+//                   | EVENT_TRACE_FLAG_FILE_IO_INIT   //enable FileIo_OpEnd
+//                   | EVENT_TRACE_FLAG_DISK_FILE_IO
+//                   | EVENT_TRACE_FLAG_FILE_IO
+//                   | EVENT_TRACE_FLAG_CSWITCH        //too many events
+//                   | EVENT_TRACE_FLAG_DISK_IO
+//                   |EVENT_TRACE_FLAG_DISK_IO_INIT
+//                   //| EVENT_TRACE_FLAG_SYSTEMCALL     //too many events
+//                   | EVENT_TRACE_FLAG_IMAGE_LOAD       //lead to memory keeps increasing
+//                   | EVENT_TRACE_FLAG_NETWORK_TCPIP
+//            ;
 }
 
 /*
@@ -492,13 +494,14 @@ void Initializer::initNeededStruct() {
     initEventPropertiesMap();       //2
 
     //default trace all events
-    if(!enbaleFlagsInited)
+    if(!enbaleFlagsInited){
         initDefaultEnabledEvents();
-    else{
-        initEnabledEvent(userEnabledFlags);
-//        initOutputThreashold(userEnabledFlags);
     }
+    initEnabledEvent(userEnabledFlags);
 
+    if(opThreashold == 0){
+        initOutputThreashold(userEnabledFlags);
+    }
     initFilter();       //3
     initProcessID2ModulesMap();
     initPrasePool();
@@ -526,6 +529,8 @@ void Initializer::showCommandList() {
                    "\t\t0x80(TCPIP)\n"
                    "\t\tall(tracing all event types)\n"
                    "\tusage:-e 0x11 ,which will trace events of Process and Disk.\n"
+                   "\tusage:-e 0xff ,which will trace all events except callstack, if you don't need API Info, you should specify 0x105 to '-e' option.\n"
+                   "\tusage:-e all  ,which will trace all events.\n"
     );
     cmdList.append("-f , the file path that you want to output the events\n"
                    "\tusage: c:\\123.txt ,which will output events to file c:\\123.txt\n");
@@ -534,6 +539,7 @@ void Initializer::showCommandList() {
                    "\tusage: 192.168.1.2:9092/test ,which will output events to server which address is 192.168.1.2:9092 and topic is \"test\"\n");
     cmdList.append("-s , the socket that you want to transmission events\n"
                    "\tusage: 192.168.1.2:66 ,which will output events to host which address is 192.168.1.2 \n");
+    cmdList.append("--outputThreshold , set the threshold number of output events.\n");
     cmdList.append("-h , get the manual\n");
 
     std::cout << cmdList;
@@ -557,28 +563,29 @@ inline bool Initializer::isOutPutOption(char* option) {
 }
 
 //change the opThreashold according to the event type we traced.
+//deprecated!
 STATUS Initializer::initOutputThreashold(ULONG64 eventType) {
     opThreashold = 0;
 
     //the accumulated value was not tested experimentally, all based on experience
     if (eventType & PROCESSEVENT)
-        opThreashold += 10;
+        opThreashold += 5;
     if (eventType & THREADEVENT)
-        opThreashold += 100;
+        opThreashold += 30;
     if (eventType & REGISTEREVENT)
-        opThreashold += 300;
+        opThreashold += 50;
     if (eventType & FILEEVENT)
-        opThreashold += 100;
+        opThreashold += 20;
     if (eventType & DISKEVENT)
-        opThreashold += 10;
+        opThreashold += 5;
 //    if (eventType & SYSTEMCALLEVENT)
 //        opThreashold += 1000;
     if (eventType & IMAGEEVENT)
-        opThreashold += 30;
+        opThreashold += 10;
     if (eventType & TCPIPEVENT)
-        opThreashold += 50;
+        opThreashold += 5;
     if (eventType & CALLSTACKEVENT)
-        opThreashold += 50;
+        opThreashold += 20;
 
     return STATUS_SUCCESS;
 }
@@ -655,6 +662,12 @@ ULONG64 Initializer::init() {
             userEnabledFlags = strcmp(arg.c_str(),"all") == 0? 0x1ff:Tools::HexStr2DecInt(arg);
 
             if(status == STATUS_SUCCESS)    enbaleFlagsInited = true;
+        }
+        else if (strcmp(currentArv, "--outputThreshold") == 0) {
+
+            std::string threshold = argV[i++];
+            opThreashold = Tools::String2ULONG64(threshold);
+            status = STATUS_SUCCESS;
         }
         else if (strcmp(currentArv, "-h") == 0) {
 

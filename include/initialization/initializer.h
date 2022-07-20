@@ -111,6 +111,7 @@ typedef struct _RTL_PROCESS_MODULES
 //#define SYSTEMCALLEVENT		0x40
 #define CALLSTACKEVENT		0x40
 #define TCPIPEVENT			0x80
+#define ALLEVENT 0xff
 
 #define FILEOUTPUT			0x0
 #define CONSOLEOUTPUT		0x1
@@ -192,7 +193,7 @@ private:
     bool enbaleFlagsInited = false;
     static bool listenCallStack;
 
-    const char* eventStructFile = "config/eventstruct.txt";
+    const char* eventStructFile = "config/eventStruct.xml";
     const char* filterFileName = "config/filter.txt";
     const char* imagesFile = "config/initImages.txt";
     ULONG64 opThreashold = 20;

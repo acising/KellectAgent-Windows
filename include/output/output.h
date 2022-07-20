@@ -53,8 +53,9 @@ public:
 
 	void pushOutputQueue(std::string* res) {
 		q.enqueue(res);
+
 		//count++;
-		if (count.fetch_add(1) > outputThreshold){
+		if (count.fetch_add(1) >= outputThreshold){
 //            std::cout<<count.fetch_add(0) <<std::endl;
             cv.notify_one();
         }
