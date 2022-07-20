@@ -529,7 +529,7 @@ void Initializer::showCommandList() {
                    "\t\t0x80(TCPIP)\n"
                    "\t\tall(tracing all event types)\n"
                    "\tusage:-e 0x11 ,which will trace events of Process and Disk.\n"
-                   "\tusage:-e 0xff ,which will trace all events except ‘callstack‘, if you don't need API Info, you should specify 0xff to '-e' option.\n"
+                   "\tusage:-e 0xff ,which will trace all events except 'callstack',if you don't need API Info, you should specify 0xff to '-e' option.\n"
                    "\tusage:-e all  ,which will trace all events.\n"
     );
     cmdList.append("-f , the file path that you want to output the events\n"
