@@ -472,9 +472,73 @@ STATUS Initializer:: InitProcessMap() {
     return status;
 }
 
-//TODO
-void Initializer::initTerminalListening() {
+void Initializer::writeUUID2File(){
 
+    ofstream fout;
+    fout.open(uuidFile);
+
+    fout<<getUUID();
+    fout.close();
+}
+
+STATUS Initializer::setUUIDFromFile(){
+
+    ifstream infile;
+    infile.open(uuidFile, ios::in);
+    if (!infile.is_open())
+    {
+//        cout << "Read uuid File failed,set uuid now." << endl;
+        return STATUS_FAIL;
+    }
+    //第一种读取方法，
+    char buf[1024] = { 0 };
+    while (infile>>buf)
+    {
+        setUUID(buf);
+        break;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+STATUS Initializer::setUUIDByFunction() {
+
+    GUID guid;
+    char tempUUID[1024];
+    std::string buf;
+    HRESULT res = CoCreateGuid(&guid);
+    if(res == S_OK){
+        sprintf(tempUUID,"%08X-%04X-%04x-%02X%02X-%02X%02X%02X%02X%02X%02X"
+                , guid.Data1
+                , guid.Data2
+                , guid.Data3
+                , guid.Data4[0], guid.Data4[1]
+                , guid.Data4[2], guid.Data4[3], guid.Data4[4], guid.Data4[5]
+                , guid.Data4[6], guid.Data4[7]);
+
+        buf = std::string(tempUUID);
+
+        Initializer::setUUID(buf);
+        writeUUID2File();
+
+        return STATUS_SUCCESS;
+    }
+
+    Initializer::setUUID("none");
+    return STATUS_FAIL;
+}
+
+void Initializer::initHostUUID() {
+
+    STATUS status = setUUIDFromFile();
+
+    if(status == STATUS_FAIL){
+        STATUS res = setUUIDByFunction();
+
+        if(res == STATUS_FAIL) {
+            std::cout<<"host UUID set failed."<<std::endl;
+        }
+    }
 }
 
 void Initializer::initNeededStruct() {
@@ -506,6 +570,7 @@ void Initializer::initNeededStruct() {
     initProcessID2ModulesMap();
     initPrasePool();
     initThreadParseProviders();
+    initHostUUID();
 
     //set output threashold value, which depends on the event type we traced
     EventParser::op->setOutputThreashold(opThreashold);

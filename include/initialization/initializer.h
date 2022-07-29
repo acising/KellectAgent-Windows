@@ -151,7 +151,11 @@ public:
 	}
 
 	ULONG64 init();
-    inline void initTerminalListening();
+
+    inline void writeUUID2File();
+    inline STATUS setUUIDFromFile();
+    inline STATUS setUUIDByFunction();
+    inline void initHostUUID();
 	inline bool validArgLength(int i, STATUS& status);
     inline bool isOutPutOption(char* option);
     inline void initDefaultEnabledEvents();
@@ -177,6 +181,13 @@ public:
     static void setListenCallStack(bool flag){
         listenCallStack = flag;
     }
+    static void setUUID(std::string in){
+        uuid = in;
+    }
+
+    static std::string getUUID(){
+        return uuid;
+    }
     //void initOutPut();
 	//STATUS initConsoleOutPut();
 	//STATUS initFileOutPut(std::string fileName);
@@ -193,6 +204,8 @@ private:
     bool enbaleFlagsInited = false;
     static bool listenCallStack;
 
+    static std::string uuid;
+    std::string uuidFile = "config\\uuid";
     const char* eventStructFile = "config/eventStruct.xml";
     const char* filterFileName = "config/filter.txt";
     const char* imagesFile = "config/initImages.txt";

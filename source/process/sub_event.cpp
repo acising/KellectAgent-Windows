@@ -22,6 +22,8 @@ std::map<CallStackIdentifier, std::string*> EventCallstack::callStackRecord;
 std::atomic<int> EventCallstack::callStackRecordNum(0);
 int EventProcess::processID2ParentProcessID[ProcessNumSize];
 
+std::string Initializer::uuid;  //declare static property
+
 void setFileName(BaseEvent* ev) {
 
 	ULONG64 fileObject = 0;
@@ -1016,6 +1018,7 @@ STATUS getCommonJsonNoLib(BaseEvent* event, std::string* sJson) {
 		",\"ParentProcessName\":\"" + event->getParentProcessName() +
 		"\",\"ThreadID\":" + std::to_string(event->getThreadID()) +
 		",\"TimeStamp\":" + std::to_string(event->getTimeStamp()) +
+		",\"Host-UUID\":" + Initializer::getUUID() +
 		",\"arguments\":{");
 
 	//event->getProperty
