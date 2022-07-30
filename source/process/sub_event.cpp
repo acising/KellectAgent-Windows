@@ -701,13 +701,12 @@ void  EventProcess::parse() {
 		break;
 	}
 
+    replaceCharacterFromProperty(UserSID,'\\',"-");
 	if (isValueableEvent()) {
 
         //change the format of commandLine property.
         removeQuotesFromProperty(CommandLine);
         replaceCharacterFromProperty(CommandLine,'\n'," ");
-
-
 
         //insert the mapping of pid and ppid
 		ULONG64 ppid = getProperty(ParentId)->getULONG64();

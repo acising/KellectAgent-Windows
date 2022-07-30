@@ -508,7 +508,7 @@ STATUS Initializer::setUUIDByFunction() {
     std::string buf;
     HRESULT res = CoCreateGuid(&guid);
     if(res == S_OK){
-        sprintf(tempUUID,"%08X-%04X-%04x-%02X%02X-%02X%02X%02X%02X%02X%02X"
+        sprintf(tempUUID,"\"%08X-%04X-%04x-%02X%02X-%02X%02X%02X%02X%02X%02X\""
                 , guid.Data1
                 , guid.Data2
                 , guid.Data3
