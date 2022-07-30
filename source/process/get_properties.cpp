@@ -175,6 +175,7 @@ BaseEvent* EventParser::getPropertiesByParsingOffset(BaseEvent* event, int userD
                     sVal = DomainName;
                     sVal.append("\\");
                     sVal.append(UserName);
+//                    Tools::
                     dt = new dataType(sVal);
 
                     dataAddress += GetLengthSid((PVOID)(dataAddress));
