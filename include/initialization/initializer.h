@@ -172,7 +172,7 @@ public:
     void initSysNameMap();
     void showCommandList();
 //    void initEventPropertiesMap(std::string confFile = "config/eventStruct.txt");
-    void initEventPropertiesMap(std::string confFile = "config/eventStruct.xml");
+    void initEventPropertiesMap(std::string confFile = "config/eventStruct_win10.xml");
     void initThreadParseProviders();
     void initProcessor2ThreadAndThread2Process();
     static bool getListenCallStack(){

@@ -94,19 +94,21 @@ protected:
 public:
 
 	using PropertyInfo = std::pair<std::string, int>;
+
     enum PropertyNameIndex {
-		UniqueProcessKey, ProcessId, ParentId, SessionId, ExitStatus, DirectoryTableBase, Flags, UserSID, ImageFileName, CommandLine, PackageFullName,
-		ApplicationId, TThreadId, StackBase, StackLimit, UserStackBase, UserStackLimit, Affinity, Win32StartAddr, TebBase, SubProcessTag, BasePriority,
-		PagePriority, IoPriority, ThreadFlags, NewThreadId, OldThreadId, NewThreadPriority, OldThreadPriority, PreviousCState, SpareByte, OldThreadWaitReason,
-		OldThreadState, OldThreadWaitIdealProcessor, NewThreadWaitTime, Reserved, PageFaultCount, HandleCount, PeakVirtualSize, PeakWorkingSetSize,
-		PeakPagefileUsage, QuotaPeakPagedPoolUsage, QuotaPeakNonPagedPoolUsage, VirtualSize, WorkingSetSize, PagefileUsage, QuotaPagedPoolUsage,
-		QuotaNonPagedPoolUsage, PrivatePageCount, InitialTime, Status, Index, KeyHandle, KeyName, PID, size, daddr, saddr, dport, sport, startime, endtime,
-		seqnum, connid, mss, sackopt, tsopt, wsopt, rcvwin, rcvwinscale, sndwinscale, Proto, FailureCode, IrpPtr, FileObject, TTID, CreateOptions, FileAttributes, ShareAccess,
-		OpenPath, FileKey, Length, InfoClass, FileIndex, FileName, ExtraInfo, NtStatus, Offset, IoSize, IoFlags, DiskNumber, IrpFlags, TransferSize,
-		ByteOffset, Irp, HighResResponseTime, IssuingThreadId, RoutineAddr, UniqMatchId, Routine, MajorFunction, MinorFunction, MessageID, IsServerPort,
-		PortName, ReturnValue, Vector, SysCallAddress, SysCallNtStatus, ImageBase, ImageSize, ImageChecksum, TimeDateStamp, SignatureLevel, SignatureType,
-		Reserved0, DefaultBase, Reserved1, Reserved2, Reserved3, Reserved4
-	};
+        UniqueProcessKey, ProcessId, ParentId, SessionId, ExitStatus, DirectoryTableBase, Flags, UserSID, ImageFileName, CommandLine, PackageFullName,
+        ApplicationId, TThreadId, StackBase, StackLimit, UserStackBase, UserStackLimit, Affinity, Win32StartAddr, TebBase, SubProcessTag, BasePriority,
+        PagePriority, IoPriority, ThreadFlags, NewThreadId, OldThreadId, NewThreadPriority, OldThreadPriority, PreviousCState, SpareByte, OldThreadWaitReason,
+        OldThreadState, OldThreadWaitIdealProcessor, NewThreadWaitTime, Reserved, PageFaultCount, HandleCount, PeakVirtualSize, PeakWorkingSetSize,
+        PeakPagefileUsage, QuotaPeakPagedPoolUsage, QuotaPeakNonPagedPoolUsage, VirtualSize, WorkingSetSize, PagefileUsage, QuotaPagedPoolUsage,
+        QuotaNonPagedPoolUsage, PrivatePageCount, InitialTime, Status, Index, KeyHandle, KeyName, PID, size, daddr, saddr, dport, sport, startime, endtime,
+        seqnum, connid, mss, sackopt, tsopt, wsopt, rcvwin, rcvwinscale, sndwinscale, Proto, FailureCode, IrpPtr, FileObject, TTID, CreateOptions, FileAttributes, ShareAccess,
+        OpenPath, FileKey, Length, InfoClass, FileIndex, FileName, ExtraInfo, NtStatus, Offset, IoSize, IoFlags, DiskNumber, IrpFlags, TransferSize,
+        ByteOffset, Irp, HighResResponseTime, IssuingThreadId, RoutineAddr, UniqMatchId, Routine, MajorFunction, MinorFunction, MessageID, IsServerPort,
+        PortName, ReturnValue, Vector, SysCallAddress, SysCallNtStatus, ImageBase, ImageSize, ImageChecksum, TimeDateStamp, SignatureLevel, SignatureType,
+        Reserved0, DefaultBase, Reserved1, Reserved2, Reserved3, Reserved4
+    };
+
     static PropertyNameIndex propertyNameIndex;
 
 	static std::map<EventIdentifier*, std::vector<std::string>,EventIdentifierSortCriterion> eventPropertiesMap;

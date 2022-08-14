@@ -273,8 +273,16 @@ void Initializer::initEventPropertiesMap(std::string confFile) {
     std::list<BaseEvent::PropertyInfo> tempList;
     BaseEvent::PropertyInfo propertyInfo;
     //std::vector<std::wstring> testPropertyIndex;
-
+    DWORD dwMajorVer,dwMinorVer,dwBuildNumber;
     tinyxml2::XMLDocument doc;
+
+    if(Tools::getOSVersion(dwMajorVer,dwMinorVer,dwBuildNumber)){
+        // win 7
+        if (dwMajorVer == 6 && dwMinorVer == 1){
+            confFile = "config/eventStruct_win7.xml";
+        }
+    }
+
     int res = doc.LoadFile(confFile.c_str()); //load xml file
     if(res!=0){
         cout<<"load xml file failed"<<endl;
@@ -298,19 +306,12 @@ void Initializer::initEventPropertiesMap(std::string confFile) {
 
 //        BaseEvent::eventProviderID2Opcodes[providerID].insert(ei);
 //        tempEventIdentifierSet.insert(ei);
-
         XMLElement * attrElement = attributesElement->FirstChildElement("Attribute");
 
         while(attrElement!=nullptr){        //get attributes of current event
 
             const char *attrName = attrElement->GetText();
             int type = attrElement->Int64Attribute("type");
-
-            if (BaseEvent::propertyNameSet.find(attrName) == BaseEvent::propertyNameSet.end()) {
-                BaseEvent::propertyNameVector.push_back(attrName);
-                BaseEvent::propertyNameSet.insert(attrName);
-                //BaseEvent::propertyName2IndexMap.insert()
-            }
 
             propertyInfo = make_pair(attrName, type);
             tempList.push_back(propertyInfo);
@@ -325,11 +326,33 @@ void Initializer::initEventPropertiesMap(std::string confFile) {
         evnt = evnt->NextSiblingElement();  //next sibling node
     }
 
-//    for debug: get propertyIndex
+    ifstream infile("config/propertyName.txt",ios::in);
+    std::regex re(",");
+    std::sregex_token_iterator p;
+    std::sregex_token_iterator end;
+    std::string tempString;
+
+    if (!infile.is_open())
+    {
+        cout << "read file 'config/propertyName.txt' failed..." << endl;
+        return;
+    }
+    if (getline(infile, tempString) && tempString != "") {
+
+        p = std::sregex_token_iterator(tempString.begin(), tempString.end(), re, -1);
+
+        while (p != end) {
+            BaseEvent::propertyNameVector.push_back(*p);
+            ++p;
+        }
+    }
+    infile.close();
+
+////    for debug: get propertyIndex
 //    for (auto item : BaseEvent::propertyNameVector) {
 //        std::cout << item << ",";
 //    }
-//
+//    int a = 0;
 }
 
 /*
@@ -582,28 +605,29 @@ void Initializer::showCommandList() {
 
     std::string cmdList = "CommandLine Option Rules:\n";
     cmdList.append("-e , the event type you want to trace\n");
-    cmdList.append("\targuments details:\n"
+    cmdList.append("\trguments details:\n"
                    "\t\t0x1(PROCESS)\n"
                    "\t\t0x2(THREAD)\n"
                    "\t\t0x4(IMAGE)\n"
                    "\t\t0x8(FILE)\n"
-                   "\t\t0x10(DISK)\n"
+                   "\t\t0x10(DISK) win7 is not supported.\n"
                    "\t\t0x20(REGISTRY)\n"
 //                   "\t\t0x40(SYSTEMCALL)\n"
                    "\t\t0x40(CALLSTACK)\n"
                    "\t\t0x80(TCPIP)\n"
                    "\t\tall(tracing all event types)\n"
-                   "\tusage:-e 0x11 ,which will trace events of Process and Disk.\n"
-                   "\tusage:-e 0xff ,which will trace all events except 'callstack',if you don't need API Info, you should specify 0xff to '-e' option.\n"
-                   "\tusage:-e all  ,which will trace all events.\n"
+                   "\tUsage:-e 0x11 ,which will trace events of Process and Disk.\n"
+                   "\tUsage:-e 0xbf ,which will trace all events except 'callstack',if you don't need API Info, you should specify '0xbf' to '-e' option.\n"
+                   "\tUsage:-e all  ,which will trace all events.\n"
+                   "\tNote:Do not listen 'DISK' events on Win7,kellect will crash.\n"
     );
     cmdList.append("-f , the file path that you want to output the events\n"
-                   "\tusage: c:\\123.txt ,which will output events to file c:\\123.txt\n");
+                   "\tUsage: c:\\123.txt ,which will output events to file c:\\123.txt\n");
     cmdList.append("-c , output events to the console \n");
     cmdList.append("-k , output events to the kafka server, \n"
-                   "\tusage: 192.168.1.2:9092/test ,which will output events to server which address is 192.168.1.2:9092 and topic is \"test\"\n");
+                   "\tUsage: 192.168.1.2:9092/test ,which will output events to server which address is 192.168.1.2:9092 and topic is \"test\"\n");
     cmdList.append("-s , the socket that you want to transmission events\n"
-                   "\tusage: 192.168.1.2:66 ,which will output events to host which address is 192.168.1.2 \n");
+                   "\tUsage: 192.168.1.2:66 ,which will output events to host which address is 192.168.1.2 \n");
     cmdList.append("--outputThreshold , set the threshold number of output events.\n");
     cmdList.append("-h , get the manual\n");
 

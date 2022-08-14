@@ -32,7 +32,9 @@ bool Filter::thirdFilter(BaseEvent* event) {
 
     if (!event->isValueableEvent() )
         flt = true;
+
     if(listenAllEvents||listenedEventsProviders.count(event->getEventIdentifier()->getProviderID())){
+
         if (filterPID(event->getProcessID())) {
 //            event->setValueableEvent(false);
             flt = true;

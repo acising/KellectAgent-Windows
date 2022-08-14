@@ -43,6 +43,7 @@ void EventParser::eventParseThreadFunc(BaseEvent* event) {
 //pEvent is original event stream structure
 VOID WINAPI EventParser::ConsumeEventMain(PEVENT_RECORD pEvent) {
 
+//    std::cout<<"providerID:"<< pEvent->EventHeader.ProviderId.Data1<<" opCode:"<<(int)pEvent->EventHeader.EventDescriptor.Opcode<<std::endl;
 	if (++comingEventsNum % 1000000 == 0) {
 		std::cout << "coming events number: " << comingEventsNum << std::endl;
 	}
@@ -57,16 +58,19 @@ VOID WINAPI EventParser::ConsumeEventMain(PEVENT_RECORD pEvent) {
 			{
 				event->setRawProperty(pEvent->UserDataLength, pEvent->UserData);
 				parsePools->enqueueTask(eventParseThreadFunc, event);	//asynchronize
-			}
+
+            }
 			else {
-				//synchronize section
+                //synchronize section
 				event = ETWConfiguration::eventParser
                         .getPropertiesByParsingOffset(event, pEvent->UserDataLength, pEvent->UserData);
 
                 if(event->isValueableEvent()) {
 
                     event->parse();
+
                     if (!Filter::thirdFilter(event)) {
+
                         if (++successParse % 50000 == 0) {
                             std::cout << "parse events number:" << successParse << std::endl;
                         }
