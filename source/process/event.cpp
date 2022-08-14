@@ -47,7 +47,6 @@ void BaseEvent::fillProcessInfo(){
 
         EventProcess::processID2Name[pid] = pName;
         setProcessName(pName);
-//        std::cout<<"pid:"<<pid<<"  pname:"<<rtVal <<std::endl;
     }
 
     if(ppid != -1){
@@ -62,7 +61,6 @@ void BaseEvent::fillProcessInfo(){
 //
             EventProcess::processID2Name[ppid] = ppName;
             setParentProcessName(ppName);
-//            std::cout<<"ppid:"<<ppid<<"  ppname:"<<ppName <<std::endl;
         }
     }else{
         setParentProcessName("Unknown");

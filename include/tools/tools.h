@@ -16,7 +16,7 @@ public:
 	static std::string getTimeFromSystemTimeStamp(LARGE_INTEGER timeStamp);
 	static std::string getProcessNameByPID(ULONG64 pid);
 	static int getProcessIDByTID(ULONG64 pid);
-
+    static bool getOSVersion(DWORD& dwMajorVer, DWORD& dwMinorVer,DWORD& dwBuildNumber);
 	static void initVolume2DiskMap();
 	static void convertFileNameInDiskFormat(std::string &fileName);
 	static std::string parseEventInJsonFormat(const BaseEvent &event);

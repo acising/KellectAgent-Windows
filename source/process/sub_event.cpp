@@ -61,7 +61,7 @@ void setFileName(BaseEvent* ev) {
 }
 void EventFile::parse() {
 
-	dataType* dt = getProperty(FileObject);
+    dataType* dt = getProperty(FileObject);
 	ULONG64 fileObject;
 
 	if (dt) {
@@ -116,7 +116,6 @@ void EventFile::parse() {
         fileKey2Name[fileKey] = fileName;
         fileObject2Name[fileObject] = fileName;
 
-//        std::cout<<getProperty(FileName)->getString()<<std::endl;
 		break;
 	}
 	case CLEANUP:{
@@ -146,18 +145,20 @@ void EventFile::parse() {
         //set tid and pid according to 'EventThread::threadId2processId'
 		dataType* tmp = getProperty(TTID);
 		if(tmp){
-			int threadId = tmp->getULONG64();
+
+            ULONG64 threadId = tmp->getULONG64();
 			setThreadID(threadId);
 
-			if (EventThread::threadId2processId[threadId] != -1) {
-				int pid = EventThread::threadId2processId[threadId];
+			if (threadId<MAX_THREAD_NUM && EventThread::threadId2processId[threadId] != -1) {
+
+                int pid = EventThread::threadId2processId[threadId];
 				setProcessID(pid);
 			}
 		}
-
         //fill parentProcess Information
         fillProcessInfo();
 	}
+
 }
 
 //some events need to revise tid and pid, return pid
