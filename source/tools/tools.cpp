@@ -255,3 +255,29 @@ bool Tools::getOSVersion(DWORD& dwMajorVer, DWORD& dwMinorVer,DWORD& dwBuildNumb
 
     return bRet;
 }
+
+std::string Tools::convertTimestamp(ULONG64 timestamp){
+
+//    int hourNanoSecond = 60*60*1000*1000;
+//    int minuteNanoSecond = 60*1000*1000;
+//    int sec = 60*1000*1000;
+    ULONG64 duration = 369;
+//    duration *= 369;
+    duration *= 365;
+    duration *= 24;
+    duration *= 60*60*1000;
+    time_t tt = (timestamp/10000-duration)/1000;
+
+    time_t current = time(NULL);
+    struct tm *tmp_time_current = gmtime(&current);
+    struct tm *tmp_time = gmtime(&tt);
+    char s[100];
+
+
+    strftime(s, sizeof(s)+1, "%04Y%02m%02d %H:%M:%S", tmp_time_current);
+    printf("%d: %s\n", (ULONG64)tt, s);
+
+    int a = 0;
+
+    return s;
+}

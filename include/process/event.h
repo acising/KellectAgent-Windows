@@ -86,6 +86,7 @@ protected:
 	std::string processName;
 	std::string parentProcessName;
 	ULONG64 timestamp;
+    std::string sTimestamp;
 	EventIdentifier* ei;
 	bool valueableEvent = true;
 	bool propertiesDeleted = false;
@@ -138,6 +139,7 @@ public:
 	void setParentProcessID(int ppid) { parentProcessID = ppid; }
 	void setProcessorID(int pcid) { processorID = pcid; }
 	void setTimeStamp(ULONG64 timeStamp) { timestamp = timeStamp; }
+	void setSTimeStamp(std::string timeStamp) { sTimestamp = timeStamp; }
 	void setProcessName(std::string name) { processName = name; }
     void fillProcessInfo();
 	void setParentProcessName(std::string parentName) { parentProcessName = parentName; }
@@ -163,6 +165,7 @@ public:
 	int getParentProcessID() { return parentProcessID; }
 	int getProcessorID() { return processorID; }
 	ULONG64 getTimeStamp() { return  timestamp; }
+	std::string getSTimeStamp() { return  sTimestamp; }
 	bool isValueableEvent() { return  valueableEvent; }
 	std::string& getProcessName() { return processName; }
 	std::string& getParentProcessName() { return parentProcessName; }

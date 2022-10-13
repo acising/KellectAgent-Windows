@@ -20,6 +20,7 @@ public:
 	static void initVolume2DiskMap();
 	static void convertFileNameInDiskFormat(std::string &fileName);
 	static std::string parseEventInJsonFormat(const BaseEvent &event);
+	static std::string convertTimestamp(ULONG64 timestamp);
 };
 
 template<typename Key, typename Val>

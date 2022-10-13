@@ -76,6 +76,7 @@ BaseEvent* WINAPI EventParser::getEventWithIdentifier(PEVENT_RECORD pEvent) {
     event->setProcessID(pEvent->EventHeader.ProcessId);     //TCPIP的pEvent中processID ThreadID
     event->setThreadID(pEvent->EventHeader.ThreadId);
     event->setTimeStamp(pEvent->EventHeader.TimeStamp.QuadPart);
+//    event->setSTimeStamp(Tools::convertTimestamp(pEvent->EventHeader.TimeStamp.QuadPart));
     event->setEventIdentifier(
         new EventIdentifier(pEvent->EventHeader.ProviderId.Data1,pEvent->EventHeader.EventDescriptor.Opcode)
     );

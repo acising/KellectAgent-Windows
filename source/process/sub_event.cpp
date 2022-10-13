@@ -123,6 +123,8 @@ void EventFile::parse() {
         setFileName(this);
         break;
     }
+    case RENAME:
+    case DELETE_:
     case READ:
     case WRITE:
         setFileName(this);
