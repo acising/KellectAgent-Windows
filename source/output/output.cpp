@@ -106,7 +106,7 @@ STATUS SocketOutPut::init() {
 
         addr_serv.sin_addr.S_un.S_addr = inet_addr(ip.c_str());  //change the format of oct addr to bin addr
         addr_serv.sin_family = AF_INET;		//set the address family to IPV4
-        addr_serv.sin_port = port;	//change the format of oct port to bin port
+        addr_serv.sin_port = htons(port);	//change the format of oct port to bin port
 
         //connect the server,return STATUS_SOCKET_ERROR  if connect failed
         if (connect(socket_serv, (SOCKADDR*)&addr_serv, sizeof(addr_serv)) == SOCKET_ERROR)
