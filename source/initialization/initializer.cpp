@@ -145,7 +145,7 @@ void Initializer::initFilter() {
             }
             Filter::filteredProcessID.insert(GetCurrentProcessId());
         }
-        else if (strcmp(tempString.c_str(), "filteredEventIdentifier") == 0) {
+        else if (strcmp(tempString.c_str(), "filteredEventIdentifier") == 0) {      //include need parse events.
 
             while (getline(filterFile, tempString) && tempString != "") {
                 p = std::sregex_token_iterator(tempString.begin(), tempString.end(), re, -1);
@@ -304,6 +304,7 @@ void Initializer::initEventPropertiesMap(std::string confFile) {
         const char *eventName = eventNameElement->GetText();
         ei = new EventIdentifier(providerID , opCode, eventName);
 
+//        std::cout<<providerID<<" "<<opCode<<std::endl;
 //        BaseEvent::eventProviderID2Opcodes[providerID].insert(ei);
 //        tempEventIdentifierSet.insert(ei);
         XMLElement * attrElement = attributesElement->FirstChildElement("Attribute");
@@ -622,12 +623,12 @@ void Initializer::showCommandList() {
                    "\tNote:Do not listen 'DISK' events on Win7,kellect will crash.\n"
     );
     cmdList.append("-f , the file path that you want to output the events\n"
-                   "\tUsage: c:\\123.txt ,which will output events to file c:\\123.txt\n");
+                   "\tUsage: c:\\123.txt ,output events to file c:\\123.txt\n");
     cmdList.append("-c , output events to the console \n");
     cmdList.append("-k , output events to the kafka server, \n"
-                   "\tUsage: 192.168.1.2:9092/test ,which will output events to server which address is 192.168.1.2:9092 and topic is \"test\"\n");
-    cmdList.append("-s , the socket that you want to transmission events\n"
-                   "\tUsage: 192.168.1.2:66 ,which will output events to host which address is 192.168.1.2 \n");
+                   "\tUsage: 192.168.1.2:9092/test ,output events to server 192.168.1.2:9092 and topic is \"test\"\n");
+    cmdList.append("-s , the socket that you want to transmit events\n"
+                   "\tUsage: 192.168.1.2:66 ,output events to host 192.168.1.2 \n");
     cmdList.append("--outputThreshold , set the threshold number of output events.\n");
     cmdList.append("-h , get the manual\n");
 

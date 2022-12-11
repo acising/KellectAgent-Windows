@@ -142,15 +142,15 @@ void Tools::convertFileNameInDiskFormat(std::string &fileName) {
     }
 
     if (strcmp(fileName.substr(0,7).c_str(), "\\Device") == 0) {
-        std::string pathType = fileName.substr(0,23);
 
-        std::map<std::string,std::string>::iterator it =  EventImage::volume2Disk.find(pathType);
-        if (it == EventImage::volume2Disk.end()) {
+        int idx = fileName.find('\\',9);
+        if(idx != -1){
+            std::string pathType = fileName.substr(0,idx);
+            std::map<std::string,std::string>::iterator it =  EventImage::volume2Disk.find(pathType);
+            fileName = it->second + fileName.substr(idx);
+        }else{
             MyLogger::writeLog("not find the mapping imageFileName2DiskNumber");
-            return;
         }
-
-        fileName = it->second + fileName.substr(23);
     }
     else if (strcmp(fileName.substr(0,11).c_str(), "\\SystemRoot") == 0) {
         std::string pathType = fileName.substr(0, 11);

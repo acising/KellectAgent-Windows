@@ -268,14 +268,20 @@ STATUS EventImage::getExportAPIs(LPVOID hModule, std::string& fileName, std::set
 		pExportDirectory = (PIMAGE_EXPORT_DIRECTORY)(((PIMAGE_NT_HEADERS32)pNtHeader)->OptionalHeader.DataDirectory[0].VirtualAddress + (PBYTE)hModule);
 	}
 	else {
-		pExportDirectory = (PIMAGE_EXPORT_DIRECTORY)(pNtHeader->OptionalHeader.DataDirectory[0].VirtualAddress + (PBYTE)hModule);
-	}
+        //AMD64 machine architecture
+        pExportDirectory = (PIMAGE_EXPORT_DIRECTORY)(((PIMAGE_NT_HEADERS64)((PBYTE)hModule + pDosHeader->e_lfanew))->
+                OptionalHeader.DataDirectory[0].VirtualAddress + (PBYTE)hModule);
 
-	pAddressName = PDWORD((PBYTE)hModule + pExportDirectory->AddressOfNames);
-	pAddressOfNameOrdinals = (PWORD)((PBYTE)hModule + pExportDirectory->AddressOfNameOrdinals);
-	pAddresOfFunction = (PDWORD)((PBYTE)hModule + pExportDirectory->AddressOfFunctions);
+        //        std::cout<<pNtHeader->Signature<<std::endl;
+        //can not parse other machine type except 0x014c
+//        return STATUS_FAILED;
+    }
 
-	if (pExportDirectory->AddressOfFunctions + pExportDirectory->AddressOfNames == 0 || pExportDirectory->NumberOfNames == 0) {
+    pAddressName = (PDWORD)((PBYTE)hModule + pExportDirectory->AddressOfNames);
+    pAddressOfNameOrdinals = (PWORD)((PBYTE)hModule + pExportDirectory->AddressOfNameOrdinals);
+    pAddresOfFunction = (PDWORD)((PBYTE)hModule + pExportDirectory->AddressOfFunctions);
+
+    if (pExportDirectory->AddressOfFunctions + pExportDirectory->AddressOfNames == 0 || pExportDirectory->NumberOfNames == 0) {
 		//MyLogger::writeLog("imageFile: "+ Tools::WString2String(fileName.c_str()) +" have no apis");
 		//return tempAPIs;
 		return STATUS_FAILED;
@@ -355,6 +361,10 @@ void  EventImage::parse() {
 	//set process info
     fillProcessInfo(); //fill parentProcess and process Information
 
+    if(imageFileName.find(".exe") != -1){   //won't parse ".exe" PE file
+        return;
+    }
+
 	switch (opCode)
 	{
 	case IMAGEDCEND:
@@ -433,6 +443,29 @@ void  EventImage::parse() {
 				EventProcess::processID2ModuleAddressPair.insert
 				(processID, std::make_pair(baseAddress, baseAddress + moduleSize));
 			}
+            //===============================================================
+
+//            if(Filter::filteredImageFile.count(imageFileName) == 0){
+//                std::cout<<"imageName:"<<imageFileName<<"  BaseAddress:"<< baseAddress<<std::endl;
+//
+//                std::set<MyAPI*, MyAPISortCriterion> apis;
+//                Filter::filteredImageFile.insert(imageFileName);
+//                int status = EventImage::getAPIsFromFile(imageFileName, apis);
+//
+//                if (status == STATUS_SUCCESS) {
+//                    //std::cout << currentImage << "  " << apis.size() << std::endl;
+//                    EventImage::modulesName2APIs.insert(
+//                            std::map <std::string, std::set<MyAPI*, MyAPISortCriterion> >::value_type(imageFileName, apis)
+//                            //currentImage, apis
+//                    );
+//                }
+////                for(auto api = apis.begin(); api!=apis.end();++api){
+////                std::cout<<"address:"<<(*api)->getAPIAddress()<<"   apiName:"<<(*api)->getAPIName()<<std::endl;
+////                }
+//            }
+
+
+            //===============================================================
 		}
 		else	//found modules set mapping with the processID, do nothing.
 		{

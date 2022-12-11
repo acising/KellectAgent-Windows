@@ -35,6 +35,6 @@ private:
 	static inline bool filterEventIdentifier(ULONG64 providerId, int opCode) {
 		EventIdentifier ie = EventIdentifier(providerId, opCode);
 		//filteredEventIdentifiers是过滤黑名单事件
-		return filteredEventIdentifiers.count(&ie);
+		return filteredEventIdentifiers.count(&ie)==0;
 	}
 };

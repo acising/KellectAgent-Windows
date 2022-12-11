@@ -219,7 +219,7 @@ BaseEvent* EventParser::getPropertiesByParsingOffset(BaseEvent* event, int userD
         }
         else {
 
-            //get call address number, -2 because of the callStack addresses begin from third property
+            //get call address number, -2 because of the callStack addresses begin from third position
             stacksNum = (data_size / 8 - 2);
             processID = callStackEvent->getProcessID();
             //auto it = EventProcess::processID2ModuleAddressPair.find(callStackEvent->getProcessID());
