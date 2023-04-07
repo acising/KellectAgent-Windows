@@ -6,7 +6,7 @@
 
 ## KELLCT Introduction
 
-**KELLCT **(a **K**ernel-based efficient and **L**oss**l**ess event log coll**ec**tor) is a system framework for kernel-level event log processing, including In the stages of acquisition, cleaning, fusion, storage and analysis, KELLCT is divided into KellectAgent and KellectService according to different functions.
+**KELLCT **(a **K**ernel-based efficient and **L**oss**l**ess event log coll**ec**tor) is a system framework for kernel-level event log processing, including the stages of acquisition, cleaning, fusion, storage and analysis, KELLCT is divided into KellectAgent and KellectService according to different functions.
 
 ### KellectAgent-Windows Introduction
 
