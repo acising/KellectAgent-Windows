@@ -64,7 +64,7 @@ After testing, KellectAgent can run on **Windows7 (client version), Windows Serv
 
 The collection function must be run as **Administrator**. As shown below, the function can be selected in the form of configuration parameters.
 
-![image-20230407102213003](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20230407102213003.png)
+![image-20230407102213003](images/command.png)
 
 For example, the following command can be used to collect all system logs and output them to the file "test.json":
 

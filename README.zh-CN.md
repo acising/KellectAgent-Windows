@@ -63,7 +63,7 @@ KELLECT项目的结构如下表所示：
 
 采集功能必须以**管理员**身份运行。如下所示，可通过配置参数的形式进行功能的选择。
 
-![image-20230407102213003](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20230407102213003.png)
+![image-20230407102213003](images/command.png)
 
 例如，可以通过以下命令全量采集系统日志并输出至文件"test.json"：
 
