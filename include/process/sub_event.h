@@ -191,23 +191,16 @@ private:
 class CallStackIdentifier {
 
 private:
-//	std::string operationName;
 	int depth;		//callstacks depth
-//	ULONG64 topCallAddress;
 	std::vector<ULONG64> callAddresses;
 
 public:
-//	CallStackIdentifier(std::string opName, int dth, std::vector<ULONG64> callAddresses) :
-//		operationName(opName), depth(dth), callAddresses(callAddresses) {}
     CallStackIdentifier(int depth, std::vector<ULONG64> callAddresses) :
             depth(depth), callAddresses(callAddresses) {}
 
 	bool operator< (const CallStackIdentifier& ci)const {
 		if (depth != ci.depth)	return depth < ci.depth;
 		else {
-			//int res = strcmp(operationName.c_str(), ci.operationName.c_str());
-			//if (res != 0)	return res < 0;
-			//else{
             for(int i =0;i<depth;i++){
                 if(ci.callAddresses[i] == this->callAddresses[i]){
                     if(i>5) return false;
@@ -230,7 +223,6 @@ public:
 	static std::map<CallStackIdentifier, std::string*> callStackRecord;
 	static void initCallStackTracing(TRACEHANDLE& SessionHandle);
 	static void initCallStackEvents();
-	//std::string toJsonString() override;
 	void parse() override;
 	//void setCallStackInfo(std::wstring& callStackInfo) { this->callStackInfo = callStackInfo; }
 	//std::wstring& getCallStackInfo() { return callStackInfo; }
@@ -246,9 +238,6 @@ public:
 	private:
 		ULONG64 addr;
 	};
-
-private:
-	//std::wstring callStackInfo;
 };
 
 class EventPerfInfo :public BaseEvent {

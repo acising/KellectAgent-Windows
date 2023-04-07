@@ -1,27 +1,31 @@
-# **Kellect** :a **K**ernel-based Efficient and **L**oss**l**ess Event Log Coll**ec**tor
+# **KELLCT ** :a **K**ernel-based Efficient and **L**oss**l**ess Event Log Coll**ec**tor
 
 [简体中文](./README.zh-CN.md) | English 
 
 ![](http://121.40.168.60/kellect/kellect.jpeg)
 
-## kellect Introduction
+## KELLCT Introduction
 
+**KELLCT **(a **K**ernel-based efficient and **L**oss**l**ess event log coll**ec**tor) is a system framework for kernel-level event log processing, including In the stages of acquisition, cleaning, fusion, storage and analysis, KELLCT is divided into KellectAgent and KellectService according to different functions.
 
-**Kellect** means a **K**ernel-based efficient and **L**oss**l**ess event log coll**ec**tor which is a systematic framework for the full processing on kernel level logs, including collection, cleanup, confusion, storage, and analysis. 
+### KellectAgent-Windows Introduction
 
-As a firstborn version, kellect is a multi-threaded Windows kernel log collector based on ETW(BaseEvent Tracing for Windows), developed in C++ language with high-efficient performance. kellect can track kernel-level information of Windows system, such as FileIO, Process, Thread, ImageLoad, Registry, and so on.
+KellectAgent-Windows (hereinafter referred to as kellectAgent), as the first version, is a multi-threaded Windows kernel log collector based on ETW (Event Tracing for Windows), developed based on C++ language, with high performance and low system overhead. KellectAgent can track the kernel-level event information of the Windows system, such as FileIO, Process, Thread, ImageLoad, Registry, etc.
 
-The program integrates the full functions of event collection, event analysis, event semantic correction, and event output. Output in JSON format, and can specify the output to a file path or transfer to another host through the socket.
+The program integrates functions such as event collection, event analysis, event semantic correction, and event output. The output format follows the JSON specification, and there are the following four output methods:
 
-We implemented most of the functionality, which means users can use this tool via start PowerShell.exe or cmd.exe and specify the command-line options and parameters as needed without modifying the source code. We also provide some configuration files that users can customize to suit their needs.
+- Output to console display;
+- Output to the specified file path;
+- Output to the designated Socket communication terminal;
+- Output to the specified Kafka server.
 
-For more information on the future of kellect, see the [Future Work]() section.
+Users can use this tool directly through "PowerShell.exe" or "cmd.exe", and set command parameters as needed. We also provide some configuration files, which users can customize according to their needs.
 
-
+For more information on the future of KELLCT , see the [Future Work]() section.
 
 ## **Implementation Details**
 
-kellect uses a number of 3rd party libraries, as shown below. Please see LICENSE-3RD-PARTY for further details.
+KellectAgent uses a number of 3rd party libraries, as shown below. Please see LICENSE-3RD-PARTY for further details.
 
 | Module Name                 | Module Version | LicenseUrl                                    |
 | --------------------------- | -------------- | --------------------------------------------- |
@@ -31,7 +35,7 @@ kellect uses a number of 3rd party libraries, as shown below. Please see LICENSE
 | TinyXML-2                   | v2             | https://github.com/leethomason/tinyxml2       |
 | librdkafka                  | v1.6           | https://github.com/edenhill/librdkafka        |
 
-The development of kellect  depends on the Clion, but the compilation depends on the MSVC compiler. The software and versions used for development are shown as blew:
+The development of KellectAgent mainly depends on the Clion development tool, and the compilation mainly depends on the MSVC compiler. The software and versions used for development are shown in the table below:
 
 | Tool Name     | Version  |
 |---------------|-----|
@@ -50,29 +54,32 @@ The directory of kellect is shown as blew:
 | source/config     | config files             |
 | release           | executable file   |
 
-## **kellect Manual**
+## **KellectAgent Manual**
 
 ### **Usage of the command-line**
 
-After testing ,kellect can run on OS versions above win7(x64). 
+After testing, KellectAgent can run on **Windows7 (client version), Windows Server2008 (server version) and above versions**.
 
-Users must run this program **as administrator** , and provide some command-line options and parameters to achieve specific functions as blew.
+> **Note:** The Windows 11 version is currently not supported, and will be supported in subsequent versions.
 
-![command](images\command.png)
+The collection function must be run as **Administrator**. As shown below, the function can be selected in the form of configuration parameters.
 
-We can collect the require data with the following command：
+![image-20230407102213003](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20230407102213003.png)
+
+For example, the following command can be used to collect all system logs and output them to the file "test.json":
 
 
    ```
-   kellect.exe -e 0x1 -f test.json
+   kellect.exe -e all -f test.json
    ```
 
-**Notes:** The argument to the ‘-e’ option is in the form of a decimal sum.
-
+**Note:** For the parameter "-e", please specify the parameter value in hexadecimal format.
 
 ### **Usage of the configuration file**
 
-There are one file users can configure: filter.txt. **Usually no modification is required unless you have customized needs.**
+#### filter.txt
+
+Users can implement different functions by configuring filter.txt. Usually KellectAgent does not need to be modified to run, unless there are customized requirements.
 
 - The role of filter.txt is to filter events you don't need. There are three types of labels used for filtering, which are the process ID, event identifier, blacklist of image file path and whitelist of image file path. The default configuration is as follows:
 
@@ -81,52 +88,69 @@ filteredProcessID
 0 4 128
 
 filteredEventIdentifier
-2429279289 76
-2429279289 69
-2429279289 74
-2429279289 75
-2429279289 84
-2429279289 82
-2429279289 80
-2429279289 81
-2429279289 79
-2429279289 83
-2429279289 86
-3208270021 11
-3208270021 17
-3208270021 27
-3208270021 26
-3208270021 10
-1030727888 11
+3740466758 32
+1030727888 1
+1030727888 2
+1030727889 1
+1030727889 2
+1030727889 36
+749821213 10
+749821213 2
+...
 
-blacklistOfImageFiles
-
-whitelistOfImageFiles
+filteredImageFile
+C:\Windows\SysWOW64\ntdll.dll
 ```
 
 **Label descriptions:**
 
-1. *[filteredProcessID]* 
+1. *[filteredProcessID]*
 
-   means filter events according to the ID list in this label. Process IDs are separated by spaces.
+    Indicates to filter specific events based on the list of IDs in this tab. Process IDs are separated by spaces.
 
-2. *[filteredEventIdentifier]* 
+2. *[filteredEventIdentifier]*
 
-   means filter events by the combination of BaseEvent ProviderID and opcode, which we call the EventIdentifier.
+    Indicates filtering events through the combination of Event ProviderID and opcode, which we call EventIdentifier. The specific event log details can be obtained in [Microsoft Documentation](https://docs.microsoft.com/en-us/windows/win32/etw/fileio). ProviderID is the decimal form of the first part of the Guid class, and opcode is the EventType value under Remarks of BaseEvent Class Page.
+    
+    > **Note:** The event identifiers under this label are whitelisted and are the types of events we need to collect.
 
-   We can find the BaseEvent information in [https://docs.microsoft.com/en-us/windows/win32/etw/fileio]. ProviderID is the decimal form of the first part of class Guid and opcode is the EventType value under the Remarks of each BaseEvent Class Page.
+![image-20220503171251436](images/eventType.png)
 
-   ![image-20220503171251436](images/eventType.png)
+![image-20220503171255065](images/guid.png)
 
-   ![image-20220503171255065](images/guid.png)
+​	3.*[filteredImageFile]*
 
-3. *[blacklistOfImageFiles]*
+​		Events that load an Image can be **filtered** by the Image file path listed in this tag.
 
-   means that we can **filter** Image and CallStack type events by the images listed in this label.
+#### initImages.txt
 
-4. *[whitelistOfImageFiles]*
+This file stores some system DLL files, and we will pre-read these files when KellectAgent is running to speed up the efficiency of subsequent event parsing. Users can add the path of the DLL file that needs to be preloaded to the file.
 
-   means that we can **reserve** Image and CallStack type events by the images listed in this label.
+```json
+C:\Windows\System32\win32u.dll
+C:\Windows\SysWOW64\win32u.dll
+C:\Windows\System32\msvcp_win.dll
+C:\Windows\SysWOW64\msvcp_win.dll
+C:\Windows\System32\KernelBase.dll
+C:\Windows\SysWOW64\KernelBase.dll
+C:\Windows\SysWOW64\FWPUCLNT.DLL
+C:\Windows\System32\wininet.dll
+C:\Windows\System32\StateRepository.Core.dll
+C:\Windows\System32\rilproxy.dll
+C:\Windows\System32\fwpolicyiomgr.dll
+C:\Windows\System32\dbghelp.dll
+...
+```
+
+> **NOTE:** Some DLL files cannot be resolved.
+
+#### log.conf
+
+Configure the log output format and path information.
+
+#### uuid
+
+Set the UUID of the current host. If not specified, KellectAgent will automatically generate a UUID and output it to the file.
 
 ## **Output Format**
 
@@ -134,12 +158,17 @@ We output event records in the format of JSON. Each BaseEvent has two parts of p
 
 - Common properties
 
-| Property    | Description                                       |
-| ----------- | ------------------------------------------------- |
-| threadID    | Identifies the thread that generated  the event.  |
-| processID   | Identifies the process that generated  the event. |
-| processName | Name of the process that generated the  event.    |
-| timestamp   | Contains the time that the event  occurred        |
+  | 属性      | 描述                                                         |
+  | --------- | ------------------------------------------------------------ |
+  | Event     | corresponding event name                                     |
+  | TID       | ID of the thread that generated the event                    |
+  | PID       | ID of the process that generated the event                   |
+  | PName     | name of the process that generated the event                 |
+  | PPID      | parent ID of the process that generated the event            |
+  | PPName    | parent name of the process that generated the event          |
+  | TimeStamp | time of the event occured                                    |
+  | Host-UUID | the host ID that generated the event, <br />distinguish the specific log source in the joint analysis of multi-host logs |
+  | Args      | private property pairs for specific event types              |
 
 - Private properties
 
@@ -166,63 +195,71 @@ We output event records in the format of JSON. Each BaseEvent has two parts of p
 
  3. CallStack event . The APIs we collected is provided by Windows itself, don't collect any API in user-defined dll files.
 
-    | Property      | Property                                                     |
-    | ------------- | ------------------------------------------------------------ |
-    | callStackInfo | the callstacks of the process operation.<br />  (the format of each call is like : **ModulePath:APIName**, e.g: C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock) |
+    | Property  | Property                                                     |
+    | --------- | ------------------------------------------------------------ |
+    | stackInfo | the callstacks of the process operation.<br />  (the format of each call is like : **ModulePath:APIName**, e.g: C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock) |
 
- 4. ...... we can find other events properties in (https://docs.microsoft.com/en-us/windows/win32/etw/msnt-systemtrace)
+ 4. ...... for other event attribute descriptions, please refer to [Microsoft Documentation](https://docs.microsoft.com/en-us/windows/win32/etw/msnt-systemtrace).
 
 It should be noted that we have **modified or populated** the properties of most events, so there will be some differences between the native events provided by Windows and ours. 
 
 The output case are as follows:
 
-```
+```json
 #FileIO Create BaseEvent
 {
-    "EventName":"FileIOCreate",
-    "ProcessID":11144,
-    "ProcessName":"clion64.exe",
-    "ThreadID":15692,
-    "TimeStamp":132959694278638867,
-    "arguments":{
-        "CreateOptions":50331744,
-        "FileAttributes":128,
-        "FileObject":251724112,
-        "IrpPtr":116229640,
-        "OpenPath":"C:\Users\Administrator\AppData\Local\JetBrains\CLion2022.1\caches\contentHashes.dat.keystream.len",
-        "ShareAccess":7,
-        "TTID":15692
-    }
+	"Event": "FileIOCreate",
+	"PID": 956,
+	"PName": "QQPCTray.exe",
+	"PPID": 2832,
+	"PPName": "QQPCRTP.exe",
+	"TID": 9516,
+	"TimeStamp": 133253085392394264,
+	"Host-UUID": "FBFFA15C-FEDE-4f96-9AF8-398294758A2A",
+	"Args": {
+		"CreateOptions": 18890752,
+		"FileAttributes": 0,
+		"FileObject": 2590015792,
+		"IrpPtr": 2812860872,
+		"OpenPath": "C:\Program Files\WindowsApps\Microsoft.LanguageExperiencePackzh-CN_19041.57.180.0_neutral__8wekyb3d8bbwe\Windows\System32\DriverStore\zh-CN\uaspstor.inf_loc",
+		"ShareAccess": 7,
+		"TTID": 9516
+	}
 }
 
 #Callstack event
 {
-    "EventName":"CallStack",
-    "ProcessID":11144,
-    "ProcessName":"clion64.exe",
-    "ThreadID":15692,
-    "TimeStamp":132959694278638867,
-    "arguments":{
-        "stackInfo":"C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
-        C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
-        C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
-        C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
-        C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
-        C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
-        C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
-        C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
-        C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
-        C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
-        C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
-        C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
-        C:\Windows\System32\ntdll.dll:LdrSystemDllInitBlock,
-        C:\Windows\System32\ntdll.dll:RtlCaptureStackContext"
-    }
+	"Event": "CallStack",
+	"PID": 21576,
+	"PName": "GoogleUpdate.exe",
+	"PPID": 1808,
+	"PPName": "svchost.exe",
+	"TID": 44940,
+	"TimeStamp": 133253092340669753,
+	"Host-UUID": "FBFFA15C-FEDE-4f96-9AF8-398294758A2A",
+	"Args": {
+		"stackInfo": "C:\Program Files (x86)\Google\Update\1.3.36.152\goopdate.dll:DllEntry,
+        C:\Program Files (x86)\Google\Update\1.3.36.152\goopdate.dll:DllEntry,
+        C:\Windows\SysWOW64\sechost.dll:RegisterTraceGuidsA,
+        C:\Windows\SysWOW64\sechost.dll:RegisterTraceGuidsA,
+        C:\Program Files (x86)\Google\Update\1.3.36.152\goopdate.dll:DllEntry,
+        C:\Program Files (x86)\Google\Update\1.3.36.152\goopdate.dll:DllEntry,
+        C:\Program Files (x86)\Google\Update\1.3.36.152\goopdate.dll:DllEntry,
+        C:\Program Files (x86)\Google\Update\1.3.36.152\goopdate.dll:DllEntry,
+        C:\Windows\System32\ntdll.dll:RtlCaptureStackContext,
+        C:\Windows\System32\ntdll.dll:RtlpCleanupRegistryKeys,
+        C:\Windows\System32\ntdll.dll:RtlValidProcessProtection,
+        C:\Windows\System32\ntdll.dll:_CIcos,
+        C:\Windows\System32\ntdll.dll:cos,
+        C:\Windows\SysWOW64\ntdll.dll:NtQueryAttributesFile,
+        C:\Windows\SysWOW64\ntdll.dll:RtlMultiByteToUnicodeN,
+        C:\Windows\SysWOW64\ntdll.dll:RtlMultiByteToUnicodeN,
+        ...
+	}
 }
-
 ```
 ## Dateset
-We collect the events  of the behavior of [ATT&CK](https://attack.mitre.org/)  based on the [Atomic Red Team](https://github.com/redcanaryco/atomic-red-team) proposed by redcanaryco. The data is about the techniques in ATT&CK. And the dataset is sharing on the [Google Drive](https://drive.google.com/drive/folders/1jk6qx6jNGag8a-VHYyQkON6cMgH9djct?usp=sharing).
+We use KellectAgent as the collection tool and based on the script [Automic Red Team](https://github.com/redcanaryco/atomic-red-team) proposed by redcanaryco for data collection. The script is based on the tactics in [ATT&CK](https://attack.mitre.org/), and the data we collected is shared in [Google Cloud Disk](https://drive.google.com/drive/folders/1jk6qx6jNGag8a -VHYyQkON6cMgH9djct?usp=sharing)
 
 ## Future Work
 

@@ -76,7 +76,6 @@ BaseEvent* WINAPI EventParser::getEventWithIdentifier(PEVENT_RECORD pEvent) {
     event->setProcessID(pEvent->EventHeader.ProcessId);     //TCPIP的pEvent中processID ThreadID
     event->setThreadID(pEvent->EventHeader.ThreadId);
     event->setTimeStamp(pEvent->EventHeader.TimeStamp.QuadPart);
-//    event->setSTimeStamp(Tools::convertTimestamp(pEvent->EventHeader.TimeStamp.QuadPart));
     event->setEventIdentifier(
         new EventIdentifier(pEvent->EventHeader.ProviderId.Data1,pEvent->EventHeader.EventDescriptor.Opcode)
     );
@@ -85,8 +84,6 @@ BaseEvent* WINAPI EventParser::getEventWithIdentifier(PEVENT_RECORD pEvent) {
 }
 
 BaseEvent* EventParser::getPropertiesByParsingOffset(BaseEvent* event, int userDataLen, void* userDataBeginAddress) {
-
-    //BaseEvent* event = getEventWithIdentifier(pEvent);
 
     if (event->getEventIdentifier()->getProviderID() != CallStackProvider) { //fill events' properties according to property offsets
         
@@ -106,24 +103,20 @@ BaseEvent* EventParser::getPropertiesByParsingOffset(BaseEvent* event, int userD
 
                 switch (it.second) {
                 case PULONG4_:
-                    //std::wcout << *(PULONG)(dataAddress) << std::endl;
                     dt = new dataType(*(PULONG)(dataAddress));
                     dataAddress += 4;
                     break;
                 case PULONG8_:
                     dt = new dataType(*(PULONG)(dataAddress));
-                    //std::wcout << dt->getULONG64() << std::endl;
                     dataAddress += 8;
                     break;
                 case PULONGLONG_:
                     dt = new dataType(*(PULONGLONG)(dataAddress));
-                    //std::wcout << dt->getULONG64() << std::endl;
                     dataAddress += 8;
                     break;
                 case PBYTE_:
 
                     dt = new dataType(*(PBYTE)(dataAddress));
-                    //std::wcout << dt->getULONG64() << std::endl;
                     dataAddress += 1;
                     break;
                 case PSTRING_:
@@ -132,7 +125,6 @@ BaseEvent* EventParser::getPropertiesByParsingOffset(BaseEvent* event, int userD
  
                     dt = new dataType(sVal);
                     dataAddress += sVal.size() + 1;
-                    //std::wcout << dt->getWString() << std::endl;
                     break;
                 case PWSTRING_:
 
@@ -147,7 +139,6 @@ BaseEvent* EventParser::getPropertiesByParsingOffset(BaseEvent* event, int userD
                     break;
                 case PUSHORT_:
                     dt = new dataType(*(PUSHORT)(dataAddress));
-                    //std::wcout << dt->getULONG64() << std::endl;
                     dataAddress += 2;
                     break;
                 case SID_:
@@ -165,7 +156,6 @@ BaseEvent* EventParser::getPropertiesByParsingOffset(BaseEvent* event, int userD
                     {
                         if (ERROR_NONE_MAPPED == status)
                         {
-                            //wprintf(L"Unable to locate account for the specified SID\n");
                             status = ERROR_SUCCESS;
                         }
                         else
@@ -185,7 +175,6 @@ BaseEvent* EventParser::getPropertiesByParsingOffset(BaseEvent* event, int userD
                 event->setProperty(it.first, dt);
             }
             
-            //event->deleteRawProperty(); //delete userdata
         }else{
             event->setValueableEvent(false);
         }
@@ -203,26 +192,22 @@ BaseEvent* EventParser::getPropertiesByParsingOffset(BaseEvent* event, int userD
         ULONG64 maxAddr = 0;
 
         ei = new EventIdentifier(event->getEventIdentifier()->getProviderID(), event->getEventIdentifier()->getOpCode(), "CallStack");
-        //callStackEvent->setEventIdentifier(ei);
         callStackEvent->setEventIdentifier(ei);
         callStackEvent->setProcessorID(processorId);
         callStackEvent->setTimeStamp(*p_data);
         callStackEvent->setProcessID(*(DWORD*)(++p_data));
         callStackEvent->setThreadID(*((DWORD*)p_data + 1));
-        //event->setProcessName(EventProcess::processID2Name[*(DWORD*)p_data]);
         ++p_data;
 
         //second filter, filter according to revise processID
         if (Filter::secondFilter(callStackEvent)) {
             callStackEvent->setValueableEvent(false);
-            //return callStackEvent;
         }
         else {
 
             //get call address number, -2 because of the callStack addresses begin from third position
             stacksNum = (data_size / 8 - 2);
             processID = callStackEvent->getProcessID();
-            //auto it = EventProcess::processID2ModuleAddressPair.find(callStackEvent->getProcessID());
             if (EventProcess::processID2ModuleAddressPair.count(processID)!=0) {
                 auto minmaxAddrPair = EventProcess::processID2ModuleAddressPair[processID];
                 minAddr = minmaxAddrPair.first;
@@ -234,21 +219,17 @@ BaseEvent* EventParser::getPropertiesByParsingOffset(BaseEvent* event, int userD
                 stackAddress = *(p_data + i) & (0xffffffff);   //extract low32 bits of the address
                 if (stackAddress<minAddr || stackAddress>maxAddr)  continue;
 
-//                std::cout<<stackAddress<<";";
-
                 callStackEvent->stackAddresses.push_back(stackAddress);
             }
 
         }
-//        std::cout<<std::endl;
-        //return callStackEvent;
+
         delete event;   //avoid memory leak
         event = callStackEvent;
     }
 
     return event;
 }
-
 
 BaseEvent* WINAPI EventParser::getPropertiesByTdh(PEVENT_RECORD pEvent)
 {

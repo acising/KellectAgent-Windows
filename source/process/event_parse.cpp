@@ -11,7 +11,6 @@ using namespace std;
 Output* EventParser::op;
 std::set<ULONG64> EventParser::threadParseProviders;
 atomic<ULONG64> EventParser::successParse(0);
-//atomic<ULONG64> threadParseEventsNum(0);
 ULONG64 comingEventsNum = 0;
 EventParser ETWConfiguration::eventParser;
 
@@ -24,14 +23,13 @@ void EventParser::eventParseThreadFunc(BaseEvent* event) {
         event->parse();
         if (!Filter::thirdFilter(event)) {
 
-            if (++successParse % 50000 == 0) {
-                std::cout << "parse events number:" << successParse << std::endl;
-            }
+            ++successParse;
+
             std::string* sJson = new std::string();
             STATUS status = event->toJsonString(sJson);
 
             if (status == STATUS_SUCCESS) {
-                //	//delete sJson;
+
                 op->pushOutputQueue(sJson);
             }
         }
@@ -43,13 +41,13 @@ void EventParser::eventParseThreadFunc(BaseEvent* event) {
 //pEvent is original event stream structure
 VOID WINAPI EventParser::ConsumeEventMain(PEVENT_RECORD pEvent) {
 
-//    std::cout<<"providerID:"<< pEvent->EventHeader.ProviderId.Data1<<" opCode:"<<(int)pEvent->EventHeader.EventDescriptor.Opcode<<std::endl;
 	if (++comingEventsNum % 1000000 == 0) {
-		std::cout << "coming events number: " << comingEventsNum << std::endl;
+        std::cout << "received events number: " << comingEventsNum << "; ";
+        std::cout << "parsed events number:" << successParse << std::endl;
 	}
+
 	if (!Filter::firstFilter(pEvent)) {
 
-		//BaseEvent* event = c.getPropertiesByTdh(pEvent);		//speed of TDH's parsing way is too low , will lead to events lost!
 		BaseEvent* event = ETWConfiguration::eventParser.getEventWithIdentifier(pEvent);    //simple parse
 
 		if (event) {	//correctly parse EventIdentifier.
@@ -71,16 +69,13 @@ VOID WINAPI EventParser::ConsumeEventMain(PEVENT_RECORD pEvent) {
 
                     if (!Filter::thirdFilter(event)) {
 
-                        if (++successParse % 50000 == 0) {
-                            std::cout << "parse events number:" << successParse << std::endl;
-                        }
+                        ++successParse;
 
                         //create string and to get Json format event
                         std::string* sJson = new std::string();
                         STATUS status = event->toJsonString(sJson);
 
                         if (status == STATUS_SUCCESS) {
-                            //	//delete sJson;
                             op->pushOutputQueue(sJson);
                         }
                     }
@@ -88,14 +83,13 @@ VOID WINAPI EventParser::ConsumeEventMain(PEVENT_RECORD pEvent) {
 				delete event;
 			}
 		}
-		 //delete event;
 	}
 }
 
 VOID WINAPI EventParser::ConsumeEventSub(PEVENT_RECORD pEvent) {
-	//对公共区域进行上锁
+	//lock the public area
 	//m.lock();
     ETWConfiguration::eventParser.getPropertiesByTdh(pEvent);
-	//m.unlock();
-	//对公共区域进行解锁
+	//unlock the public area
+    //m.unlock();
 }

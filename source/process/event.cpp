@@ -24,7 +24,7 @@ std::map<std::string, int> EventProcess::processName2ID;
 
 ReadWriteMap <int, std::set<Module*, ModuleSortCriterion> > EventImage::processID2Modules;
 //std::map <int, std::set<Module*, ModuleSortCriterion> > EventImage::processID2Modules;
-std::map < std::string, std::set<MyAPI*, MyAPISortCriterion> > EventImage::usedModulesName2APIs;
+//std::map < std::string, std::set<MyAPI*, MyAPISortCriterion> > EventImage::usedModulesName2APIs;
 
 extern std::map<ULONG64, std::string> addr2FuncName;
 extern std::map<ULONG64, std::string> addr2FuncNameUsed;

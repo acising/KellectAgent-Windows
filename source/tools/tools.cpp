@@ -275,7 +275,7 @@ std::string Tools::convertTimestamp(ULONG64 timestamp){
 
 
     strftime(s, sizeof(s)+1, "%04Y%02m%02d %H:%M:%S", tmp_time_current);
-    printf("%d: %s\n", (ULONG64)tt, s);
+    printf("%I64d: %s\n", (ULONG64)tt, s);
 
     int a = 0;
 

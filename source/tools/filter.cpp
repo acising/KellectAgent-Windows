@@ -30,8 +30,10 @@ bool Filter::thirdFilter(BaseEvent* event) {
 
 	bool flt = false;
 
-    if (!event->isValueableEvent() )
-        flt = true;
+    if (!event->isValueableEvent()){
+        // here to return, skip the listenedEventsProviders.count() call
+        return true;
+    }
 
     if(listenAllEvents||listenedEventsProviders.count(event->getEventIdentifier()->getProviderID())){
 

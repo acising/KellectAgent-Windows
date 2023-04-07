@@ -100,7 +100,6 @@ public:
 
 		int valCnt = -1;
 		rwLock.readLock();
-		//auto it = ;
 		if (rwMap.count(key) == 0)	valCnt = -1;
 		else {
 			valCnt = rwMap[key].count(valItem);  //we can add pair by operator[] ,though no mapping key-value pair.

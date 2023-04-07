@@ -108,7 +108,7 @@ typedef struct _RTL_PROCESS_MODULES
 #define FILEEVENT			0x8
 #define DISKEVENT			0x10
 #define REGISTEREVENT		0x20
-//#define SYSTEMCALLEVENT		0x40
+#define SYSTEMCALLEVENT		0x40
 #define CALLSTACKEVENT		0x40
 #define TCPIPEVENT			0x80
 #define ALLEVENT 0xff
@@ -210,7 +210,6 @@ private:
     const char* filterFileName = "config/filter.txt";
     const char* imagesFile = "config/initImages.txt";
     ULONG64 opThreashold = 20;
-//    ULONG64 opThreashold = 3452816845;
 
     //user specify in the argument of option "-e"
     ULONG64 userEnabledFlags;

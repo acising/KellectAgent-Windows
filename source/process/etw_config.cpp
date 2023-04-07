@@ -82,7 +82,6 @@ PEVENT_TRACE_PROPERTIES ETWConfiguration::allocateTraceProperties(
 
     TraceProperties->MaximumFileSize = 100; // Limit file size to 100MB max
     TraceProperties->BufferSize = 1024; // Use 1024KB trace buffer
-//    TraceProperties->MinimumBuffers = 32;
     TraceProperties->MaximumBuffers = 1024;
 
     if (LoggerName != nullptr) {
@@ -118,9 +117,8 @@ start:
         if (ERROR_ALREADY_EXISTS == status)
         {
             status = ControlTrace(SessionHandle, KERNEL_LOGGER_NAME, mainSessionProperties, EVENT_TRACE_CONTROL_STOP);
-            wprintf(L"The Kernel Session is already in use.\n");
-            //wprintf(L"The NT Kernel Logger session is already in use and will be finished.\n");
-            wprintf(L"restart the NT Kernel Logger automaticly... .\n");
+            wprintf(L"The Kernel Session is already in use. ");
+            wprintf(L"Restart the NT Kernel Logger automaticly... .\n");
             goto start;
         }
 
@@ -135,27 +133,7 @@ start:
             EventCallstack::initCallStackTracing(SessionHandle);
 
     SetupEventConsumer((LPWSTR)KERNEL_LOGGER_NAME,TRUE);
-//        std::thread tt(&ETWConfiguration::SetupEventConsumer, this, (LPWSTR) KERNEL_LOGGER_NAME, TRUE);
-//        tt.detach();
 
-//         for test events lost
-
-//        while (1) {
-//            std::this_thread::sleep_for(std::chrono::microseconds(1000000));
-//            status = ControlTrace(SessionHandle, KERNEL_LOGGER_NAME, mainSessionProperties, EVENT_TRACE_CONTROL_QUERY);
-//            if (ERROR_SUCCESS == status) {
-//                std::this_thread::sleep_for(std::chrono::microseconds(20000000));
-//                std::cout <<
-//                          "  BuffersWritten:" << mainSessionProperties->BuffersWritten <<
-//                          "  FreeBuffers:" << mainSessionProperties->FreeBuffers <<
-//                          "  NumberOfBuffers:" << mainSessionProperties->NumberOfBuffers <<
-//                          "  EventsLost:" << mainSessionProperties->EventsLost
-//                          << std::endl;
-//
-//                if (mainSessionProperties->EventsLost > 0)
-//                    int a = 0;
-//            }
-//        }
     }else {
         getchar();
     }

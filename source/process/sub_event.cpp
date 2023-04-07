@@ -17,7 +17,6 @@ std::set<ULONG64> EventThread::threadSet;
 std::set <Module*, ModuleSortCriterion> EventImage::globalModuleSet;
 std::set <Module*, ModuleSortCriterion> EventImage::usedModuleSet;
 ReadWriteMap<int, EventProcess::MinMaxModuleAddressPair> EventProcess::processID2ModuleAddressPair;
-//ReadWriteMap<CallStackIdentifier, std::string*> EventCallstack::callStackRecord;
 std::map<CallStackIdentifier, std::string*> EventCallstack::callStackRecord;
 std::atomic<int> EventCallstack::callStackRecordNum(0);
 int EventProcess::processID2ParentProcessID[ProcessNumSize];
@@ -54,9 +53,9 @@ void setFileName(BaseEvent* ev) {
 			ev->setProperty(BaseEvent::FileName, tempDataType);
 		}
 		else {
-			tempDataType = new dataType("UnknownFile");
-			ev->setProperty(BaseEvent::FileName, tempDataType);
-		}
+            // if not match any filename , filter it
+            ev->setValueableEvent(false);
+        }
 	}
 }
 void EventFile::parse() {
@@ -352,11 +351,21 @@ void  EventImage::parse() {
 
 	setProcessID(processID);
 
-	//filter unnecessary events according to revise processID and imagefile
-	//this event always needs to output. So do not call setValueableEvent(false)
-//	if (Filter::filterImageFile(imageFileName)||Filter::secondFilter(this)) {
-		//setValueableEvent(false);
-//	}
+    //filter pid
+    if(Filter::pidFilter(processID)){
+        setValueableEvent(false);
+        return;
+    }
+
+    //filter unnecessary events according to revise processID and imagefile.
+	//this event always needs to output. So do not call setValueableEvent(false).
+    //if listen callstack, will not execute following statement
+    if(!Initializer::getListenCallStack()){
+        if (Filter::filterImageFile(imageFileName)||Filter::secondFilter(this)) {
+            setValueableEvent(false);
+            return;
+        }
+    }
 
 	//set process info
     fillProcessInfo(); //fill parentProcess and process Information
@@ -382,7 +391,7 @@ void  EventImage::parse() {
 			it->second.erase(&tempModule);	// erase(module*) won't call module's destructor
 		}
 		*/
-		//TODO : update the min and max module address of the exact process, for convenient, skip this.
+		//TODO : update the min and max module address of the exact process, skip this now.
 
 		break;
 	}
@@ -401,6 +410,7 @@ void  EventImage::parse() {
 		if (cnt == 0 || cnt == -1) {	//there are no modules set mapping with the processID, so add the pid-modules item.
 
 			auto globalModuleIter = globalModuleSet.find(module);
+
 			//push unloaded image module to globalModuleSet
 			if(globalModuleIter == globalModuleSet.end())	globalModuleSet.insert(module);		
 			else {
@@ -410,64 +420,51 @@ void  EventImage::parse() {
 				module = *globalModuleIter;			//if this image module has been stored into globalModuleSet, reuses it.
 			}
 			
-			if (cnt == 0) {	// pid2moduleset item exists,just update the item
+			if (cnt == 0) {	// pid2moduleSet item exists,just update the item
 				processID2Modules.insertValueItemWithKey(processID, module);
-				//processID2Modules[processID].insert(module);
 
 				//modify min and max module begin address to filter callstack addresses
-				//the reason why do not get the reference pair here is for thread safe, in processend part ,there will be some erase operation.
+				//the reason why do not get the reference pair here is for thread safe, in processEnd part ,there will be some erase operations.
 				auto minmaxPair = EventProcess::processID2ModuleAddressPair[processID];	
 				if (baseAddress < minmaxPair.first)	minmaxPair.first = baseAddress;
 				if (baseAddress + moduleSize > minmaxPair.second)	minmaxPair.second = baseAddress + moduleSize;
 
 				//reassign the updated pair
-				//EventProcess::processID2ModuleAddressPair[processID] = minmaxPair;
 				EventProcess::processID2ModuleAddressPair.insertOverwirte(processID,minmaxPair);
 			}
 			else {	// pid2moduleset item not exists, so insert the item into processID2Modules .
 
-				/*auto insertPair = processID2Modules.insert(std::map <int, std::set<Module*, ModuleSortCriterion> >::value_type(
-					processID, std::set<Module*, ModuleSortCriterion>()));*/
 				processID2Modules.insert(processID, std::set<Module*, ModuleSortCriterion>());
 				
-				//push unloaded image module to process_module map; insertPair.second must equal true
-				//if (insertPair.second) {
-					//insertPair.first->second.insert(module);	//for synchronize version
 				processID2Modules.insertValueItemWithKey(processID, module);	//not overwrited
-				//}
 
-				//record min and max module begin address to filter callstack addresses
-				/*EventProcess::processID2ModuleAddressPair.insert
-				(std::map<int, EventProcess::MinMaxModuleAddressPair>::
-					value_type(processID, std::make_pair(baseAddress, baseAddress + moduleSize)));*/
 				EventProcess::processID2ModuleAddressPair.insert
 				(processID, std::make_pair(baseAddress, baseAddress + moduleSize));
 			}
             //===============================================================
 
-//            if(Filter::filteredImageFile.count(imageFileName) == 0){
-//                std::cout<<"imageName:"<<imageFileName<<"  BaseAddress:"<< baseAddress<<std::endl;
-//
-//                std::set<MyAPI*, MyAPISortCriterion> apis;
-//                Filter::filteredImageFile.insert(imageFileName);
-//                int status = EventImage::getAPIsFromFile(imageFileName, apis);
-//
-//                if (status == STATUS_SUCCESS) {
-//                    //std::cout << currentImage << "  " << apis.size() << std::endl;
-//                    EventImage::modulesName2APIs.insert(
-//                            std::map <std::string, std::set<MyAPI*, MyAPISortCriterion> >::value_type(imageFileName, apis)
-//                            //currentImage, apis
-//                    );
+            if(Filter::filteredImageFile.count(imageFileName) == 0){
+//                std::cout<< processID <<" ,imageName:"<<imageFileName<<"  BaseAddress:"<< baseAddress<<std::endl;
+
+                std::set<MyAPI*, MyAPISortCriterion> apis;
+                Filter::filteredImageFile.insert(imageFileName);
+                int status = EventImage::getAPIsFromFile(imageFileName, apis);
+
+                if (status == STATUS_SUCCESS) {
+                    //std::cout << currentImage << "  " << apis.size() << std::endl;
+                    EventImage::modulesName2APIs.insert(
+                            std::map <std::string, std::set<MyAPI*, MyAPISortCriterion> >::value_type(imageFileName, apis)
+                    );
+                }
+
+//                for debugging usage only
+//                for(auto api = apis.begin(); api!=apis.end();++api){
+//                    std::cout<<"address:"<<(*api)->getAPIAddress()<<"   apiName:"<<(*api)->getAPIName()<<std::endl;
 //                }
-////                for(auto api = apis.begin(); api!=apis.end();++api){
-////                std::cout<<"address:"<<(*api)->getAPIAddress()<<"   apiName:"<<(*api)->getAPIName()<<std::endl;
-////                }
-//            }
-
-
+            }
             //===============================================================
 		}
-		else	//found modules set mapping with the processID, do nothing.
+		else	//find moduleSet mapping with the processID, do nothing.
 		{
 			//delete existing module instance
 			delete module;
@@ -549,8 +546,7 @@ void  EventCallstack::parse() {
 	if (Filter::secondFilter(this))	return;
 	
 	int stackProcessID = getProcessID();
-	int stackThreadID = getThreadID();
-	std::string* callInfo = nullptr;
+  	std::string* callInfo = nullptr;
 	int callStackDepth = stackAddresses.size();
 
     fillProcessInfo(); //fill parentProcess and process Information
@@ -590,16 +586,13 @@ void  EventCallstack::parse() {
                     //auto targetModule = std::find_if(EventImage::usedModuleSet.begin(), EventImage::usedModuleSet.end(), EventCallstack::find_by_address(currentStackAddress));
                     //auto targetModule = std::find_if(moduleSet.begin(), moduleSet.end(), EventCallstack::find_by_address(currentStackAddress));
 
-                    //find the first module whose baseAddress larger than currentStackAddress
+                    //find the first module which baseAddress larger than currentStackAddress
                     auto targetModuleIter = moduleSet->second.lower_bound(&tempStackAddressModule);
                     /*
                     get the target module.because the values of stackAdresses are all larger than the modules'set baseAddress,
                     so --targetModuleIter is valid.
                     */
-                    if (--targetModuleIter == moduleSetEnd) {
-                        //return;
-                        continue;
-                    }
+                    if (--targetModuleIter == moduleSetEnd) continue;
 
                     moduleName = (*targetModuleIter)->getModuleName();      //get the target module name to fetch correlate apis.
                     currentModuleBaseAddress = (*targetModuleIter)->getAddressBegin();
@@ -633,6 +626,7 @@ void  EventCallstack::parse() {
 				}
 
 				//record each callstackinfo which maybe reused later.
+                //use priority_queue to dequeue callstack with low frequency used?
                 if(callStackRecordNum.load()<2000){
                     callStackRecord[tempCallStackIdentifier] =callInfo;
                     callStackRecordNum++;
@@ -642,13 +636,22 @@ void  EventCallstack::parse() {
 
                     callStackRecord.erase(begin);
                     callStackRecord[tempCallStackIdentifier] =callInfo;
+                    callStackRecordNum--;
                 }
-				//std::cout << *callInfo << std::endl << std::endl;
-			}
-		}
-	}
 
-	setProperty("stackInfo", new dataType(callInfo==nullptr?"NoInfo":*callInfo));
+//                std::cout<<"addressSize:"<<stackAddresses.size()<<"callsSize:"<<calls.size() <<std::endl;
+//				std::cout << *callInfo << std::endl << std::endl;
+			}
+        }
+
+        if(callInfo->empty())   //TODO ,need to fix the problem, callstack maybe empty?
+            setValueableEvent(false);
+        else
+            setProperty("stackInfo", new dataType(callInfo==nullptr?"NoInfo":*callInfo));
+
+    }else
+        setValueableEvent(false);
+
 //    delete callInfo;
 }
 
@@ -680,40 +683,19 @@ void  EventProcess::parse() {
 
 	switch (getEventIdentifier()->getOpCode())
 	{
-	case PROCESSSTART: {
-
-//		if (!EventParser::threadParseFlag) {
-//			EventParser::parsePools->enqueueTask([]() {
-//
-//				EventParser::beginThreadParse();
-//				//multithread parse events continue about 50 seconds when a process starts
-//				std::this_thread::sleep_for(std::chrono::microseconds(50000000));
-//				EventParser::endThreadParse();
-//				});
-//		}
-	}
+	case PROCESSSTART:
 	case PROCESSDCSTART: {
-		//int pid = getProcessID();
 
         removeQuotesFromProperty(ImageFileName);
 		// for both update and add value
 		processID2Name[pid] = getProperty(ImageFileName)->getString();
 
 		if (EventImage::processID2Modules.count(pid) == 0)  {
-            /*
-             //for normal std::map
-                 EventImage::processID2Modules.insert(std::map <int, std::set<Module*, ModuleSortCriterion> >::value_type(
-                 pid, std::set<Module*, ModuleSortCriterion>()));
-             */
+
             //for readwritemap
 			EventImage::processID2Modules.insert(pid, std::set<Module*, ModuleSortCriterion>());
-			//record min and max module begin address to filter callstack addresses
-            /*
-            //for normal std::map
-                processID2ModuleAddressPair.insert(std::map<int, MinMaxModuleAddressPair>::
-                value_type(pid, std::make_pair(initMinAddress, initMaxAddress)));
-            */
 
+			//record min and max module begin address to filter callstack addresses
             //for readwritemap
             EventProcess::processID2ModuleAddressPair.insert(pid, std::make_pair(initMinAddress, initMaxAddress));
 		}
@@ -757,66 +739,8 @@ void  EventProcess::parse() {
         }
 		else {
 			setValueableEvent(false);
-			//return;
 		}
 	}
-}
-
-void EventPerfInfo::initSystemCallMap() {
-	/*
-	std::wstring win32k = L"C:\\Windows\\System32\\win32k.sys";
-	//std::wstring win32k = L"C:\\Windows\\System32\\ntdll.dll";
-	std::wstring ntoskrnl = L"C:\\Windows\\System32\\ntoskrnl.exe";
-
-	HANDLE h = GetModuleHandle(win32k.c_str());
-
-	//MEMORY_BASIC_INFORMATION mbi;
-	//if (::VirtualQueryEx(::GetCurrentProcess(), (LPCVOID)&GetCurrentProcess, &mbi, sizeof(mbi)) != 0)
-	//{
-	//	printf("VirtualQueryEx : 0x%X\n", mbi.AllocationBase);
-	//}
-	//else
-	//{
-	//	printf("VirtualQueryEx failed, LastError : %d\n", ::GetLastError());
-	//}
-	
-	EventImage::getAPIsFromFile(win32k);
-	EventImage::getAPIsFromFile(ntoskrnl);
-
-
-	auto win32kAPIsSet = EventImage::modulesName2APIs.find(win32k);
-	auto ntoskrnlAPIsSet = EventImage::modulesName2APIs.find(ntoskrnl);
-
-	if (win32kAPIsSet == EventImage::modulesName2APIs.end()) {
-		MyLogger::writeLog("win32k �ļ���API����ʧ��");
-		exit(-1);
-	}
-	if (ntoskrnlAPIsSet == EventImage::modulesName2APIs.end()) {
-		MyLogger::writeLog("ntoskrnl �ļ���API����ʧ��");
-		exit(-1);
-	}
-
-	auto win32kItBegin = win32kAPIsSet->second.begin();
-	auto win32kItEnd = win32kAPIsSet->second.end();
-	std::ofstream sysMapOut("C:\\sysMapOut2.txt", std::ios::out, _SH_DENYNO);
-
-	for (win32kItBegin; win32kItBegin != win32kItEnd; win32kItBegin++) {
-		systemCallMap.insert(std::map<ULONG64, std::wstring>::value_type(win32kItBegin->getAPIAddress(), win32kItBegin->getAPIName()));
-		sysMapOut << Tools::DecInt2HexStr(win32kItBegin->getAPIAddress()) << " : "
-			<< Tools::WString2String(win32kItBegin->getAPIName().c_str()) << std::endl;
-	}
-
-	auto ntoskrnlItBegin = ntoskrnlAPIsSet->second.begin();
-	auto ntoskrnlItEnd = ntoskrnlAPIsSet->second.end();
-
-
-
-	for (ntoskrnlItBegin; ntoskrnlItBegin != ntoskrnlItEnd; ntoskrnlItBegin++) {
-		systemCallMap.insert(std::map<ULONG64, std::wstring>::value_type(ntoskrnlItBegin->getAPIAddress(), ntoskrnlItBegin->getAPIName()));
-		sysMapOut << Tools::DecInt2HexStr(ntoskrnlItBegin->getAPIAddress()) << " : " 
-			<<Tools::WString2String(ntoskrnlItBegin->getAPIName().c_str()) << std::endl;
-	}
-*/
 }
 
 void  EventRegistry::parse() {
@@ -827,7 +751,6 @@ void  EventRegistry::parse() {
         case REG_OPEN:
         case REG_CREATE:
         case REG_QUERYVALUE:
-//        case REG_KCBDELETE:
         case REG_KCBCREATE:{
 
             removeQuotesFromProperty(KeyName);
@@ -851,9 +774,7 @@ void  EventRegistry::parse() {
             }
         }
     }
-    EventRegistry::keyHandle2KeyName;
 }
-
 
 void  EventDisk::parse() {
 
@@ -864,7 +785,6 @@ void  EventDisk::parse() {
         case DISKREAD: {
 
 //            setTIDAndPID(this);
-
 //            Filter::secondFilter(this);
             auto d = getProperty(IssuingThreadId);
             if (d != nullptr) {
@@ -920,8 +840,6 @@ void  EventPerfInfo::parse() {
 			sysCallName = it->second;
 	
 		setSysCallName(sysCallName);
-		//std::wcout << getSysCallName() << std::endl;
-		//res_json["arguments"]["SysCallName"] = it->second;
 	}
 }
 
@@ -968,74 +886,10 @@ void  EventTCPIP::parse() {
 		return;
 	}
 
-	//if (EventProcess::processID2Name.count(pid) != 0) {
-	//	setProcessName(EventProcess::processID2Name[pid]);
-	//}
-	//else {
-	//	setProcessName("Unknown");
-	//}
 	fillProcessInfo();
-	//setProcessName(EventProcess::processID2Name[pid]);
 }
 
-//using nlohmann::json library to format json String
-nlohmann::json getCommonJson(BaseEvent* event) {
-
-	nlohmann::json tempJson;
-
-	if (event) {
-
-		//std::string eventName = event->getEventIdentifier()->getEventName();
-		
-		//if(strcmp(event->getProcessName() , "") == 0)
-
-		//std::string processName = event->getProcessName();
-
-		tempJson = nlohmann::json{
-			//{"ProviderID",event->getEventIdentifier().getProviderID()},
-			//{"OpCode",event->getEventIdentifier().getOpCode()},
-			{"EventName",event->getEventIdentifier()->getEventName()},
-			{"ProcessID",event->getProcessID() },
-			{"ProcessName",event->getProcessName()},
-			{"ThreadID",event->getThreadID()},
-			{"TimeStamp",event->getTimeStamp()},
-			//{"ProcessorID",event->getProcessorID()},
-			{"arguments",{}}
-		};
-
-		std::string ss = tempJson.dump();
-		//auto it = event->getProperties().begin();
-		//auto end = event->getProperties().end();
-		for(auto it : event->getProperties())
-		//for (it; it != end; ++it) 
-		{
-			std::string propertyName =it.first;
-
-			if(it.second){
-				if (it.second->getIsString()) {
-					std::string argValue = it.second->getString();
-					tempJson["arguments"][propertyName] = argValue;
-				}
-				else {
-					tempJson["arguments"][propertyName] = it.second->getULONG64();
-				}
-			}
-			else {
-				tempJson["arguments"][propertyName] = -1;
-			}
-
-		}
-
-	}
-	else {
-		MyLogger::writeLog("parse json error,event is nullptr");
-		//exit(-1);
-	}
-
-	return tempJson;
-}
-
-//self parse jsonstring
+//parse jsonString
 STATUS getCommonJsonNoLib(BaseEvent* event, std::string* sJson) {
 
 	if (!event) return STATUS_FAIL;
@@ -1046,15 +900,15 @@ STATUS getCommonJsonNoLib(BaseEvent* event, std::string* sJson) {
 	bool flag = false;
 
 	sJson->append(
-		"{\"EventName\":\"" + eventName +
-		"\",\"ProcessID\":" + std::to_string(event->getProcessID()) +
-		",\"ProcessName\":\"" + event->getProcessName() +
-		"\",\"ParentProcessID\":" + std::to_string(event->getParentProcessID()) +
-		",\"ParentProcessName\":\"" + event->getParentProcessName() +
-		"\",\"ThreadID\":" + std::to_string(event->getThreadID()) +
+		"{\"Event\":\"" + eventName +
+		"\",\"PID\":" + std::to_string(event->getProcessID()) +
+		",\"PName\":\"" + event->getProcessName() +
+		"\",\"PPID\":" + std::to_string(event->getParentProcessID()) +
+		",\"PPName\":\"" + event->getParentProcessName() +
+		"\",\"TID\":" + std::to_string(event->getThreadID()) +
 		",\"TimeStamp\":" + std::to_string(event->getTimeStamp()) +
 		",\"Host-UUID\":" + Initializer::getUUID() +
-		",\"arguments\":{");
+		",\"args\":{");
 
 	//event->getProperty
 	for (auto pty : event->getProperties()) {
@@ -1068,19 +922,15 @@ STATUS getCommonJsonNoLib(BaseEvent* event, std::string* sJson) {
 			flag = true;
 			if (pty.second->getIsString()) {
 				std::string argValue = pty.second->getString();
-				//tempJson["arguments"][propertyName] = argValue;
 				sJson->append("\"" + pty.first + "\":\"" +
 					argValue + "\"");
 			}
 			else {
-				//tempJson["arguments"][propertyName] = it->second->getULONG64();
 				sJson->append("\"" + pty.first + "\":" +
 					std::to_string(pty.second->getULONG64()));
 			}
 		}
-		else {
-			//tempJson["arguments"][propertyName] = -1;
-		}
+
 		delete pty.second;		//delete properies
 	}
 
@@ -1091,96 +941,6 @@ STATUS getCommonJsonNoLib(BaseEvent* event, std::string* sJson) {
 }
 
 STATUS BaseEvent::toJsonString(std::string* sJson) {
-	
-	STATUS res = getCommonJsonNoLib(this, sJson);
 
-	return res;
+	return getCommonJsonNoLib(this, sJson);
 }
-
-//std::string EventPerfInfo::toJsonString(std::string* sJson) {
-//
-//	nlohmann::json tempJson = getCommonJson(this);
-//
-//	//��sysclenter �¼����syscallname
-//	if (getEventIdentifier()->getOpCode() == 51) {
-//
-//		//std::string sysCallName = *getSysCallName();
-//		tempJson["arguments"]["sysCallName"] = *getSysCallName();
-//	}
-//	return tempJson.dump();
-//}
-//
-//std::string EventProcess::toJsonString(std::string* sJson) {
-//
-//	//nlohmann::json tempJson = getCommonJson(this);
-//	std::string res = getCommonJsonNoLib(this);
-//
-//	//std::string parentProcessName = Tools::WString2String(getParentProcessName().c_str());
-//	//tempJson["arguments"]["parentProcessName"] = parentProcessName;
-//	return res;
-//}
-//
-//std::string  EventRegister::toJsonString(std::string* sJson) {
-//
-//	std::string res = getCommonJsonNoLib(this);
-//	//nlohmann::json tempJson = getCommonJson(this);
-//
-//	//tempJson["arguemtns"]["parentProcessName"] = getParentProcessName();
-//	return res;
-//}
-//
-//std::string EventThread::toJsonString(std::string* sJson) {
-//
-//	std::string res = getCommonJsonNoLib(this);
-//	//nlohmann::json tempJson = getCommonJson(this);
-//
-//	//tempJson["arguemtns"]["parentProcessName"] = getParentProcessName();
-//	return res;
-//}
-//
-//std::string EventUnImportant::toJsonString(std::string* sJson) {
-//
-//	std::string res = getCommonJsonNoLib(this);
-//	//nlohmann::json tempJson = getCommonJson(this);
-//
-//	//tempJson["arguemtns"]["parentProcessName"] = getParentProcessName();
-//	return res;
-//}
-//
-//std::string EventImage::toJsonString(std::string* sJson) {
-//
-//	std::string res = getCommonJsonNoLib(this);
-//	//nlohmann::json tempJson = getCommonJson(this);
-//
-//	//std::cout << res << std::endl;
-//	//tempJson["arguemtns"]["parentProcessName"] = getParentProcessName();
-//	return res;
-//	//return "";
-//	//return tempJson.dump();
-//}
-//
-//std::string EventCallstack::toJsonString(std::string* sJson) {
-//
-//	std::string res = getCommonJsonNoLib(this);
-//	//nlohmann::json tempJson = getCommonJson(this);
-//
-//	//std::wstring wsStackInfo = getCallStackInfo();
-//	//tempJson["arguments"]["callStackInfo"] = Tools::WString2String(wsStackInfo.c_str());
-//	return res;
-//}
-//
-//std::string EventFile::toJsonString(std::string* sJson) {
-//
-//	std::string res = getCommonJsonNoLib(this);
-//	//nlohmann::json tempJson = getCommonJson(this);
-//	//tempJson["arguemtns"]["parentProcessName"] = getParentProcessName();
-//	return res;
-//}
-//
-//std::string EventTCPIP::toJsonString(std::string* sJson) {
-//
-//	std::string res = getCommonJsonNoLib(this);
-//	//nlohmann::json tempJson = getCommonJson(this);
-//	//tempJson["arguemtns"]["parentProcessName"] = getParentProcessName();
-//	return res;
-//}

@@ -271,7 +271,6 @@ private:
 class ModuleSortCriterion {
 public:
 	bool operator() (const Module* a, const Module* b) const {
-		//if (a->getAddressEnd() <= b->getAddressBegin())
 		if (a->getAddressBegin() < b->getAddressBegin())
 			return true;
 		return false;

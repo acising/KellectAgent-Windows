@@ -12,6 +12,10 @@ public:
 	static bool secondFilter(BaseEvent* event);
 	static bool thirdFilter(BaseEvent* event);
 
+    static bool pidFilter(int pid){
+        return filteredProcessID.count(pid) != 0;
+    }
+
 public:
     //listen events specified by option "-e", only output listened events and filter others
     static std::set<ULONG64> Filter::listenedEventsProviders;
