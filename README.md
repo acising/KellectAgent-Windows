@@ -1,4 +1,4 @@
-# **KELLCT ** :a **K**ernel-based Efficient and **L**oss**l**ess Event Log Coll**ec**tor
+# **KELLCT  :a **K**ernel-based Efficient and **L**oss**l**ess Event Log Coll**ector
 
 [简体中文](./README.zh-CN.md) | English 
 
