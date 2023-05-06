@@ -1,12 +1,12 @@
-# **KELLCT  :a **K**ernel-based Efficient and **L**oss**l**ess Event Log Coll**ector
+# **KELLECT  :a **K**ernel-based Efficient and **L**oss**l**ess Event Log Coll**ector
 
 [简体中文](./README.zh-CN.md) | English 
 
 ![](http://121.40.168.60/kellect/kellect.jpeg)
 
-## KELLCT Introduction
+## KELLECT Introduction
 
-**KELLCT **(a **K**ernel-based efficient and **L**oss**l**ess event log coll**ec**tor) is a system framework for kernel-level event log processing, including the stages of acquisition, cleaning, fusion, storage and analysis, KELLCT is divided into KellectAgent and KellectService according to different functions.
+**KELLECT **(a **K**ernel-based efficient and **L**oss**l**ess event log coll**ec**tor) is a system framework for kernel-level event log processing, including the stages of acquisition, cleaning, fusion, storage and analysis, KELLECT is divided into KellectAgent and KellectService according to different functions.
 
 ### KellectAgent-Windows Introduction
 
@@ -21,7 +21,7 @@ The program integrates functions such as event collection, event analysis, event
 
 Users can use this tool directly through "PowerShell.exe" or "cmd.exe", and set command parameters as needed. We also provide some configuration files, which users can customize according to their needs.
 
-For more information on the future of KELLCT , see the [Future Work]() section.
+For more information on the future of KELLECT , see the [Future Work]() section.
 
 ## **Implementation Details**
 

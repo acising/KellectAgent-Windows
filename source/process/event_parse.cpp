@@ -3,7 +3,6 @@
 #include <iostream>
 #include <map>
 #include <string>
-#include "tools/my_socket.h"
 #include "process/event.h"
 #include "process/etw_config.h"
 using namespace std;

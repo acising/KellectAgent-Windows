@@ -18,3 +18,5 @@ include_directories(./include)
 add_executable(kellect ${SRC_ALL})
 target_link_libraries(kellect ${THIRD_LIB})
 
+add_executable(dlltest dllTest.cpp)
+
