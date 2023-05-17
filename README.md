@@ -6,7 +6,7 @@
 
 ## KELLECT Introduction
 
-**KELLECT **(a **K**ernel-based efficient and **L**oss**l**ess event log coll**ec**tor) is a system framework for kernel-level event log processing, including the stages of acquisition, cleaning, fusion, storage and analysis, KELLECT is divided into KellectAgent and KellectService according to different functions.
+**KELLECT **(a **K**ernel-based efficient and **L**oss**l**ess event log coll**ec**tor) is a framework for kernel-level event log processing, including the stages of acquisition, cleaning, fusion, storage and analysis, KELLECT is divided into KellectAgent and KellectService according to different functions.
 
 ### KellectAgent-Windows Introduction
 
@@ -44,7 +44,7 @@ The development of KellectAgent mainly depends on the Clion development tool, an
 | Windows SDK   |  10.0.20348.0  |
 | Clion         |   2022.1  |
 
-The directory of kellect is shown as blew:
+The directory of kellect is shown as below:
 
 | name of directory | meaning                  |
 |-------------------|--------------------------|
@@ -62,7 +62,7 @@ After testing, KellectAgent can run on **Windows7 (client version), Windows Serv
 
 > **Note:** The Windows 11 version is currently not supported, and will be supported in subsequent versions.
 
-The collection function must be run as **Administrator**. As shown below, the function can be selected in the form of configuration parameters.
+The KellectAgent must be run as **Administrator**. As shown below, the function can be selected in the form of configuration parameters.
 
 ![image-20230407102213003](images/command.png)
 
@@ -73,7 +73,7 @@ For example, the following command can be used to collect all system logs and ou
    kellect.exe -e all -f test.json
    ```
 
-**Note:** For the parameter "-e", please specify the parameter value in hexadecimal format.
+**Note:** For the parameter "-e", please specify the value in hexadecimal format.
 
 ### **Usage of the configuration file**
 
@@ -106,11 +106,11 @@ C:\Windows\SysWOW64\ntdll.dll
 
 1. *[filteredProcessID]*
 
-    Indicates to filter specific events based on the list of IDs in this tab. Process IDs are separated by spaces.
+    Indicates to filter events based on the list of PIDs separated by spaces.
 
 2. *[filteredEventIdentifier]*
 
-    Indicates filtering events through the combination of Event ProviderID and opcode, which we call EventIdentifier. The specific event log details can be obtained in [Microsoft Documentation](https://docs.microsoft.com/en-us/windows/win32/etw/fileio). ProviderID is the decimal form of the first part of the Guid class, and opcode is the EventType value under Remarks of BaseEvent Class Page.
+    Indicates tracing events through the combination of Event ProviderID and opcode, which we call EventIdentifier. The specific event log details can be obtained in [Microsoft Documentation](https://docs.microsoft.com/en-us/windows/win32/etw/fileio). ProviderID is the decimal form of the first part of the Guid class, and opcode is the EventType value under Remarks of BaseEvent Class Page.
     
     > **Note:** The event identifiers under this label are whitelisted and are the types of events we need to collect.
 
@@ -120,7 +120,7 @@ C:\Windows\SysWOW64\ntdll.dll
 
 ​	3.*[filteredImageFile]*
 
-​		Events that load an Image can be **filtered** by the Image file path listed in this tag.
+​		ImageLoad events and corresponding CallStacks will be **filtered** by the Image file path listed in this label.
 
 #### initImages.txt
 
@@ -193,7 +193,7 @@ We output event records in the format of JSON. Each BaseEvent has two parts of p
    | FileObject | Match the value of this pointer to the **FileObject** pointer value in a [**DiskIo_TypeGroup1**](https://docs.microsoft.com/en-us/windows/win32/etw/diskio-typegroup1) event to determine the type of I/O operation. |
    | FileName   | Full path to the file, not including the drive letter.       |
 
- 3. CallStack event . The APIs we collected is provided by Windows itself, don't collect any API in user-defined dll files.
+ 3. CallStack event . The APIs we collected is provided by OS-defined(part of) and user-defined dll files.
 
     | Property  | Property                                                     |
     | --------- | ------------------------------------------------------------ |
