@@ -147,7 +147,8 @@ void Tools::convertFileNameInDiskFormat(std::string &fileName) {
         if(idx != -1){
             std::string pathType = fileName.substr(0,idx);
             std::map<std::string,std::string>::iterator it =  EventImage::volume2Disk.find(pathType);
-            fileName = it->second + fileName.substr(idx);
+            if(it != EventImage::volume2Disk.end())
+                fileName = it->second + fileName.substr(idx);
         }else{
             MyLogger::writeLog("not find the mapping imageFileName2DiskNumber");
         }

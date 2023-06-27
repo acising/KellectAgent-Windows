@@ -39,14 +39,14 @@ void setFileName(BaseEvent* ev) {
 	}
 
 	dataType* tempDataType;
-	if (EventFile::fileKey2Name.count(fileKey) != 0 && fileKey !=0) {
+	if (fileKey !=0 && EventFile::fileKey2Name.count(fileKey) != 0) {
 
 		//tempDataType = new dataType(EventFile::fileKey2Name.getValue(fileKey));		//to avoid undefined behavior, because mutex needs before iterator.
 		tempDataType = new dataType(EventFile::fileKey2Name[fileKey]);		//to avoid undefined behavior, because mutex needs before iterator.
 		ev->setProperty(BaseEvent::FileName, tempDataType);
 	}
 	else {
-		if (EventFile::fileObject2Name.count(fileObject) != 0 && fileObject != 0) {
+		if (fileObject != 0 && EventFile::fileObject2Name.count(fileObject) != 0) {
 
 			//tempDataType = new dataType(EventFile::fileObject2Name.getValue(fileObject));	//to avoid undefined behavior, because mutexe needs before iterator.
 			tempDataType = new dataType(EventFile::fileObject2Name[fileObject]);	//to avoid undefined behavior, because mutexe needs before iterator.
@@ -61,7 +61,7 @@ void setFileName(BaseEvent* ev) {
 void EventFile::parse() {
 
     dataType* dt = getProperty(FileObject);
-	ULONG64 fileObject;
+	ULONG64 fileObject = 1;
 
 	if (dt) {
 		fileObject = dt->getULONG64();
@@ -113,7 +113,9 @@ void EventFile::parse() {
         std::string fileName = getProperty(FileName)->getString();
         ULONG64 fileKey = getProperty(FileKey)->getULONG64();
         fileKey2Name[fileKey] = fileName;
-        fileObject2Name[fileObject] = fileName;
+
+        if(fileObject!= 1)
+            fileObject2Name[fileObject] = fileName;
 
 		break;
 	}
@@ -542,10 +544,7 @@ void EventCallstack::initCallStackTracing(TRACEHANDLE &SessionHandle) {
 
 void  EventCallstack::parse() {
 
-	//second filter, filter according to revise processID
-	if (Filter::secondFilter(this))	return;
-	
-	int stackProcessID = getProcessID();
+ 	int stackProcessID = getProcessID();
   	std::string* callInfo = nullptr;
 	int callStackDepth = stackAddresses.size();
 
@@ -565,7 +564,6 @@ void  EventCallstack::parse() {
                 ULONG64 currentModuleBaseAddress;
                 ULONG64 rvaStackAddress;
                 std::string moduleName;
-                ULONG64 imageBeginAddress;
                 Module tempStackAddressModule;
                 MyAPI tempAPI;
                 //MyAPI* targetAPI;
@@ -592,7 +590,7 @@ void  EventCallstack::parse() {
                     get the target module.because the values of stackAdresses are all larger than the modules'set baseAddress,
                     so --targetModuleIter is valid.
                     */
-                    if (--targetModuleIter == moduleSetEnd) continue;
+                    if (targetModuleIter == moduleSetEnd ||--targetModuleIter == moduleSetEnd) continue;
 
                     moduleName = (*targetModuleIter)->getModuleName();      //get the target module name to fetch correlate apis.
                     currentModuleBaseAddress = (*targetModuleIter)->getAddressBegin();
@@ -606,7 +604,7 @@ void  EventCallstack::parse() {
                         auto targetAPIIter = apisTarget->second.lower_bound(&tempAPI);
 
                         //in case targetAPIIter==apisTarget->second.begin(), so --targetAPIIter will be an end() and unreference it is invalid.
-                        if (--targetAPIIter == apisTarget->second.end()) {
+                        if (targetAPIIter == apisTarget->second.end() ||--targetAPIIter == apisTarget->second.end()) {
                             continue;
                         }
 
@@ -629,12 +627,12 @@ void  EventCallstack::parse() {
                 //use priority_queue to dequeue callstack with low frequency used?
                 if(callStackRecordNum.load()<2000){
                     callStackRecord[tempCallStackIdentifier] =callInfo;
-                    callStackRecordNum++;
+                    callStackRecordNum.fetch_add(1);
                 }else{
                     auto begin = callStackRecord.begin();
                     delete begin->second;
 
-                    callStackRecord.erase(begin);
+                    callStackRecord.erase(begin->first);
                     callStackRecord[tempCallStackIdentifier] =callInfo;
                     callStackRecordNum--;
                 }
@@ -644,7 +642,7 @@ void  EventCallstack::parse() {
 			}
         }
 
-        if(callInfo->empty())   //TODO ,need to fix the problem, callstack maybe empty?
+        if(callInfo == nullptr || callInfo->empty())   //TODO ,need to fix the problem, callstack maybe empty?
             setValueableEvent(false);
         else
             setProperty("stackInfo", new dataType(callInfo==nullptr?"NoInfo":*callInfo));

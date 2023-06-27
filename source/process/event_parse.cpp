@@ -47,6 +47,9 @@ VOID WINAPI EventParser::ConsumeEventMain(PEVENT_RECORD pEvent) {
 
 	if (!Filter::firstFilter(pEvent)) {
 
+        // 输出事件记录作为调试信息查看
+//         std::cout << "Event ID: " << pEvent->EventHeader.ProviderId.Data1<< "\t" << (int)pEvent->EventHeader.EventDescriptor.Opcode << "\n";
+
 		BaseEvent* event = ETWConfiguration::eventParser.getEventWithIdentifier(pEvent);    //simple parse
 
 		if (event) {	//correctly parse EventIdentifier.

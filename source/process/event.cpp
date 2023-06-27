@@ -70,21 +70,21 @@ void BaseEvent::fillProcessInfo(){
 dataType* BaseEvent::getProperty(int propertyNameIndex) {
 
 	if (BaseEvent::propertyNameVector.size() <= propertyNameIndex ) {
-		MyLogger::writeLog("propertyNameIdex 超出了EventIdentifier::propertyNameVector的大小！\n");
+		MyLogger::writeLog("propertyNameIdex exceed EventIdentifier::propertyNameVector size！\n");
 		exit(-1);
 	}
 	if (propertyNameIndex < 0) {
-		MyLogger::writeLog("getProperty propertyNameIdex 为负数\n");
+		MyLogger::writeLog("getProperty propertyNameIdex is negative\n");
 		exit(-1);
 	}
 
 	std::string propertyName = BaseEvent::propertyNameVector[propertyNameIndex];
-	//event doen't have this property
+	//event doesn't have this property
 	if (!properties.count(propertyName)) {
 
 		propertyName = "unknownProperty";
 		properties.insert(std::map <std::string, dataType*>::value_type(propertyName, nullptr));
-		MyLogger::writeLog("未找到事件对应的propertyName\n");
+		MyLogger::writeLog("can not find propertyName\n");
 	}
 
 	return this->properties[propertyName];
@@ -93,12 +93,12 @@ dataType* BaseEvent::getProperty(int propertyNameIndex) {
 void BaseEvent::setProperty(int propertyNameIdex, dataType* dt) {
 
 	if (BaseEvent::propertyNameVector.size() <= propertyNameIdex) {
-		MyLogger::writeLog("propertyNameIdex 超出了EventIdentifier::propertyNameVector的大小！\n");
+		MyLogger::writeLog("propertyNameIdex exceed EventIdentifier::propertyNameVector size！\n");
 		exit(-1);
 	}
 
 	if (propertyNameIdex < 0) {
-		MyLogger::writeLog("setProperty propertyNameIdex 为负数\n");
+		MyLogger::writeLog("setProperty propertyNameIdex is negative\n");
 		exit(-1);
 	}
 	std::string propertyName = BaseEvent::propertyNameVector[propertyNameIdex];

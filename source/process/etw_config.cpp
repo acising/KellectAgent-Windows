@@ -317,9 +317,10 @@ int ETWConfiguration::ETWSessionConfig(bool real_time_switch)
     MainSessionConfigThread  t1(*this,real_time_switch);
     t1.startThread();
     t1.wait();
-    //XMLSubSessionConfigThread t1(real_time_switch, (LPWSTR)L"MyTrace1", Kernel_Process, 0x10);
-    //t1.startThread();
-    //t1.wait();
+
+//    XMLSubSessionConfigThread t1(real_time_switch, (LPWSTR)L"MyTrace1", Kernel_Process, 0x10);
+//    t1.startThread();
+//    t1.wait();
 
     //bool succ2 = MainSessionConfig(real_time_switch);
 

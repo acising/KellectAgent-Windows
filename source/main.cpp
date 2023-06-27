@@ -13,7 +13,7 @@ int main(int argc, char* argv[]) {
 	//EventPerfInfo::initSystemCallMap();
 	ETWConfiguration etwConfiguration (enabledFlags);
 
-	//etwConfiguration.ETWSessionConfig(true);	//thread task
+	etwConfiguration.ETWSessionConfig(true);	//thread task
 	etwConfiguration.mainSessionConfig(true);
 	//etwConfiguration.showAllProviders();
 }
