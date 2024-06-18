@@ -34,7 +34,6 @@ std::set<std::string> Filter::filteredImageFile;
 std::set<ULONG64> Filter::listenedEventsProviders;
 bool Filter::listenAllEvents(false);
 bool Initializer::listenCallStack(false);
-
 std::map <std::string, std::set<MyAPI*, MyAPISortCriterion> > EventImage::modulesName2APIs;
 ThreadPool* EventParser::parsePools;
 std::atomic<bool> EventParser::threadParseFlag;
@@ -43,8 +42,9 @@ int EventThread::threadId2processId[MAX_THREAD_NUM];
 
 STATUS Initializer::initEnabledEvent(ULONG64 eventType) {
 
-    enabledFlags = EVENT_TRACE_FLAG_PROCESS|EVENT_TRACE_FLAG_THREAD;        //guarantee the fillProcessInfo() executes correctly
+    if(!enbaleFlagsInited ) return STATUS_SUCCESS;
 
+    enabledFlags = EVENT_TRACE_FLAG_PROCESS|EVENT_TRACE_FLAG_THREAD;        //guarantee the fillProcessInfo() executes correctly
     //callstack initialize in
     if (eventType & CALLSTACKEVENT){
         setListenCallStack(true);   // set listenCallStack true;
@@ -136,13 +136,10 @@ void Initializer::initFilter() {
             while (getline(filterFile, tempString) && tempString != "") {
                 p = std::sregex_token_iterator(tempString.begin(), tempString.end(), re, -1);
                 EventIdentifier* ei;
-
                 while (p != end) {
                     ULONG64 providerID = Tools::String2ULONG64(*p);
                     int opCode = Tools::String2Int(*(++p));
-
                     ei = new EventIdentifier(providerID, opCode);
-
                     Filter::filteredEventIdentifiers.insert(ei);
                     ++p;
                 }
@@ -193,9 +190,7 @@ void Initializer::initProcessID2ModulesMap() {
 
 }
 void Initializer::initImages(std::string confFile) {
-
     std::cout << "------Begin to parse images------" << std::endl;
-
     std::vector<std::string> unLoadedImages;
     std::ifstream myfile(confFile);
     std::string currentImage = "";
@@ -249,7 +244,6 @@ void Initializer::initEventPropertiesMap(std::string confFile) {
     BaseEvent::PropertyInfo propertyInfo;
     DWORD dwMajorVer,dwMinorVer,dwBuildNumber;
     tinyxml2::XMLDocument doc;
-
     //set Windows7 version event type file, else the Windows10 event type file
     if(Tools::getOSVersion(dwMajorVer,dwMinorVer,dwBuildNumber)){
         // win 7
@@ -257,7 +251,6 @@ void Initializer::initEventPropertiesMap(std::string confFile) {
             confFile = "config/eventStruct_win7.xml";
         }
     }
-
     int res = doc.LoadFile(confFile.c_str()); //load xml file
     if(res!=0){
         cout<<"load xml file failed"<<endl;
@@ -269,13 +262,11 @@ void Initializer::initEventPropertiesMap(std::string confFile) {
     XMLElement* root = doc.RootElement();
     XMLElement* evnt = root->FirstChildElement("Event");
     while(evnt!= nullptr){
-
         //load single event type identifier
         XMLElement* opCodeElement = evnt->FirstChildElement("OpCode");
         XMLElement* providerIDElement = evnt->FirstChildElement("ProviderID");
         XMLElement* eventNameElement = evnt->FirstChildElement("EventName");
         XMLElement* attributesElement = evnt->FirstChildElement("Attributes");
-
         int opCode = opCodeElement->Int64Text();
         ULONG64 providerID = Tools::String2ULONG64(providerIDElement->GetText());
         const char *eventName = eventNameElement->GetText();
@@ -347,13 +338,15 @@ void Initializer::initOutputThread() {
 
 void Initializer::initThreadParseProviders() {
 
-    EventParser::threadParseProviders.insert(TcpIpGuid.Data1);
-    EventParser::threadParseProviders.insert(DiskIoGuid.Data1);
+//    EventParser::threadParseProviders.insert(TcpIpProvider);
+    EventParser::threadParseProviders.insert(DiskProvider);
+
     {
 //        EventParser::threadParseProviders.insert(CallStackGuid.Data1);
-        EventParser::threadParseProviders.insert(RegistryGuid.Data1);
+
+        EventParser::threadParseProviders.insert(RegistryProvider);
     }
-//    EventParser::threadParseProviders.insert(ImageLoadGuid.Data1);
+    EventParser::threadParseProviders.insert(ImageLoadGuid.Data1);
     EventParser::threadParseFlag = true;
 }
 
@@ -402,12 +395,9 @@ STATUS Initializer::initThreadProcessMap() {
 STATUS Initializer:: InitProcessMap() {
 
     std::vector<int> parentProcessIDs = std::vector<int>();
-
     STATUS status = STATUS_SUCCESS;
-
     PROCESSENTRY32 pe32;
     pe32.dwSize = sizeof(pe32);
-
     //get the snapshot current processes
     HANDLE hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (hProcessSnap == INVALID_HANDLE_VALUE)
@@ -417,7 +407,6 @@ STATUS Initializer:: InitProcessMap() {
 
     }else{
         std::cout << "------Begin to initialize datas of process and thread...------" << std::endl;
-
         //search first process information by snapshot got before
         BOOL bMore = Process32First(hProcessSnap, &pe32);
         while (bMore)
@@ -434,9 +423,7 @@ STATUS Initializer:: InitProcessMap() {
         //set idle process mapping
         EventProcess::processID2Name[0] = "idle";
         EventProcess::processID2Name[INIT_PROCESS_ID] =  "Unknown" ;
-
         std::cout << "------Initialize datas of process and thread end...------" << std::endl;
-
         //release snapshot
         CloseHandle(hProcessSnap);
     }
@@ -514,25 +501,21 @@ void Initializer::initHostUUID() {
 }
 
 void Initializer::initNeededStruct() {
-
-    initOutputThread();
+    EventParser::op->setOutputThreashold(opThreashold);
     initImages();       //1
     MyLogger::initLogger();
     Tools::initVolume2DiskMap();
     initProcessor2ThreadAndThread2Process();
-
     if (InitProcessMap() || initThreadProcessMap()) {
         std::cout << "------Initialize process and thread failed!------" << std::endl;
         exit(-1);
     }
     initEventPropertiesMap();       //2
-
     //default to trace all event types
     if(!enbaleFlagsInited){
         initDefaultEnabledEvents();
     }
     initEnabledEvent(userEnabledFlags);
-
     if(opThreashold == 0){
         initOutputThreashold(userEnabledFlags);
     }
@@ -541,9 +524,9 @@ void Initializer::initNeededStruct() {
     initPrasePool();
     initThreadParseProviders();
     initHostUUID();
-
     //set output threashold value, which depends on the event types we want to trace
-    EventParser::op->setOutputThreashold(opThreashold);
+
+    initOutputThread();
 }
 
 void Initializer::showCommandList() {
@@ -566,6 +549,20 @@ void Initializer::showCommandList() {
                    "\tUsage:-e all  ,which will trace all events, the args of Win7 is 0xef.\n"
                    "\tNote:Do not listen 'DISK' events on Win7,kellect will crash.\n"
     );
+    cmdList.append("-u , the UserProvider you want to trace\n");
+    cmdList.append("\trguments details:\n"
+                   "\t\t0x01(Thread_Pool)\n"
+                   "\t\t0x02(Microsoft_Windows_DNS_Client)\n"
+                   "\t\t0x03(Microsoft_Windows_PrintService)\n"
+    );
+    cmdList.append("-wdm , the event type you want to trace and out by wdm\n");
+    cmdList.append("\trguments details:\n"
+                   "\t\t0x1(PROCESS)\n"
+                   "\t\t0x2(THREAD)\n"
+                   "\t\t0x8(FILE)\n"
+                   "\t\t0x20(REGISTRY)\n"
+                   "\t\t0x80(TCPIP)\n"
+                   "\t\tall\n");
     cmdList.append("-f , the file path that you want to output the events\n"
                    "\tUsage: c:\\123.txt ,output events to file c:\\123.txt\n");
     cmdList.append("-c , output events to the console \n");
@@ -624,17 +621,13 @@ STATUS Initializer::initOutputThreashold(ULONG64 eventType) {
     return STATUS_SUCCESS;
 }
 
-ULONG64 Initializer::init() {
-
+ULONG64 Initializer::init(GUID &p) {
     STATUS status = 0;
     int i = 1;
     char* currentArv = nullptr;
-
     if (argc < 1) return 0;
     //default trace all events
-
     while (i < argc) {
-
         currentArv = (char*)malloc(sizeof(argV[i]));
         ZeroMemory(currentArv, sizeof(argV[i]));
         strcpy(currentArv, argV[i++]);
@@ -646,6 +639,11 @@ ULONG64 Initializer::init() {
             //EventParser::op->beginOutputThread();
 //            if (status != STATUS_SUCCESS)   break;
             outputInited = true;
+        }
+        else if(strcmp(currentArv,"-wdm")==0){
+            EventParser::isWdm=true;
+//            outputInited = true;
+//            if(status == STATUS_SUCCESS)    enbaleFlagsInited = true;
         }
         else if (strcmp(currentArv, "-f") == 0 && !outputInited) {
 
@@ -688,7 +686,7 @@ ULONG64 Initializer::init() {
             }
         }
         else if (strcmp(currentArv, "-e") == 0) {
-
+            EventParser::isWdm=false;
             if (!validArgLength(i, status))   break;
 //            std::cout<<strcmp(argV[i++],"all")<<std::endl;
             std::string arg = argV[i++];
@@ -696,6 +694,16 @@ ULONG64 Initializer::init() {
 
             if(status == STATUS_SUCCESS)    enbaleFlagsInited = true;
         }
+//        else if(strcmp(currentArv,"-wdm")==0){
+//            if (!validArgLength(i, status))   break;
+//            std::string arg = argV[i++];
+//         userEnabledFlags = strcmp(arg.c_str(),"all") ==( 0x1|0x2|0x8|0x20|0x80)? 0x1ff:Tools::HexStr2DecInt(arg);
+//            EventParser::op = new ConsoleOutPut();
+//            EventParser::isWdm=true;
+//            status = EventParser::op->init();
+//            outputInited = true;
+//            if(status == STATUS_SUCCESS)    enbaleFlagsInited = true;
+//        }
         else if (strcmp(currentArv, "--outputThreshold") == 0) {
 
             std::string threshold = argV[i++];
@@ -706,14 +714,25 @@ ULONG64 Initializer::init() {
 
             status = STATUS_SHOW_MANUAL;
         }
+        else if(strcmp(currentArv,"-u")==0){
+            if (!validArgLength(i, status))   break;
+            std::string arg = argV[i++];
+            userProvider = Tools::HexStr2DecInt(arg);
+            initUserGuid(userProvider,p);
+//            EventParser::op = new FileOutPut();
+        }
         else {
             status = isOutPutOption(currentArv) ? STATUS_DUPLICATE_OUTPUT : STATUS_UNKNOWN_OPTION;
         }
+
 
         if (status != STATUS_SUCCESS)   break;
     }
 
     if (status == STATUS_SUCCESS && outputInited) {
+        if(userEnabledFlags==0x1ff&&EventParser::isWdm){
+            userEnabledFlags=( 0x1|0x2|0x8|0x20|0x80);
+        }
         initNeededStruct();     //init config files
     }
     else {
@@ -765,4 +784,19 @@ ULONG64 Initializer::init() {
     }
 
     return enabledFlags;
+}
+
+void Initializer::initUserGuid(ULONG64 userProvider,GUID &ProviderId){
+    if(userProvider==0x01){
+        struct __declspec(uuid("{C861D0E2-A2C1-4D36-9F9C-970BAB943A12}")) Thread_Pool;
+        ProviderId = __uuidof(Thread_Pool);
+    }
+    if(userProvider==0x02){
+        struct __declspec(uuid("{1C95126E-7EEA-49A9-A3FE-A378B03DDB4D}")) Microsoft_Windows_DNS_Client;
+        ProviderId  = __uuidof(Microsoft_Windows_DNS_Client);
+    }
+    if(userProvider==0x03){
+        struct __declspec(uuid("{DE7B24EA-73C8-4A09-985D-5BDADCFA9017}")) Microsoft_Windows_PrintService;
+        ProviderId  = __uuidof(Microsoft_Windows_PrintService);
+    }
 }

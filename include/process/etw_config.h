@@ -9,7 +9,8 @@ public:
     CONST INT MAXIMUM_SESSION_NAME = 1024;
 
 public:
-	ETWConfiguration(ULONG64 enabledFalg){
+	ETWConfiguration(ULONG64 enabledFalg,GUID Provide){
+        ProviderId=Provide;
         enable_flag = enabledFalg;
         logfile_path = L"C:\\logfile.bin";
     };
@@ -45,8 +46,11 @@ public:
 		 _In_opt_ BOOLEAN isSysLogger = FALSE,
 		_In_opt_ BOOLEAN isRealTimeSession = TRUE);
 
+    static int __CLRCALL_PURE_OR_STDCALL ConsumeUserEventMain(PEVENT_RECORD pEvent);
 
+    int SetupUserEventConsumer( PSTR LoggerName);
 private:
+    GUID ProviderId;
 	ULONG enable_flag;
 	std::wstring logfile_path;
 	VOID SetupEventConsumer(

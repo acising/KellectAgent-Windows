@@ -150,7 +150,7 @@ public:
 		}
 	}
 
-	ULONG64 init();
+    ULONG64 init(GUID &p);
 
     inline void writeUUID2File();
     inline STATUS setUUIDFromFile();
@@ -213,11 +213,11 @@ private:
 
     //user specify in the argument of option "-e"
     ULONG64 userEnabledFlags;
-
+    ULONG64 userProvider=0;
     void initFilter();
     void initPrasePool();
     int initOutputThreashold(ULONG64 flags);
-
+    void initUserGuid(ULONG64 userProvider,GUID &ProviderId);
     BOOLEAN InitSymHandler();
     ULONG GetKernelInfo(char* lpKernelName, ULONG* ulBase, ULONG* ulSize);
     BOOLEAN LoadSymModule(char* ImageName, DWORD ModuleBase);

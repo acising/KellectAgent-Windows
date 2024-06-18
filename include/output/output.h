@@ -31,9 +31,7 @@ protected:
 	unsigned short port;
 	std::string ip_port;
 
-	bool ini = false;
-	//boost::lockfree::queue<std::string, boost::lockfree::fixed_sized<false> > queue(5000);
-	virtual void output(std::string outputString) {};
+	bool ini = false;;
 public:
 	Output() :count(0) {};
 	~Output() {};
@@ -53,14 +51,19 @@ public:
 
 	void pushOutputQueue(std::string* res) {
 		q.enqueue(res);
-
 		//count++;
+
 		if (count.fetch_add(1) >= outputThreshold){
 //            std::cout<<count.fetch_add(0) <<std::endl;
+
             cv.notify_one();
+
         }
 	}
 	void outputStrings();
+ void outputStringPointer(std::string *rjson);
+//boost::lockfree::queue<std::string, boost::lockfree::fixed_sized<false> > queue(5000);
+virtual void output(std::string outputString) {}
 };
 
 class FileOutPut : public Output {
@@ -71,7 +74,7 @@ private:
 	std::ios_base::openmode mode;
 public:
 	
-	FileOutPut(std::string fileName = "fileOutPut.txt", std::ios_base::openmode mode = std::ios::trunc) :
+	FileOutPut(std::string fileName = "userout.txt", std::ios_base::openmode mode = std::ios::trunc) :
 		fileName(fileName), mode(mode) {};
 
 	~FileOutPut() { outputStream.close(); };

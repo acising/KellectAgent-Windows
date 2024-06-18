@@ -39,14 +39,15 @@ class SubSessionConfigThread : public BaseThread {
 public:
 
     SubSessionConfigThread();
-    SubSessionConfigThread(bool real_time_switch,PWSTR privateLoggerName, GUID providerGUID, ULONG matchAnyKeywords, PWSTR logFileName=(PWSTR)L"LogFile.etl") :
-		_privateLoggerName(privateLoggerName), _providerGUID(providerGUID), _matchAnyKeywords(matchAnyKeywords)
-	{
-		_realTime = real_time_switch;
-		if (!_realTime)
-			_logFileName = logFileName;
-		
-	};
+    SubSessionConfigThread(ETWConfiguration config,bool real_time_switch,PWSTR privateLoggerName, GUID providerGUID, ULONG matchAnyKeywords, PWSTR logFileName=(PWSTR)L"LogFile1.etl") :
+            _privateLoggerName(privateLoggerName), _providerGUID(providerGUID), _matchAnyKeywords(matchAnyKeywords)
+    {
+        instance = config;
+        _realTime = real_time_switch;
+        if (!_realTime)
+            _logFileName = logFileName;
+
+    };
 	~SubSessionConfigThread() {};
 
 	inline VOID startThread(){ th = std::thread(&ETWConfiguration::subSessionConfig,

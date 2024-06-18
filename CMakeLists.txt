@@ -9,7 +9,9 @@ set(CMAKE_CXX_STANDARD 14)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/bin")#set exe building path
 file(GLOB_RECURSE INCLUDE_DIR_LIST "${CMAKE_CURRENT_SOURCE_DIR}/source/*.cpp") #iterate the cpp files
-set(SRC_ALL ${INCLUDE_DIR_LIST})
+set(SRC_ALL ${INCLUDE_DIR_LIST}
+        source/process/get_properties_user.cpp
+)
 file(GLOB_RECURSE THIRD_LIB "${CMAKE_CURRENT_SOURCE_DIR}/lib/*.lib")
 file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/source/config/" DESTINATION "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/config") #copy configs to bin/
 file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/source/dlls/" DESTINATION "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")

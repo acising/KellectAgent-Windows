@@ -42,7 +42,6 @@ void ConsoleOutPut::output(std::string outputString) {
     {
         MyLogger::writeLog("ConsoleOutPut is not initialized.\n");
     }
-        
     std::cout << outputString;
 };
 
@@ -160,4 +159,7 @@ void Output::outputStrings(){
 
         output(resJson);
     }
+}
+void Output::outputStringPointer(std::string *rjson) {
+    std::cout<<*rjson<<std::endl;
 }

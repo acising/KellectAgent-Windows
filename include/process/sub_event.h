@@ -282,4 +282,13 @@ private:
 	};
 
     static TCPIPEnum tcpipEnum;
-}; 
+};
+
+class EventUSer :public BaseEvent{
+public:
+    void parse() override;
+    ~EventUSer() {
+
+    };
+
+};

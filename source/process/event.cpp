@@ -31,7 +31,6 @@ extern std::map<ULONG64, std::string> addr2FuncNameUsed;
 //INT64 Tools::String2INT64(std::string s);  //将string转换为INT64
 
 void BaseEvent::fillProcessInfo(){
-
     int pid =getProcessID();
     int ppid = EventProcess::processID2ParentProcessID[pid];
 

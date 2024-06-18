@@ -92,11 +92,11 @@ void ThreadPool::enqueueTask(threadParseEvent f, BaseEvent* event)
 
 		//if(tasks.size() % 1000 == 0)
 			//std::cout << "                                            "<<tasks.size() << std::endl;
-
-		//if (tasks.size() == tasksLimitSize) {
-			//isFull = true;
-			//std::cout << "                                    " << tasksLimitSize << std::endl;
-		//}
+//        tasksLimitSize++;
+//		if (tasks.size() == tasksLimitSize) {
+//			isFull = true;
+//			std::cout << "tasksLimitSize is full " << tasksLimitSize << std::endl;
+//		}
 		isEmpty = false;
 	}
 	cv.notify_one();

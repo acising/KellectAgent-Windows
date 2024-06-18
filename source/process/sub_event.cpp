@@ -4,7 +4,9 @@
 #include <fstream>
 #include <regex>
 #include <algorithm>
-#include "tools/json.hpp"
+#include <codecvt>
+#include <atlconv.h>
+#include "nlohmann/json.hpp"
 #include "filter.h"
 //#include "process/etw_config.h"
 #include "process/event_parse.h"
@@ -20,9 +22,42 @@ ReadWriteMap<int, EventProcess::MinMaxModuleAddressPair> EventProcess::processID
 std::map<CallStackIdentifier, std::string*> EventCallstack::callStackRecord;
 std::atomic<int> EventCallstack::callStackRecordNum(0);
 int EventProcess::processID2ParentProcessID[ProcessNumSize];
-
+std::map<std::string, std::string> processList;
+std::map<std::string, std::string> fileList;
+std::map<std::string, std::string> registryList;
+std::map<std::string, std::string> socketList;
+std::set<std::string> noEventList;
 std::string Initializer::uuid;  //declare static property
+using json = nlohmann::json;
+std::string jsonString = R"({ "ProcessStart": "EVENT_EXECUTE", "ThreadStart": "EVENT_CREATE_THREAD", "RegistryDeleteValue": "EVENT_MODIFY_FILE_ATTRIBUTES", "FileIORead": "EVENT_READ",
+"FileIOFileCreate": "EVENT_CREATE_OBJECT", "FileIOWrite": "EVENT_WRITE", "RegistrySetValue": "EVENT_MODIFY_FILE_ATTRIBUTES", "RegistryCreate": "EVENT_CREATE_OBJECT",
+"RegistryKCBCreate": "EVENT_CREATE_OBJECT", "TcpIpSendIPV4": "EVENT_SENDMSG", "TcpIpRecvIPV4": "EVENT_RECVMSG", "TcpIpSendIPV6": "EVENT_SENDMSG",
+"TcpIpRecvIPV6": "EVENT_RECVMSG", "FileIORename": "EVENT_RENAME", "FileIOCreate": "EVENT_OPEN", "RegistryOpen": "EVENT_OPEN", "FileIOCleanup": "EVENT_CLOSE",
+"RegistryClose": "EVENT_CLOSE", "FileIOClose": "EVENT_CLOSE", "FileIOFlush": "EVENT_CLOSE", "RegistryFlush": "EVENT_CLOSE", "ProcessEnd": "EVENT_EXIT",
+"ThreadEnd": "EVENT_EXIT", "FileIOFileDelete": "EVENT_DELETE_OBJECT", "ImageLoad": "EVENT_LOADLIBARY", "TcpIpRetransmitIPV4": "EVENT_SENDMSG", "TcpIpRetransmitIPV6": "EVENT_SENDMSG",
+"TcpIpAcceptIPV4": "EVENT_ACCEPT", "TcpIpAcceptIPV6": "EVENT_ACCEPT", "TcpIpConnectIPV4": "EVENT_CONNECT", "TcpIpConnectIPV6": "EVENT_CONNECT", "TcpIpDisconnectIPV4": "EVENT_CLOSE",
+"TcpIpDisconnectIPV6": "EVENT_CLOSE", "TcpIpReconnectIPV6": "EVENT_CONNECT", "TcpIpReconnectIPV4": "EVENT_CONNECT", "RegistryDelete": "EVENT_DELETE", "RegistryKCBDelete": "EVENT_DELETE",
+"RegistrySetInformation": "EVENT_UPDATE", "FileIODelete": "EVENT_DELETE", "FileIODirEnum": "EVENT_ITERATE", "RegistryQuery": "EVENT_ITERATE", "RegistryQueryValue": "EVENT_ITERATE",
+"RegistryEnumerateKey": "EVENT_ITERATE", "RegistryEnumerateValueKey": "EVENT_ITERATE", "RegistryQueryMultipleValue": "EVENT_ITERATE", "FileIOFileRundown": "EVENT_DC_STAET",
+"ImageDCStart": "EVENT_DC_STAET", "ProcessDCStart": "EVENT_DC_STAET", "ThreadDCStart": "EVENT_DC_STAET", "RegistryKCBRundownBegin": "EVENT_DC_STAET", "RegistryDCStart": "EVENT_DC_STAET",
+"ProcessDCEnd": "EVENT_DC_END", "ThreadDCEnd": "EVENT_DC_END", "RegistryKCBRundownEnd": "EVENT_DC_END"})";
 
+std::vector<std::string> fileEntity = {"FileIOFileCreate", "FileIOWrite", "FileIOFileDelete","FileIODelete", "FileIOFileRundown", "FileIORename"};
+std::vector<std::string> registryEntity = {"RegistryDeleteValue", "RegistrySetValue", "RegistryCreate", "RegistryKCBCreate", "RegistryDelete", "RegistryKCBDelete",
+                                          "RegistrySetInformation"};
+std::vector<std::string>ignoreEvent={"FileIOCreate", "RegistryOpen", "FileIOCleanup", "RegistryClose", "FileIOClose",
+"FileIOFlush", "RegistryFlush", "TcpIpAcceptIPV4", "TcpIpAcceptIPV6", "TcpIpConnectIPV4",
+"TcpIpConnectIPV6", "TcpIpDisconnectIPV4", "TcpIpDisconnectIPV6", "TcpIpReconnectIPV6",
+"TcpIpReconnectIPV4", "FileIODirEnum", "RegistryQuery", "RegistryQueryValue", "RegistryEnumerateKey",
+"RegistryEnumerateValueKey", "RegistryQueryMultipleValue"};
+
+json eventType = json::parse(jsonString);
+json argsObject;
+std::string to_utf8(std::wstring& wide_string)
+{
+    static std::wstring_convert<std::codecvt_utf8<wchar_t>> utf8_conv;
+    return utf8_conv.to_bytes(wide_string);
+}
 void setFileName(BaseEvent* ev) {
 
 	ULONG64 fileObject = 0;
@@ -161,10 +196,9 @@ void EventFile::parse() {
         //fill parentProcess Information
         fillProcessInfo();
 	}
-
 }
 
-//some events need to revise tid and pid, return pid
+//some events need to revise tid(线程id) and pid(进程id), return pid
 int BaseEvent::setTIDAndPID(BaseEvent* ev) {
 
     int processorId = ev->getProcessorID();
@@ -237,11 +271,9 @@ void EventThread::parse() {
 }
 
 STATUS EventImage::getExportAPIs(LPVOID hModule, std::string& fileName, std::set<MyAPI*, MyAPISortCriterion>& apis) {
-
 	PIMAGE_EXPORT_DIRECTORY pExportDirectory;
 	PIMAGE_DOS_HEADER pDosHeader;
 	PIMAGE_NT_HEADERS pNtHeader;
-
 	PIMAGE_SECTION_HEADER pSecHeader;
 	PDWORD pAddressName;
 	PWORD pAddressOfNameOrdinals;
@@ -249,7 +281,6 @@ STATUS EventImage::getExportAPIs(LPVOID hModule, std::string& fileName, std::set
 	std::set<MyAPI> tempAPIs;
     PCHAR pApi;
     DWORD rva;
-
 	pDosHeader = (PIMAGE_DOS_HEADER)hModule;
 	if (pDosHeader->e_magic != IMAGE_DOS_SIGNATURE) {
 		MyLogger::writeLog("Not PE file-2");
@@ -258,8 +289,6 @@ STATUS EventImage::getExportAPIs(LPVOID hModule, std::string& fileName, std::set
 
 	//get the PIMAGE_NT_HEADERS structure
 	pNtHeader = (PIMAGE_NT_HEADERS)((PBYTE)hModule + pDosHeader->e_lfanew);
-	//ULONG64 base = pNtHeader->OptionalHeader.ImageBase;
-	//pSecHeader = (PIMAGE_SECTION_HEADER)((PBYTE)hModule + pDosHeader->e_lfanew + sizeof(IMAGE_NT_HEADERS));
 
 	if (pNtHeader->Signature != IMAGE_NT_SIGNATURE) {
 		MyLogger::writeLog("Not PE file-2");
@@ -272,22 +301,14 @@ STATUS EventImage::getExportAPIs(LPVOID hModule, std::string& fileName, std::set
         //AMD64 machine architecture
         pExportDirectory = (PIMAGE_EXPORT_DIRECTORY)(((PIMAGE_NT_HEADERS64)((PBYTE)hModule + pDosHeader->e_lfanew))->
                 OptionalHeader.DataDirectory[0].VirtualAddress + (PBYTE)hModule);
-
-        //        std::cout<<pNtHeader->Signature<<std::endl;
-        //can not parse other machine type except 0x014c
-//        return STATUS_FAILED;
     }
-
     pAddressName = (PDWORD)((PBYTE)hModule + pExportDirectory->AddressOfNames);
     pAddressOfNameOrdinals = (PWORD)((PBYTE)hModule + pExportDirectory->AddressOfNameOrdinals);
     pAddresOfFunction = (PDWORD)((PBYTE)hModule + pExportDirectory->AddressOfFunctions);
 
     if (pExportDirectory->AddressOfFunctions + pExportDirectory->AddressOfNames == 0 || pExportDirectory->NumberOfNames == 0) {
-		//MyLogger::writeLog("imageFile: "+ Tools::WString2String(fileName.c_str()) +" have no apis");
-		//return tempAPIs;
 		return STATUS_FAILED;
 	}
-
 	//parse export table
 	for (DWORD i = 0; i < (pExportDirectory->NumberOfNames); ++i) {
 
@@ -295,13 +316,11 @@ STATUS EventImage::getExportAPIs(LPVOID hModule, std::string& fileName, std::set
 		++pAddressName;
 		rva = pAddresOfFunction[*pAddressOfNameOrdinals];
 		++pAddressOfNameOrdinals;
-
 		//module.insertAPI(Tools::StringToWString(std::string(pFunc)), module.getAddressBegin() + rva);
 		apis.insert(std::set<MyAPI*, MyAPISortCriterion>::value_type
 		(new MyAPI(rva,pApi)));
 
 	}
-
 	return STATUS_SUCCESS;
 }
 
@@ -332,8 +351,6 @@ STATUS EventImage::getAPIsFromFile(std::string& fileName, std::set<MyAPI*, MyAPI
 
 	//current_module_name = moduleName;
 	status = getExportAPIs(hBase,fileName, apis);
-	//EventImage::modulesName2APIs.insert(std::map < std::wstring, std::set<MyAPI> >::value_type(fileName,retAPIsSet));
-	//module_btree_map[moduleName] = temp_tree;
 cleanup:
 	CloseHandle(hFile);
 	CloseHandle(hMap);
@@ -358,10 +375,6 @@ void  EventImage::parse() {
         setValueableEvent(false);
         return;
     }
-
-    //filter unnecessary events according to revise processID and imagefile.
-	//this event always needs to output. So do not call setValueableEvent(false).
-    //if listen callstack, will not execute following statement
     if(!Initializer::getListenCallStack()){
         if (Filter::filterImageFile(imageFileName)||Filter::secondFilter(this)) {
             setValueableEvent(false);
@@ -386,27 +399,15 @@ void  EventImage::parse() {
 		//erase unloaded image in correlate process_module map. 
 		processID2Modules.eraseValueItemWithKey(processID, &tempModule);
 
-		/*	//for synchronize version
-		processID2Modules[processID].erase(&tempModule);
-		auto it = processID2Modules.find(processID);
-		if ( it != processID2Modules.end()) {
-			it->second.erase(&tempModule);	// erase(module*) won't call module's destructor
-		}
-		*/
 		//TODO : update the min and max module address of the exact process, skip this now.
 
 		break;
 	}
 	case IMAGELOAD:
 	case IMAGEDCSTART: {
-
-		//create module instance
 		Module* module = new Module(baseAddress, baseAddress + moduleSize, imageFileName);
-		//TargetProcess2ModuleIter targetIter = processID2Modules.count(processID) == 0 ?
-		//	processID2Modules.insert(processID, std::set<Module*, ModuleSortCriterion>()).first : processID2Modules.find(processID);
+
 		int cnt = -1;
-		//auto it = processID2Modules.find(processID);
-		//if (it != processID2Modules.end()) cnt = it->second.count(module);
 		cnt = processID2Modules.countValueNumWithKey(processID,module);
 
 		if (cnt == 0 || cnt == -1) {	//there are no modules set mapping with the processID, so add the pid-modules item.
@@ -422,7 +423,7 @@ void  EventImage::parse() {
 				module = *globalModuleIter;			//if this image module has been stored into globalModuleSet, reuses it.
 			}
 			
-			if (cnt == 0) {	// pid2moduleSet item exists,just update the item
+            if (cnt == 0) {	// pid2moduleSet item exists,just update the item
 				processID2Modules.insertValueItemWithKey(processID, module);
 
 				//modify min and max module begin address to filter callstack addresses
@@ -447,7 +448,6 @@ void  EventImage::parse() {
 
             if(Filter::filteredImageFile.count(imageFileName) == 0){
 //                std::cout<< processID <<" ,imageName:"<<imageFileName<<"  BaseAddress:"<< baseAddress<<std::endl;
-
                 std::set<MyAPI*, MyAPISortCriterion> apis;
                 Filter::filteredImageFile.insert(imageFileName);
                 int status = EventImage::getAPIsFromFile(imageFileName, apis);
@@ -458,17 +458,11 @@ void  EventImage::parse() {
                             std::map <std::string, std::set<MyAPI*, MyAPISortCriterion> >::value_type(imageFileName, apis)
                     );
                 }
-
-//                for debugging usage only
-//                for(auto api = apis.begin(); api!=apis.end();++api){
-//                    std::cout<<"address:"<<(*api)->getAPIAddress()<<"   apiName:"<<(*api)->getAPIName()<<std::endl;
-//                }
             }
             //===============================================================
 		}
 		else	//find moduleSet mapping with the processID, do nothing.
 		{
-			//delete existing module instance
 			delete module;
 		}
 			
@@ -659,21 +653,6 @@ void  EventUnImportant::parse() {
 	//MyLogger::writeLog("EventUnImportant parse successfully!");
 }
 
-/*
-std::wstring& EventProcess::getProcessName(std::wstring& exeImageName) {
-
-	int rPos = exeImageName.find_last_of(L"\\");
-	int len = exeImageName.length();
-
-	if (rPos != len - 1) {
-
-		exeImageName = exeImageName.substr(rPos);
-	}
-	
-	return exeImageName;
-}
-*/
-
 void  EventProcess::parse() {
 
 	ULONG64 pid = getProperty(ProcessId)->getULONG64();
@@ -840,11 +819,12 @@ void  EventPerfInfo::parse() {
 		setSysCallName(sysCallName);
 	}
 }
-
+void EventUSer::parse() {
+    fillProcessInfo();
+}
 void  EventTCPIP::parse() {
 
 	int pid;
-
 	switch (this->getEventIdentifier()->getOpCode()) {
         case TCPIPFAILED:
             break;
@@ -886,59 +866,430 @@ void  EventTCPIP::parse() {
 
 	fillProcessInfo();
 }
+std::string getNewGuid() {
+    GUID guid;
+    char tempUUID[1024];
+    std::string buf;
+    HRESULT res = CoCreateGuid(&guid);
+    if (res == S_OK) {
+        sprintf(tempUUID, "%08X-%04X-%04x-%02X%02X-%02X%02X%02X%02X%02X%02X", guid.Data1, guid.Data2, guid.Data3,
+                guid.Data4[0], guid.Data4[1], guid.Data4[2], guid.Data4[3], guid.Data4[4], guid.Data4[5], guid.Data4[6],
+                guid.Data4[7]);
+        buf = std::string(tempUUID);
+    }
+    return buf;
+}
+
+json Getargs(BaseEvent* event){
+    nlohmann::json argsObject1;
+    for (auto pty : event->getProperties()) {
+        if (pty.second) {
+            if (pty.second->getIsString()) {
+                std::string argValue = pty.second->getString();
+                argsObject1[pty.first] = argValue;
+
+            } else {
+
+                argsObject1[pty.first] = pty.second->getULONG64();
+            }
+        }
+    }
+    for (auto pty : event->getProperties()) {
+        delete pty.second;
+    }
+    return argsObject1;
+}
+
+
+json Entity_Declare(BaseEvent* event,std::string eventname){
+    std::string uuid=getNewGuid();
+    json j;
+    nlohmann::json entityObject;
+    nlohmann::json dataObject;
+//    std::cout<<"test ThreadStart1"<<std::endl;
+//    nlohmann::json argsObject= Getargs(event);
+//
+
+
+ // delete properties
+    if(eventname=="process"){
+        nlohmann::json subjectObject;
+        subjectObject["uuid"]=uuid;
+        subjectObject["Type"] = "SUBJECT_PROCESS";
+        subjectObject["PID"] = event->getProcessID();
+        subjectObject["PName"] = event->getProcessName();
+        subjectObject["NodeType"] = "process";
+        subjectObject["ParentSubject"] ;
+        subjectObject["TimeStamp"] = event->getTimeStamp();
+        dataObject["Subject"] = subjectObject;
+        dataObject["args"]=argsObject;
+        dataObject["weights"]=1;
+        entityObject["data"]=dataObject;
+        entityObject["WDMVersion"]="1.0";
+        entityObject["source"]="";
+        entityObject["@type"]="com.tags.Process";
+
+    }else if(eventname=="thread"){
+        nlohmann::json subjectObject;
+        subjectObject["uuid"]=uuid;
+        subjectObject["Type"] = "SUBJECT_PROCESS";
+        subjectObject["TID"] = event->getThreadID();
+        subjectObject["NodeType"] = "thread";
+        subjectObject["ParentSubject"] ;
+        subjectObject["TimeStamp"] = event->getTimeStamp();
+        dataObject["Subject"] = subjectObject;
+        dataObject["args"]=argsObject;
+        dataObject["weights"]=1;
+        entityObject["data"]=dataObject;
+        entityObject["WDMVersion"]="1.0";
+        entityObject["source"]="";
+        entityObject["@type"]="com.tags.Process";
+    }
+    else if(eventname=="file"){
+        nlohmann::json ObjectObject;
+        ObjectObject["uuid"]=uuid;
+        ObjectObject["Type"] = "FILE_OBJECT_FILE";
+        ObjectObject["Path"] ;
+        ObjectObject["NodeType"] = "file";
+        ObjectObject["TimeStamp"] = event->getTimeStamp();
+        dataObject["Object"] = ObjectObject;
+        dataObject["args"]=argsObject;
+        dataObject["weights"]=1;
+        entityObject["data"]=dataObject;
+        entityObject["WDMVersion"]="1.0";
+        entityObject["source"]="";
+        entityObject["@type"]="com.tags.File";
+    }
+    else if(eventname=="registry"){
+        nlohmann::json ObjectObject;
+        ObjectObject["uuid"]=uuid;
+        ObjectObject["Type"] = "FILE_OBJECT_FILE";
+        ObjectObject["Path"]=argsObject["KeyName"];
+        ObjectObject["NodeType"] = "register";
+        ObjectObject["TimeStamp"] = event->getTimeStamp();
+        dataObject["Object"] = ObjectObject;
+        dataObject["args"]=argsObject;
+        dataObject["weights"]=1;
+        entityObject["data"]=dataObject;
+        entityObject["WDMVersion"]="1.0";
+        entityObject["source"]="";
+        entityObject["@type"]="com.tags.File";
+    }
+    else if(eventname=="socket"){
+        nlohmann::json ObjectObject;
+        ObjectObject["uuid"]=uuid;
+        ObjectObject["Type"] = "FILE_OBJECT_UNIX_SOCKET";
+        ObjectObject["NodeType"] = "socket";
+        ObjectObject["saddr"]=argsObject["saddr"];
+        ObjectObject["sport"]=argsObject["sport"];
+        ObjectObject["daddr"]=argsObject["daddr"];
+        ObjectObject["dport"]=argsObject["dport"];
+        ObjectObject["TimeStamp"] = event->getTimeStamp();
+        dataObject["Object"] = ObjectObject;
+        dataObject["args"]=argsObject;
+        dataObject["weights"]=1;
+        entityObject["data"]=dataObject;
+        entityObject["WDMVersion"]="1.0";
+        entityObject["source"]="";
+        entityObject["@type"]="com.tags.Socket";
+    }
+    return entityObject;
+}
+json Event_Declare(BaseEvent* event){
+    std::string uuid=getNewGuid();
+    nlohmann::json entityObject;
+    nlohmann::json eventObject;
+    nlohmann::json dataObject;
+    argsObject= Getargs(event);
+    eventObject["uuid"]=uuid;
+    eventObject["Type"] ;
+    eventObject["subject"];
+    eventObject["object"];
+    eventObject["object2"];
+    eventObject["CommandLine"] ;
+    eventObject["TimeStamp"] = event->getTimeStamp();
+    dataObject["Event"] = eventObject;
+    dataObject["args"]=argsObject;
+    dataObject["weights"]=1;
+
+    entityObject["WDMVersion"]="1.0";
+    entityObject["data"]=dataObject;
+    entityObject["source"]="";
+    entityObject["@type"]="com.tags.Event";
+    return entityObject;
+}
+STATUS getCommonJsonNoLib(BaseEvent* event, std::string* sJson) {
+    if (!event) return STATUS_FAIL;
+    std::string eventName = event->getEventIdentifier()->getEventName().c_str();
+    ULONG64 ProviderID = event->getEventIdentifier()->getProviderID();
+    int OpCode = event->getEventIdentifier()->getOpCode();
+    bool flag = false;
+    sJson->append(
+            "{\"Event\":\"" + eventName +
+            "\",\"PID\":" + std::to_string(event->getProcessID()) +
+            ",\"PName\":\"" + event->getProcessName() +
+            "\",\"PPID\":" + std::to_string(event->getParentProcessID()) +
+            ",\"PPName\":\"" + event->getParentProcessName() +
+            "\",\"TID\":" + std::to_string(event->getThreadID()) +
+            ",\"TimeStamp\":" + std::to_string(event->getTimeStamp()) +
+            ",\"Host-UUID\":" + Initializer::getUUID() +
+            ",\"args\":{");
+
+    //event->getProperty
+    for (auto pty : event->getProperties()) {
+
+        if (pty.second) {
+
+            if (flag) {
+                sJson->append(",");
+            }
+
+            flag = true;
+            if (pty.second->getIsString()) {
+                std::string argValue = pty.second->getString();
+                sJson->append("\"" + pty.first + "\":\"" +
+                              argValue + "\"");
+            }
+            else {
+                sJson->append("\"" + pty.first + "\":" +
+                              std::to_string(pty.second->getULONG64()));
+            }
+        }
+
+        delete pty.second;		//delete properies
+    }
+
+    sJson->append("}}");
+    sJson->append("\n");
+    event->setPropertiesDeleted(true);	//set properies deleted true
+
+    return STATUS_SUCCESS;
+}
+STATUS TranstoWdm(BaseEvent* event, std::string* sJson){
+    if (!event||!sJson){
+        return STATUS_FAIL;
+    }
+    std::string eventName = event->getEventIdentifier()->getEventName().c_str();
+    std::string pKey= event->getProcessName() + std::to_string(event->getProcessID());
+//    nlohmann::json argsObject= wdmEvent["data"]["args"];
+    auto it = std::find(ignoreEvent.begin(), ignoreEvent.end(), eventName);
+
+    if(eventName.find("DiskIO")==0){
+        return STATUS_FAIL;
+    }
+    if(it!=ignoreEvent.end()){
+        return  STATUS_FAIL;
+    }
+
+    if (eventType.count(eventName)==0){
+//        noEventList.insert(eventName);
+        return  STATUS_FAIL;
+    }
+    json wdmEvent=Event_Declare(event);
+    if(eventName.find("Registry")==0){
+        auto it = std::find(registryEntity.begin(), registryEntity.end(), eventName);
+        if (it != registryEntity.end()){
+            if(processList.count(pKey)==0){
+                json entityObject=Entity_Declare(event,"process");
+                processList[pKey]=entityObject["data"]["Subject"]["uuid"];
+                entityObject["data"]["Subject"]["ParentSubject"]=processList.at(pKey);
+                sJson->append(entityObject.dump());
+                sJson->append("\n");
+                sJson->append("\n");
+            }
+            if(argsObject.contains("KeyName")) {
+                if (registryList.count(argsObject["KeyName"]) == 0) {
+                    json entityObject = Entity_Declare(event, "registry");
+                    registryList[argsObject["KeyName"]] = entityObject["data"]["Object"]["uuid"];
+                    sJson->append(entityObject.dump());
+                    sJson->append("\n");
+                    sJson->append("\n");
+                }
+            }
+        }
+//    if(argsObject["keyName"]!=NULL&&registryList.count(argsObject["keyName"])==0){
+//            std::cout<<"Registry 8 "<<std::endl;
+//            std::cout<<"come in"<<std::endl;
+//            return STATUS_FAIL;
+//        }
+        if ((processList.count(pKey) == 0 || registryList.count(argsObject["KeyName"]) == 0)) {
+            // 键不存在，进行相应处理
+            return STATUS_FAIL;
+        }
+        wdmEvent["data"]["Event"]["subject"]=processList[pKey];
+        wdmEvent["data"]["Event"]["object"]=registryList.at(argsObject["KeyName"]);
+        wdmEvent["data"]["Event"]["Type"]=eventType[eventName];
+        sJson->append(wdmEvent.dump());
+        sJson->append("\n");
+        sJson->append("\n");
+    }
+    else if(eventName.find("Process")==0){
+        std::string ppKey=event->getParentProcessName()+std::to_string(event->getParentProcessID());
+        if(processList.count(ppKey)==0){
+            nlohmann::json entityObject;
+            nlohmann::json dataObject;
+            nlohmann::json subjectObject;
+            subjectObject["uuid"]=getNewGuid();
+            subjectObject["Type"]="SUBJECT_PROCESS";
+            subjectObject["PID"]=event->getProcessID();
+            subjectObject["PName"]=event->getProcessName();
+            subjectObject["NodeType"]="process";
+            subjectObject["ParentSubject"];
+            subjectObject["TimeStamp"]=std::to_string(event->getTimeStamp());
+            dataObject["Subject"]=subjectObject;
+            dataObject["args"]=argsObject;
+            dataObject["weights"]=1;
+            entityObject["data"]=dataObject;
+            entityObject["WDMVersion"]="1.0";
+            entityObject["source"]="";
+//            processList.insert(std::map<std::string,std::string>::value_type(ppKey,subjectObject["uuid"]));
+            processList[ppKey]=subjectObject["uuid"];
+            sJson->append(entityObject.dump());
+            sJson->append("\n");
+            sJson->append("\n");
+        }
+        if(processList.count(pKey)==0){
+            json entityObject=Entity_Declare(event,"process");
+//            processList.insert(std::map<std::string,std::string>::value_type(pKey,entityObject["data"]["Subject"]["uuid"]));
+            processList[pKey]=entityObject["data"]["Subject"]["uuid"];
+            entityObject["data"]["Subject"]["ParentSubject"]=processList.at(ppKey);
+            sJson->append(entityObject.dump());
+            sJson->append("\n");
+            sJson->append("\n");
+        }
+
+        wdmEvent["data"]["Event"]["subject"] = processList.at(ppKey);
+        wdmEvent["data"]["Event"]["object"] = processList.at(pKey);
+        wdmEvent["data"]["Event"]["Type"] = eventType[eventName];
+        wdmEvent["data"]["Event"]["CommandLine"] = argsObject["CommandLine"];
+        sJson->append(wdmEvent.dump());
+        sJson->append("\n");
+        sJson->append("\n");
+    }
+    else if(eventName.find("ThreadStart")==0){
+        if(processList.count(pKey)==0){
+            json entityObject=Entity_Declare(event,"process");
+
+//            processList.insert(std::map<std::string,std::string>::value_type(pKey,entityObject["data"]["Subject"]["uuid"]));
+            processList[pKey]=entityObject["data"]["Subject"]["uuid"];
+            entityObject["data"]["Subject"]["ParentSubject"]=processList.at(pKey);
+           sJson->append(entityObject.dump());
+           sJson->append("\n");
+            sJson->append("\n");
+        }
+        json entityObject=Entity_Declare(event,"thread");
+        entityObject["data"]["Subject"]["ParentSubject"]=processList.at(pKey);
+        sJson->append(entityObject.dump());
+        sJson->append("\n");
+        sJson->append("\n");
+        wdmEvent["data"]["Event"]["subject"] = processList.at(pKey);
+        wdmEvent["data"]["Event"]["object"] = processList.at(pKey);
+        wdmEvent["data"]["Event"]["Type"] = eventType[eventName];
+        sJson->append(wdmEvent.dump());
+        sJson->append("\n");
+        sJson->append("\n");
+    }
+    else if(eventName.find("FileIO")==0){
+        auto it = std::find(fileEntity.begin(), fileEntity.end(), eventName);
+        if (it != fileEntity.end()){
+            if(processList.count(pKey)==0){
+                json entityObject=Entity_Declare(event,"process");
+//                processList.insert(std::map<std::string,std::string>::value_type(pKey,entityObject["data"]["Subject"]["uuid"]));
+                processList[pKey]=entityObject["data"]["Subject"]["uuid"];
+                entityObject["data"]["Subject"]["ParentSubject"]=processList.at(pKey);
+                sJson->append(entityObject.dump());
+                sJson->append("\n");
+                sJson->append("\n");
+            }
+            if(argsObject.contains("FileName")&&fileList.count(argsObject["FileName"])==0){
+                json entityObject=Entity_Declare(event,"file");
+                fileList[argsObject["FileName"]]=entityObject["data"]["Object"]["uuid"];
+//                entityObject["data"]["Object"]["Path"] = argsObject["FileName"];
+                entityObject["data"]["Object"]["Path"] =argsObject["FileName"];
+               std:: string length=argsObject["FileName"];
+                sJson->append(entityObject.dump());
+                sJson->append("\n");
+                sJson->append("\n");
+            }
+            else if(argsObject.contains("OpenPath")&&fileList.count(argsObject["OpenPath"])==0){
+                json entityObject=Entity_Declare(event,"file");
+                fileList[argsObject["OpenPath"]]=entityObject["data"]["Object"]["uuid"];
+                entityObject["data"]["Object"]["Path"]=argsObject["OpenPath"];
+                sJson->append(entityObject.dump());
+                sJson->append("\n");
+                sJson->append("\n");
+            }
+        }
+       if(argsObject.contains("FileName")&&fileList.count(argsObject["FileName"])==0){
+           return STATUS_FAIL;
+      }
+        if(argsObject.contains("OpenPath")&&fileList.count(argsObject["FileName"])==0){
+
+           return STATUS_FAIL;
+       }
+        wdmEvent["data"]["Event"]["subject"]=processList[pKey];
+        if(argsObject.contains("FileName")){
+            wdmEvent["data"]["Event"]["object"]=fileList[argsObject["FileName"]];
+        }else if(argsObject.contains("OpenPath")){
+            wdmEvent["data"]["Event"]["object"] = fileList[argsObject["OpenPath"]];
+        }
+        wdmEvent["data"]["Event"]["Type"] = eventType[eventName];
+        sJson->append(wdmEvent.dump());
+        sJson->append("\n");
+        sJson->append("\n");
+    }
+    else if(eventName.find("Tcp")==0){
+        if(processList.count(pKey)==0){
+            json entityObject=Entity_Declare(event,"process");
+            processList[pKey]=entityObject["data"]["Subject"]["uuid"];
+            entityObject["data"]["Subject"]["ParentSubject"]=processList[pKey];
+            sJson->append(entityObject.dump());
+            sJson->append("\n");
+            sJson->append("\n");
+        }
+        std::stringstream ss;
+        std::string daddr_str = argsObject["daddr"];
+        std::string saddr_str = argsObject["saddr"];
+        ss << argsObject["dport"];
+        std::string dport_str = ss.str();
+        ss.str("");
+        ss << argsObject["sport"];
+        std::string sport_str = ss.str();
+        ss.str("");
+        std::string socket = daddr_str + ":" + dport_str + " => " + saddr_str + ":" + sport_str;
+        ss.str("");
+        if(socketList.count(socket)==0){
+            json entityObject=Entity_Declare(event,"socket");
+            socketList[socket]=entityObject["data"]["Object"]["uuid"];
+            sJson->append(entityObject.dump());
+            sJson->append("\n");
+            sJson->append("\n");
+        }
+        wdmEvent["data"]["Event"]["subject"] = processList.at(pKey);
+        wdmEvent["data"]["Event"]["object"] = socketList[socket];
+        wdmEvent["data"]["Event"]["Type"] = eventType[eventName];
+
+        sJson->append(wdmEvent.dump());
+        sJson->append("\n");
+        sJson->append("\n");
+    }
+    else{
+        return STATUS_FAIL;
+    }
+return STATUS_SUCCESS;
+}
 
 //parse jsonString
-STATUS getCommonJsonNoLib(BaseEvent* event, std::string* sJson) {
 
-	if (!event) return STATUS_FAIL;
-
-	std::string eventName = event->getEventIdentifier()->getEventName().c_str();
-	ULONG64 ProviderID = event->getEventIdentifier()->getProviderID();
-	int OpCode = event->getEventIdentifier()->getOpCode();
-	bool flag = false;
-
-	sJson->append(
-		"{\"Event\":\"" + eventName +
-		"\",\"PID\":" + std::to_string(event->getProcessID()) +
-		",\"PName\":\"" + event->getProcessName() +
-		"\",\"PPID\":" + std::to_string(event->getParentProcessID()) +
-		",\"PPName\":\"" + event->getParentProcessName() +
-		"\",\"TID\":" + std::to_string(event->getThreadID()) +
-		",\"TimeStamp\":" + std::to_string(event->getTimeStamp()) +
-		",\"Host-UUID\":" + Initializer::getUUID() +
-		",\"args\":{");
-
-	//event->getProperty
-	for (auto pty : event->getProperties()) {
-
-		if (pty.second) {
-
-			if (flag) {
-				sJson->append(",");
-			}
-
-			flag = true;
-			if (pty.second->getIsString()) {
-				std::string argValue = pty.second->getString();
-				sJson->append("\"" + pty.first + "\":\"" +
-					argValue + "\"");
-			}
-			else {
-				sJson->append("\"" + pty.first + "\":" +
-					std::to_string(pty.second->getULONG64()));
-			}
-		}
-
-		delete pty.second;		//delete properies
-	}
-
-	sJson->append("}}");
-	event->setPropertiesDeleted(true);	//set properies deleted true
-
-	return STATUS_SUCCESS;
-}
 
 STATUS BaseEvent::toJsonString(std::string* sJson) {
 
 	return getCommonJsonNoLib(this, sJson);
+}
+
+STATUS BaseEvent::toWdmJsonString(std::string* sJson) {
+    STATUS status = TranstoWdm(this, sJson);
+
+    this->setPropertiesDeleted(true);
+    return status;
 }

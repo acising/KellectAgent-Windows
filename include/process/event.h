@@ -81,6 +81,7 @@ private:
 protected:
 	int threadID;
 	int processID;
+    int eventID;
 	int processorID;
     int parentProcessID;
 	std::string processName;
@@ -91,6 +92,7 @@ protected:
 	bool valueableEvent = true;
 	bool propertiesDeleted = false;
 	std::map<std::string, dataType*> properties;
+    std::string userProviderName;
 
 public:
 
@@ -122,6 +124,7 @@ public:
 
 public:
 	virtual STATUS toJsonString(std::string* sJson);
+    virtual STATUS toWdmJsonString(std::string* sJson);
 	virtual void parse() {};
 	BaseEvent() {};
 	virtual~BaseEvent() {
@@ -152,6 +155,11 @@ public:
 		//memset(rawProperty, 0, len + 1);
 		memcpy((void*)rawProperty, (void*)data, len);
 	};
+    void setEventId(int id){eventID=id;}
+    void setuserProviderName(std::string name){
+            userProviderName=name;
+    }
+
 	void deleteRawProperty() {
 		
 		delete rawProperty;
@@ -164,6 +172,7 @@ public:
 	int getProcessID() { return processID; }
 	int getParentProcessID() { return parentProcessID; }
 	int getProcessorID() { return processorID; }
+    int getEventID(){return eventID;}
 	ULONG64 getTimeStamp() { return  timestamp; }
 	std::string getSTimeStamp() { return  sTimestamp; }
 	bool isValueableEvent() { return  valueableEvent; }
@@ -174,7 +183,9 @@ public:
 	char* getRawProperty() { return rawProperty; };
 	int getRawPropertyLen() { return rawPropertyLen; };
 	dataType* getProperty(int propertyNameIndex);
-
+    std::string getuserProviderName(){
+        return  userProviderName;
+    }
 	void setProperty(int propertyNameIdex, dataType *dt);
 	inline void setProperty(std::string propertyName, dataType* dt)	//overload setProperty
 	{

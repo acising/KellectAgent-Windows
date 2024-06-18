@@ -9,18 +9,17 @@
 std::map <std::string, std::string > EventImage::volume2Disk;
 
 std::string Tools::WString2String(LPCWSTR ws) {
-
     int nLen = WideCharToMultiByte(CP_UTF8, 0, ws, -1, NULL, 0, NULL, NULL);
-    if (nLen == 0)	return nullptr;
+    if (nLen == 0) return nullptr;
 
     char* pResult = new char[nLen];
-    WideCharToMultiByte(CP_ACP, 0, ws, -1, pResult, nLen, NULL, NULL);
+    WideCharToMultiByte(CP_UTF8, 0, ws, -1, pResult, nLen, NULL, NULL);
 
     std::string res = pResult;
-    delete pResult;
+    delete[] pResult; // 使用 delete[] 来释放内存
+
     return res;
 }
-
 std::wstring Tools::StringToWString(LPCSTR cs)
 {
     int nLen = MultiByteToWideChar(CP_ACP, MB_PRECOMPOSED, cs, -1, NULL, 0);

@@ -11,7 +11,6 @@ int KafkaOutPut::init() {
         brokers_ = ip+":"+ std::to_string(port);
         // create global config instance
         global_conf = RdKafka::Conf::create(RdKafka::Conf::CONF_GLOBAL);
-
         // set error message
         std::string errMsg = "";
 
@@ -19,15 +18,27 @@ int KafkaOutPut::init() {
         if (global_conf->set("bootstrap.servers", brokers_, errMsg) !=
             RdKafka::Conf::CONF_OK) {
             std::cout << errMsg << std::endl;
-
             return STATUS_FAIL;
         }
+        if (global_conf->set("queue.buffering.max.messages", "1", errMsg)!=
+            RdKafka::Conf::CONF_OK) {
+            std::cout << errMsg << std::endl;
+            return STATUS_FAIL;
+        }
+        if (global_conf->set("batch.num.messages", "1", errMsg)!=
+            RdKafka::Conf::CONF_OK) {
+            std::cout << errMsg << std::endl;
+            return STATUS_FAIL;
+        }
+
 
 //    global_conf->set("event_cb", &event_cb, errMsg);
 //    global_conf->set("dr_cb", &delivery_cb, errMsg);
 
         // create producer instance
+
         producer = RdKafka::Producer::create(global_conf, errMsg);
+
         if (!producer) {
             std::cerr << "Failed to create producer: " << errMsg << std::endl;
             return STATUS_FAIL;
@@ -71,7 +82,6 @@ void KafkaOutPut::output(std::string outputString){
             // 消息头
             NULL,
             NULL);
-
     if (err != RdKafka::ERR_NO_ERROR) {
         std::cerr << "% produce failed " << topics_ << ": "
                   << RdKafka::err2str(err) << std::endl;
@@ -84,6 +94,5 @@ void KafkaOutPut::output(std::string outputString){
     else {
 //        std::cerr << "% produced events, bytes:"<< outputString.size()<< " "<< " topic:"<< topics_<< std::endl;
     }
-
     producer->poll(0);
 }

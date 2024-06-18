@@ -9,7 +9,7 @@
 KELLECT（a **K**ernel-based efficient and **L**oss**l**ess event log coll**ec**tor）是一款用于内核级事件日志处理的系统框架 ，包括采集、清洗、融合、存储和分析阶段，KELLCT根据功能的不同，我们分为KellectAgent和KellectService。
 
 ## KellectAgent-Windows简介
-KellectAgent-Windows（以下简称kellectAgent）作为首发版本，是一款基于ETW(Event Tracing for Windows)的多线程Windows内核日志采集器，基于C++语言开发，性能高效，系统开销低。 KellectAgent-Windows可以跟踪Windows系统的内核级事件信息，如FileIO、Process、Thread、ImageLoad、Registry等。
+KellectAgent-Windows（以下简称kellectAgent）作为首发版本，是一款基于ETW(Event Tracing for Windows)的多线程Windows内核日志采集器，基于C++语言开发，性能高效，系统开销低。 KellectAgent-Windows可以跟踪Windows系统的内核级事件信息，如FileIO、Process、Thread、ImageLoad、Registry等。也可以跟踪用户侧的事件信息，如Microsoft_Windows_DNS_Client。
 
 该程序集成了事件收集、事件分析、事件语义校正、事件输出等功能。输出格式遵循JSON规范，有以下4种输出方式：
 
@@ -63,14 +63,14 @@ KELLECT项目的结构如下表所示：
 
 采集功能必须以**管理员**身份运行。如下所示，可通过配置参数的形式进行功能的选择。
 
-![image-20230407102213003](images/command.png)
+![image-20230407102213003](/images/new_kellect.png)
 
 例如，可以通过以下命令全量采集系统日志并输出至文件"test.json"：
 
 ```
 kellect.exe -e all -f test.json
 ```
-
+**注意:** 对于用户侧日志，目前只输出到控制台，所以使用用户侧事件时，不用在末尾添加别的字符，例如 kellect.exe -u 0x01
 **注意:** 参数"-e" 请指定16进制格式参数值。
 
 ### **配置文件的用法**
@@ -252,6 +252,72 @@ C:\Windows\System32\dbghelp.dll
 	}
 }
 ```
+
+## **WDM（windows common data model）输出格式**
+   目前WDM格式转化只对，注册表（Registry），进程（Process），线程（Thread），文件（File），网络（Tcp）进行格式转化。
+   其中每个事件都会产出边，每个边的格式为：
+   ```json
+   
+   {
+        "data": {
+             "Event": {
+                "uuid": ,
+                "Type": "", 
+                "subject": "",
+                "object": "",
+                "object2": "",
+                "CommandLine": "",
+                "TimeStamp": 
+            },
+            "args": ,
+            "weights": 1
+        },
+        "WDMVersion": "1.0",
+        "source": ""
+   }
+  ```
+   而对于每个点来说，不同事件的产出会有些不一样。
+
+   例如
+   ```json
+   #进程事件
+ {
+            "data": {
+                "Subject": {
+                    "uuid": ,
+                    "Type": 
+                    "PID" ,
+                    "PName": ,
+                    "NodeType": ,
+                    "ParentSubject": ,   
+                    "TimeStamp": 
+                },
+                "args": ,
+                "weights": 1
+            },
+            "WDMVersion": "1.0",
+            "source": ""
+        }
+
+#文件事件
+{
+            "data": {
+                "Object": {
+                    "uuid": ,
+                    "Type": ,
+                    "Path": ,
+                    "NodeType": ,
+                    "TimeStamp": 
+                },
+                "args": ,
+                "weights": 1
+            },
+            "WDMVersion": "1.0",
+            "source": ""
+        }
+
+   ```
+
 
 ## 数据集
 
