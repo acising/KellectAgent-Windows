@@ -4,6 +4,7 @@
 #include <regex>
 #include <exception> 
 
+
 void FileOutPut::output(std::string outputString) {
 
     if (!initialized())
@@ -42,6 +43,10 @@ void ConsoleOutPut::output(std::string outputString) {
     {
         MyLogger::writeLog("ConsoleOutPut is not initialized.\n");
     }
+<<<<<<< Updated upstream
+=======
+
+>>>>>>> Stashed changes
     std::cout << outputString;
 };
 

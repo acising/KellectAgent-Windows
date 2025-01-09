@@ -314,6 +314,7 @@ void Initializer::initEventPropertiesMap(std::string confFile) {
             ++p;
         }
     }
+
     infile.close();
 
 ////    for debug: get propertyIndex
@@ -338,7 +339,11 @@ void Initializer::initOutputThread() {
 
 void Initializer::initThreadParseProviders() {
 
+<<<<<<< Updated upstream
 //    EventParser::threadParseProviders.insert(TcpIpProvider);
+=======
+    EventParser::threadParseProviders.insert(TcpIpProvider);
+>>>>>>> Stashed changes
     EventParser::threadParseProviders.insert(DiskProvider);
 
     {
@@ -406,18 +411,26 @@ STATUS Initializer:: InitProcessMap() {
         status = STATUS_FAIL;
 
     }else{
+<<<<<<< Updated upstream
         std::cout << "------Begin to initialize datas of process and thread...------" << std::endl;
+=======
+
+        std::cout << "------Begin to initialize datas of process and thread123...------" << std::endl;
+>>>>>>> Stashed changes
         //search first process information by snapshot got before
+
         BOOL bMore = Process32First(hProcessSnap, &pe32);
         while (bMore)
         {
             if (pe32.th32ProcessID != 0) {		//skip pid=0, which is idle process
+
                 EventProcess::processID2Name[pe32.th32ProcessID] = pe32.szExeFile;
                 EventProcess::processID2ParentProcessID[pe32.th32ProcessID] = pe32.th32ParentProcessID;
             }
 
             //search next process infomation by snapshot got before
             bMore = Process32Next(hProcessSnap, &pe32);
+
         }
 
         //set idle process mapping
@@ -425,6 +438,7 @@ STATUS Initializer:: InitProcessMap() {
         EventProcess::processID2Name[INIT_PROCESS_ID] =  "Unknown" ;
         std::cout << "------Initialize datas of process and thread end...------" << std::endl;
         //release snapshot
+
         CloseHandle(hProcessSnap);
     }
 
@@ -510,8 +524,13 @@ void Initializer::initNeededStruct() {
         std::cout << "------Initialize process and thread failed!------" << std::endl;
         exit(-1);
     }
+<<<<<<< Updated upstream
+=======
+
+>>>>>>> Stashed changes
     initEventPropertiesMap();       //2
     //default to trace all event types
+
     if(!enbaleFlagsInited){
         initDefaultEnabledEvents();
     }
@@ -519,6 +538,7 @@ void Initializer::initNeededStruct() {
     if(opThreashold == 0){
         initOutputThreashold(userEnabledFlags);
     }
+
     initFilter();       //3
     initProcessID2ModulesMap();
     initPrasePool();
@@ -527,6 +547,10 @@ void Initializer::initNeededStruct() {
     //set output threashold value, which depends on the event types we want to trace
 
     initOutputThread();
+<<<<<<< Updated upstream
+=======
+
+>>>>>>> Stashed changes
 }
 
 void Initializer::showCommandList() {
@@ -554,6 +578,10 @@ void Initializer::showCommandList() {
                    "\t\t0x01(Thread_Pool)\n"
                    "\t\t0x02(Microsoft_Windows_DNS_Client)\n"
                    "\t\t0x03(Microsoft_Windows_PrintService)\n"
+<<<<<<< Updated upstream
+=======
+                   "\t\t0x04(Microsoft_Windows_DotNETRuntime)\n"
+>>>>>>> Stashed changes
     );
     cmdList.append("-wdm , the event type you want to trace and out by wdm\n");
     cmdList.append("\trguments details:\n"
@@ -694,6 +722,7 @@ ULONG64 Initializer::init(GUID &p) {
 
             if(status == STATUS_SUCCESS)    enbaleFlagsInited = true;
         }
+<<<<<<< Updated upstream
 //        else if(strcmp(currentArv,"-wdm")==0){
 //            if (!validArgLength(i, status))   break;
 //            std::string arg = argV[i++];
@@ -703,6 +732,9 @@ ULONG64 Initializer::init(GUID &p) {
 //            status = EventParser::op->init();
 //            outputInited = true;
 //            if(status == STATUS_SUCCESS)    enbaleFlagsInited = true;
+=======
+
+>>>>>>> Stashed changes
 //        }
         else if (strcmp(currentArv, "--outputThreshold") == 0) {
 
@@ -799,4 +831,11 @@ void Initializer::initUserGuid(ULONG64 userProvider,GUID &ProviderId){
         struct __declspec(uuid("{DE7B24EA-73C8-4A09-985D-5BDADCFA9017}")) Microsoft_Windows_PrintService;
         ProviderId  = __uuidof(Microsoft_Windows_PrintService);
     }
+<<<<<<< Updated upstream
+=======
+    if(userProvider==0x04){
+        struct __declspec(uuid("{E13C0D23-CCBC-4E12-931B-D9CC2EEE27E4}")) Microsoft_Windows_DotNETRuntime;
+        ProviderId  = __uuidof(Microsoft_Windows_DotNETRuntime);
+    }
+>>>>>>> Stashed changes
 }

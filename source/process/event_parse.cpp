@@ -16,6 +16,10 @@ ULONG64 comingEventsNum = 0;
 EventParser ETWConfiguration::eventParser;
 json EventParser:: j;
 bool EventParser::isWdm;
+<<<<<<< Updated upstream
+=======
+int i=0;
+>>>>>>> Stashed changes
 void EventParser::eventParseThreadFunc(BaseEvent* event) {
 
     event = ETWConfiguration::eventParser
@@ -34,7 +38,11 @@ void EventParser::eventParseThreadFunc(BaseEvent* event) {
                 STATUS status = event->toWdmJsonString(sJson);
                 if (status == STATUS_SUCCESS) {
 //                    op->outputStringPointer(sJson);
+<<<<<<< Updated upstream
                     op->output(*sJson);
+=======
+                    op->outputStringPointer(sJson);
+>>>>>>> Stashed changes
 //                    std::cout<<*sJson<<std::endl;
                 }
                 delete sJson;
@@ -64,9 +72,16 @@ VOID WINAPI EventParser::ConsumeEventMain(PEVENT_RECORD pEvent) {
         BaseEvent* event = ETWConfiguration::eventParser.getEventWithIdentifier(pEvent);    //simple parse
 
         if (event) {	//correctly parse EventIdentifier.
+<<<<<<< Updated upstream
 
             if (threadParseFlag && inThreadParseProviders(event->getEventIdentifier()->getProviderID()))
             {
+=======
+
+            if (threadParseFlag && inThreadParseProviders(event->getEventIdentifier()->getProviderID()))
+            {
+
+>>>>>>> Stashed changes
                 event->setRawProperty(pEvent->UserDataLength, pEvent->UserData);
                 parsePools->enqueueTask(eventParseThreadFunc, event);	//asynchronize
             }
@@ -81,6 +96,7 @@ VOID WINAPI EventParser::ConsumeEventMain(PEVENT_RECORD pEvent) {
                         if (++successParse % 50000 == 0) {
                             std::cout << "parse events number:" << successParse << std::endl;
                         }
+<<<<<<< Updated upstream
                         //create string and to get Json format event
                         std::string* sJson = new std::string();
                         if(EventParser::isWdm){
@@ -98,7 +114,31 @@ VOID WINAPI EventParser::ConsumeEventMain(PEVENT_RECORD pEvent) {
 
                                  op->pushOutputQueue(sJson);
                             }
+=======
+
+                        //create string and to get Json format event
+
+                        std::string* sJson = new std::string();
+                        if(EventParser::isWdm){
+                            STATUS status = event->toWdmJsonString(sJson);
+                            if (status == STATUS_SUCCESS) {
+
+                                op->outputStringPointer(sJson);
+//                                std::cout<<*sJson<<std::endl;
+//                                op->outputStringPointer(sJson);
+                            }
+                            delete sJson;
+>>>>>>> Stashed changes
                         }
+                        else{
+                            STATUS status = event->toJsonString(sJson);
+                            if (status == STATUS_SUCCESS) {
+
+                                 op->pushOutputQueue(sJson);
+
+                            }
+                        }
+
                     }
                 }
 
@@ -118,25 +158,48 @@ VOID WINAPI EventParser::ConsumeUserEvent(PEVENT_RECORD pEvent) {
     std::string providerName(wstr.begin(), wstr.end());
     for (ULONG i = 0; i < pInfo->TopLevelPropertyCount; ++i)
     {
+<<<<<<< Updated upstream
         std::string* sJson = new std::string();
         bool flag = false;
         status =ETWConfiguration::eventParser.PrintProperties4GetProperties(event,pEvent, pInfo, i, NULL, 0);
+=======
+
+        std::string* sJson = new std::string();
+        bool flag = false;
+        status =ETWConfiguration::eventParser.PrintProperties4GetProperties(event,pEvent, pInfo, i, NULL, 0);
+
+>>>>>>> Stashed changes
         if (ERROR_SUCCESS != status)
         {
             wprintf(L"Printing top level properties failed.\n");
         }
         event->parse();
+<<<<<<< Updated upstream
         STATUS status = event->toJsonString(sJson);
         std::cout<<"out ready"<<std::endl;
         if (status == STATUS_SUCCESS) {
             op->output(*sJson);
+=======
+
+        STATUS status = event->toJsonString(sJson);
+
+        if (status == STATUS_SUCCESS) {
+
+            op->outputStringPointer(sJson);
+>>>>>>> Stashed changes
 
         }
 //
 //        op->output(j.dump());
         delete sJson;
+<<<<<<< Updated upstream
     }
 
+=======
+
+    }
+    for (auto pty : event->getProperties()) delete pty.second;
+>>>>>>> Stashed changes
     delete event;
 }
 VOID WINAPI EventParser::ConsumeEventSub(PEVENT_RECORD pEvent) {

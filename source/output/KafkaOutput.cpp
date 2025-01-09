@@ -20,6 +20,7 @@ int KafkaOutPut::init() {
             std::cout << errMsg << std::endl;
             return STATUS_FAIL;
         }
+<<<<<<< Updated upstream
         if (global_conf->set("queue.buffering.max.messages", "1", errMsg)!=
             RdKafka::Conf::CONF_OK) {
             std::cout << errMsg << std::endl;
@@ -30,6 +31,18 @@ int KafkaOutPut::init() {
             std::cout << errMsg << std::endl;
             return STATUS_FAIL;
         }
+=======
+//        if (global_conf->set("queue.buffering.max.messages", "10", errMsg)!=
+//            RdKafka::Conf::CONF_OK) {
+//            std::cout << errMsg << std::endl;
+//            return STATUS_FAIL;
+//        }
+//        if (global_conf->set("batch.num.messages", "1", errMsg)!=
+//            RdKafka::Conf::CONF_OK) {
+//            std::cout << errMsg << std::endl;
+//            return STATUS_FAIL;
+//        }
+>>>>>>> Stashed changes
 
 
 //    global_conf->set("event_cb", &event_cb, errMsg);
@@ -62,7 +75,7 @@ void KafkaOutPut::output(std::string outputString){
         return;
 //        continue;
     }
-
+    std::cout<<outputString<<std::endl;
     retry:
     // 生产者根据主题发布信息
     RdKafka::ErrorCode err = producer->produce(
