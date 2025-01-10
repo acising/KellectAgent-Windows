@@ -340,9 +340,13 @@ void Initializer::initOutputThread() {
 void Initializer::initThreadParseProviders() {
 
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 //    EventParser::threadParseProviders.insert(TcpIpProvider);
 =======
     EventParser::threadParseProviders.insert(TcpIpProvider);
+>>>>>>> Stashed changes
+=======
+//    EventParser::threadParseProviders.insert(TcpIpProvider);
 >>>>>>> Stashed changes
     EventParser::threadParseProviders.insert(DiskProvider);
 
@@ -413,9 +417,12 @@ STATUS Initializer:: InitProcessMap() {
     }else{
 <<<<<<< Updated upstream
         std::cout << "------Begin to initialize datas of process and thread...------" << std::endl;
+<<<<<<< Updated upstream
 =======
 
         std::cout << "------Begin to initialize datas of process and thread123...------" << std::endl;
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
         //search first process information by snapshot got before
 
@@ -525,8 +532,11 @@ void Initializer::initNeededStruct() {
         exit(-1);
     }
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 =======
 
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
     initEventPropertiesMap();       //2
     //default to trace all event types
@@ -548,8 +558,11 @@ void Initializer::initNeededStruct() {
 
     initOutputThread();
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 =======
 
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
 }
 
@@ -579,8 +592,11 @@ void Initializer::showCommandList() {
                    "\t\t0x02(Microsoft_Windows_DNS_Client)\n"
                    "\t\t0x03(Microsoft_Windows_PrintService)\n"
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 =======
                    "\t\t0x04(Microsoft_Windows_DotNETRuntime)\n"
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
     );
     cmdList.append("-wdm , the event type you want to trace and out by wdm\n");
@@ -669,8 +685,19 @@ ULONG64 Initializer::init(GUID &p) {
             outputInited = true;
         }
         else if(strcmp(currentArv,"-wdm")==0){
+<<<<<<< Updated upstream
             EventParser::isWdm=true;
 //            outputInited = true;
+=======
+//            if (!validArgLength(i, status))   break;
+//            std::string arg = argV[i++];
+//            userEnabledFlags = strcmp(arg.c_str(),"all") ==( 0x1|0x2|0x8|0x20|0x80)? 0x1ff:Tools::HexStr2DecInt(arg);
+            EventParser::op = new ConsoleOutPut();
+//            EventParser::op = new FileOutPut("wdm");
+            EventParser::isWdm=true;
+            status = EventParser::op->init();
+            outputInited = true;
+>>>>>>> Stashed changes
 //            if(status == STATUS_SUCCESS)    enbaleFlagsInited = true;
         }
         else if (strcmp(currentArv, "-f") == 0 && !outputInited) {
@@ -723,6 +750,9 @@ ULONG64 Initializer::init(GUID &p) {
             if(status == STATUS_SUCCESS)    enbaleFlagsInited = true;
         }
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
+=======
+>>>>>>> Stashed changes
 //        else if(strcmp(currentArv,"-wdm")==0){
 //            if (!validArgLength(i, status))   break;
 //            std::string arg = argV[i++];
@@ -732,8 +762,11 @@ ULONG64 Initializer::init(GUID &p) {
 //            status = EventParser::op->init();
 //            outputInited = true;
 //            if(status == STATUS_SUCCESS)    enbaleFlagsInited = true;
+<<<<<<< Updated upstream
 =======
 
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
 //        }
         else if (strcmp(currentArv, "--outputThreshold") == 0) {
@@ -751,7 +784,14 @@ ULONG64 Initializer::init(GUID &p) {
             std::string arg = argV[i++];
             userProvider = Tools::HexStr2DecInt(arg);
             initUserGuid(userProvider,p);
+<<<<<<< Updated upstream
 //            EventParser::op = new FileOutPut();
+=======
+//           EventParser::op = new ConsoleOutPut();
+////            EventParser::op = new FileOutPut();
+//            status = EventParser::op->init();
+//            outputInited = true;
+>>>>>>> Stashed changes
         }
         else {
             status = isOutPutOption(currentArv) ? STATUS_DUPLICATE_OUTPUT : STATUS_UNKNOWN_OPTION;
@@ -832,10 +872,13 @@ void Initializer::initUserGuid(ULONG64 userProvider,GUID &ProviderId){
         ProviderId  = __uuidof(Microsoft_Windows_PrintService);
     }
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 =======
     if(userProvider==0x04){
         struct __declspec(uuid("{E13C0D23-CCBC-4E12-931B-D9CC2EEE27E4}")) Microsoft_Windows_DotNETRuntime;
         ProviderId  = __uuidof(Microsoft_Windows_DotNETRuntime);
     }
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
 }

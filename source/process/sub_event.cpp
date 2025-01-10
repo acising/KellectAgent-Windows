@@ -880,6 +880,9 @@ std::string getNewGuid() {
     return buf;
 }
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
+=======
+>>>>>>> Stashed changes
 
 json Getargs(BaseEvent* event){
     nlohmann::json argsObject1;
@@ -1061,7 +1064,10 @@ STATUS getCommonJsonNoLib(BaseEvent* event, std::string* sJson) {
     }
 
     sJson->append("}}");
+<<<<<<< Updated upstream
     sJson->append("\n");
+=======
+>>>>>>> Stashed changes
     event->setPropertiesDeleted(true);	//set properies deleted true
 
     return STATUS_SUCCESS;
@@ -1096,7 +1102,10 @@ STATUS TranstoWdm(BaseEvent* event, std::string* sJson){
                 entityObject["data"]["Subject"]["ParentSubject"]=processList.at(pKey);
                 sJson->append(entityObject.dump());
                 sJson->append("\n");
+<<<<<<< Updated upstream
                 sJson->append("\n");
+=======
+>>>>>>> Stashed changes
             }
             if(argsObject.contains("KeyName")) {
                 if (registryList.count(argsObject["KeyName"]) == 0) {
@@ -1104,7 +1113,10 @@ STATUS TranstoWdm(BaseEvent* event, std::string* sJson){
                     registryList[argsObject["KeyName"]] = entityObject["data"]["Object"]["uuid"];
                     sJson->append(entityObject.dump());
                     sJson->append("\n");
+<<<<<<< Updated upstream
                     sJson->append("\n");
+=======
+>>>>>>> Stashed changes
                 }
             }
         }
@@ -1122,7 +1134,10 @@ STATUS TranstoWdm(BaseEvent* event, std::string* sJson){
         wdmEvent["data"]["Event"]["Type"]=eventType[eventName];
         sJson->append(wdmEvent.dump());
         sJson->append("\n");
+<<<<<<< Updated upstream
         sJson->append("\n");
+=======
+>>>>>>> Stashed changes
     }
     else if(eventName.find("Process")==0){
         std::string ppKey=event->getParentProcessName()+std::to_string(event->getParentProcessID());
@@ -1147,7 +1162,10 @@ STATUS TranstoWdm(BaseEvent* event, std::string* sJson){
             processList[ppKey]=subjectObject["uuid"];
             sJson->append(entityObject.dump());
             sJson->append("\n");
+<<<<<<< Updated upstream
             sJson->append("\n");
+=======
+>>>>>>> Stashed changes
         }
         if(processList.count(pKey)==0){
             json entityObject=Entity_Declare(event,"process");
@@ -1156,16 +1174,24 @@ STATUS TranstoWdm(BaseEvent* event, std::string* sJson){
             entityObject["data"]["Subject"]["ParentSubject"]=processList.at(ppKey);
             sJson->append(entityObject.dump());
             sJson->append("\n");
+<<<<<<< Updated upstream
             sJson->append("\n");
+=======
+>>>>>>> Stashed changes
         }
 
         wdmEvent["data"]["Event"]["subject"] = processList.at(ppKey);
         wdmEvent["data"]["Event"]["object"] = processList.at(pKey);
         wdmEvent["data"]["Event"]["Type"] = eventType[eventName];
         wdmEvent["data"]["Event"]["CommandLine"] = argsObject["CommandLine"];
+<<<<<<< Updated upstream
         sJson->append(wdmEvent.dump());
         sJson->append("\n");
         sJson->append("\n");
+=======
+        std::cout<<" Process out"<<std::endl;
+        sJson->append(wdmEvent.dump());
+>>>>>>> Stashed changes
     }
     else if(eventName.find("ThreadStart")==0){
         if(processList.count(pKey)==0){
@@ -1176,19 +1202,29 @@ STATUS TranstoWdm(BaseEvent* event, std::string* sJson){
             entityObject["data"]["Subject"]["ParentSubject"]=processList.at(pKey);
            sJson->append(entityObject.dump());
            sJson->append("\n");
+<<<<<<< Updated upstream
             sJson->append("\n");
+=======
+>>>>>>> Stashed changes
         }
         json entityObject=Entity_Declare(event,"thread");
         entityObject["data"]["Subject"]["ParentSubject"]=processList.at(pKey);
         sJson->append(entityObject.dump());
         sJson->append("\n");
+<<<<<<< Updated upstream
         sJson->append("\n");
+=======
+>>>>>>> Stashed changes
         wdmEvent["data"]["Event"]["subject"] = processList.at(pKey);
         wdmEvent["data"]["Event"]["object"] = processList.at(pKey);
         wdmEvent["data"]["Event"]["Type"] = eventType[eventName];
         sJson->append(wdmEvent.dump());
+<<<<<<< Updated upstream
         sJson->append("\n");
         sJson->append("\n");
+=======
+
+>>>>>>> Stashed changes
     }
     else if(eventName.find("FileIO")==0){
         auto it = std::find(fileEntity.begin(), fileEntity.end(), eventName);
@@ -1200,7 +1236,10 @@ STATUS TranstoWdm(BaseEvent* event, std::string* sJson){
                 entityObject["data"]["Subject"]["ParentSubject"]=processList.at(pKey);
                 sJson->append(entityObject.dump());
                 sJson->append("\n");
+<<<<<<< Updated upstream
                 sJson->append("\n");
+=======
+>>>>>>> Stashed changes
             }
             if(argsObject.contains("FileName")&&fileList.count(argsObject["FileName"])==0){
                 json entityObject=Entity_Declare(event,"file");
@@ -1210,7 +1249,10 @@ STATUS TranstoWdm(BaseEvent* event, std::string* sJson){
                std:: string length=argsObject["FileName"];
                 sJson->append(entityObject.dump());
                 sJson->append("\n");
+<<<<<<< Updated upstream
                 sJson->append("\n");
+=======
+>>>>>>> Stashed changes
             }
             else if(argsObject.contains("OpenPath")&&fileList.count(argsObject["OpenPath"])==0){
                 json entityObject=Entity_Declare(event,"file");
@@ -1218,7 +1260,10 @@ STATUS TranstoWdm(BaseEvent* event, std::string* sJson){
                 entityObject["data"]["Object"]["Path"]=argsObject["OpenPath"];
                 sJson->append(entityObject.dump());
                 sJson->append("\n");
+<<<<<<< Updated upstream
                 sJson->append("\n");
+=======
+>>>>>>> Stashed changes
             }
         }
        if(argsObject.contains("FileName")&&fileList.count(argsObject["FileName"])==0){
@@ -1237,7 +1282,10 @@ STATUS TranstoWdm(BaseEvent* event, std::string* sJson){
         wdmEvent["data"]["Event"]["Type"] = eventType[eventName];
         sJson->append(wdmEvent.dump());
         sJson->append("\n");
+<<<<<<< Updated upstream
         sJson->append("\n");
+=======
+>>>>>>> Stashed changes
     }
     else if(eventName.find("Tcp")==0){
         if(processList.count(pKey)==0){
@@ -1246,7 +1294,10 @@ STATUS TranstoWdm(BaseEvent* event, std::string* sJson){
             entityObject["data"]["Subject"]["ParentSubject"]=processList[pKey];
             sJson->append(entityObject.dump());
             sJson->append("\n");
+<<<<<<< Updated upstream
             sJson->append("\n");
+=======
+>>>>>>> Stashed changes
         }
         std::stringstream ss;
         std::string daddr_str = argsObject["daddr"];
@@ -1264,15 +1315,21 @@ STATUS TranstoWdm(BaseEvent* event, std::string* sJson){
             socketList[socket]=entityObject["data"]["Object"]["uuid"];
             sJson->append(entityObject.dump());
             sJson->append("\n");
+<<<<<<< Updated upstream
             sJson->append("\n");
+=======
+>>>>>>> Stashed changes
         }
         wdmEvent["data"]["Event"]["subject"] = processList.at(pKey);
         wdmEvent["data"]["Event"]["object"] = socketList[socket];
         wdmEvent["data"]["Event"]["Type"] = eventType[eventName];
 
         sJson->append(wdmEvent.dump());
+<<<<<<< Updated upstream
         sJson->append("\n");
         sJson->append("\n");
+=======
+>>>>>>> Stashed changes
     }
     else{
         return STATUS_FAIL;
@@ -1281,6 +1338,7 @@ return STATUS_SUCCESS;
 }
 
 //parse jsonString
+<<<<<<< Updated upstream
 
 =======
 
@@ -1677,6 +1735,9 @@ return STATUS_SUCCESS;
 //parse jsonString
 
 >>>>>>> Stashed changes
+=======
+
+>>>>>>> Stashed changes
 
 STATUS BaseEvent::toJsonString(std::string* sJson) {
 
@@ -1685,12 +1746,17 @@ STATUS BaseEvent::toJsonString(std::string* sJson) {
 
 STATUS BaseEvent::toWdmJsonString(std::string* sJson) {
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
     STATUS status = TranstoWdm(this, sJson);
 
 =======
     sJson->append("[");
     STATUS status = TranstoWdm(this, sJson);
     sJson->append("]");
+>>>>>>> Stashed changes
+=======
+    STATUS status = TranstoWdm(this, sJson);
+
 >>>>>>> Stashed changes
     this->setPropertiesDeleted(true);
     return status;
