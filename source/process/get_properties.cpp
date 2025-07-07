@@ -1,15 +1,10 @@
 //Turns the DEFINE_GUID for EventTraceGuid into a const.
-<<<<<<< Updated upstream
-#pragma once
-#include "process/event_parse.h"
-=======
 #define _CRT_SECURE_NO_WARNINGS
 #pragma once
 #include <atlstr.h>     //CString��ͷ�ļ�
 
 #define INITGUID
 #include <string>
->>>>>>> Stashed changes
 #include <windows.h>
 #include <stdio.h>
 #include <strsafe.h>
@@ -34,56 +29,6 @@
 #define MAX_NAME 256
  USHORT g_PointerSize1 = 0;
 using namespace std;
-<<<<<<< Updated upstream
-//using json = nlohmann::json;
-
-//typedef LPTSTR(NTAPI* PIPV6ADDRTOSTRING)(
-//    const IN6_ADDR* Addr,
-//    LPTSTR S
-//    );
-// Pointer value. The value will be 4 or 8.
- USHORT g_PointerSize = 8;
-
-BaseEvent* event = nullptr;
-
-BaseEvent* WINAPI EventParser::getEventWithIdentifier(PEVENT_RECORD pEvent) {
-
-    BaseEvent* event = nullptr;
-
-    switch (pEvent->EventHeader.ProviderId.Data1) // init by event type ,data1 is providerid
-    {
-        case FileProvider:
-            event = new EventFile;
-            break;
-        case ThreadProvider:
-            event = new EventThread;
-            break;
-        case ProcessProvider:
-            event = new EventProcess;
-            break;
-        case ImageProvider:
-            event = new EventImage;
-            break;
-        case RegistryProvider:
-            event = new EventRegistry;
-            break;
-        case DiskProvider:
-            event = new EventDisk;
-            break;
-        case SystemCallProvider:
-            event = new EventPerfInfo;
-            break;
-        case TcpIpProvider:
-            event = new EventTCPIP;
-            break;
-        case CallStackProvider:
-            event = new EventCallstack;
-            break;
-        default:
-            event = nullptr;
-            return event;
-    };
-=======
 string argName;                 //����arguments�����еĲ�����
 BaseEvent* userEvent;
 bool isChineseCharacter(std::string str) {
@@ -135,7 +80,6 @@ string Unicode2AnsiString(LPCWSTR ws) {
 
 BaseEvent* WINAPI EventParser::getUserEventWithIdentifier(PEVENT_RECORD pEvent) {
     BaseEvent* event = new EventUSer;
->>>>>>> Stashed changes
 
     event->setProcessorID(pEvent->BufferContext.ProcessorIndex);
     event->setProcessID(pEvent->EventHeader.ProcessId);     //TCPIP的pEvent中processID ThreadID
@@ -145,282 +89,10 @@ BaseEvent* WINAPI EventParser::getUserEventWithIdentifier(PEVENT_RECORD pEvent) 
     event->setEventIdentifier(
             new EventIdentifier(pEvent->EventHeader.ProviderId.Data1,pEvent->EventHeader.EventDescriptor.Opcode)
     );
-<<<<<<< Updated upstream
-
-
-=======
->>>>>>> Stashed changes
     return event;
 }
 
 
-<<<<<<< Updated upstream
-    //BaseEvent* event = getEventWithIdentifier(pEvent);
-
-    if (event->getEventIdentifier()->getProviderID() != CallStackProvider) { //fill events' properties according to property offsets
-
-        auto iter = BaseEvent::eventStructMap.find(event->getEventIdentifier());
-
-        if (iter != BaseEvent::eventStructMap.end()) {
-
-            dataType* dt = nullptr;
-            ULONG64 dataAddress = (ULONG64)userDataBeginAddress;
-            std::wstring wsVal;
-            std::string sVal;
-
-            //modify the eventName
-            event->getEventIdentifier()->setEventName(iter->first->getEventName());
-
-            for (auto it : iter->second) {
-
-                switch (it.second) {
-                    case PULONG4_:
-                        //std::wcout << *(PULONG)(dataAddress) << std::endl;
-                        dt = new dataType(*(PULONG)(dataAddress));
-                        dataAddress += 4;
-                        break;
-                    case PULONG8_:
-                        dt = new dataType(*(PULONG)(dataAddress));
-                        //std::wcout << dt->getULONG64() << std::endl;
-                        dataAddress += 8;
-                        break;
-                    case PULONGLONG_:
-                        dt = new dataType(*(PULONGLONG)(dataAddress));
-                        //std::wcout << dt->getULONG64() << std::endl;
-                        dataAddress += 8;
-                        break;
-                    case PBYTE_:
-
-                        dt = new dataType(*(PBYTE)(dataAddress));
-                        //std::wcout << dt->getULONG64() << std::endl;
-                        dataAddress += 1;
-                        break;
-                    case PSTRING_:
-
-                        sVal = (LPSTR)dataAddress;
-
-                        dt = new dataType(sVal);
-                        dataAddress += sVal.size() + 1;
-                        //std::wcout << dt->getWString() << std::endl;
-                        break;
-                    case PWSTRING_:
-
-                        sVal = Tools::WString2String((LPWSTR)dataAddress);
-                        dataAddress += sVal.size() + 1;
-
-                        if (event->getEventIdentifier()->getProviderID() == FileProvider ||
-                            event->getEventIdentifier()->getProviderID() == ImageProvider)
-                            Tools::convertFileNameInDiskFormat(sVal);
-                        dt = new dataType(sVal);
-                        break;
-                    case PUSHORT_:
-                        dt = new dataType(*(PUSHORT)(dataAddress));
-                        //std::wcout << dt->getULONG64() << std::endl;
-                        dataAddress += 2;
-                        break;
-                    case SID_:
-
-                        CHAR UserName[256];
-                        CHAR DomainName[256];
-                        DWORD cchUserSize = 256;
-                        DWORD cchDomainSize = 256;
-                        SID_NAME_USE eNameUse;
-                        STATUS status = ERROR_SUCCESS;
-
-                        dataAddress += 8 * 2;
-
-                        if (!LookupAccountSidA(NULL, (PSID)dataAddress, UserName, &cchUserSize, DomainName, &cchDomainSize, &eNameUse))
-                        {
-                            if (ERROR_NONE_MAPPED == status)
-                            {
-                                //wprintf(L"Unable to locate account for the specified SID\n");
-                                status = ERROR_SUCCESS;
-                            }
-                            else
-                            {
-                                //wprintf(L"LookupAccountSid failed with %lu\n", status = GetLastError());
-                            }
-                        }
-                        sVal = DomainName;
-                        sVal.append("\\");
-                        sVal.append(UserName);
-//                    Tools::
-                        dt = new dataType(sVal);
-
-                        dataAddress += GetLengthSid((PVOID)(dataAddress));
-                        break;
-                }
-                event->setProperty(it.first, dt);
-            }
-
-            //event->deleteRawProperty(); //delete userdata
-        }else{
-            event->setValueableEvent(false);
-        }
-    }
-    else {
-        int stacksNum;
-        ULONG64 processID;
-        ULONG64 stackAddress;
-        EventIdentifier* ei;
-        EventCallstack* callStackEvent = new EventCallstack();  // get stack address and return
-        ULONG64* p_data = (ULONG64*)userDataBeginAddress;
-        size_t data_size = userDataLen;
-        int processorId = event->getProcessorID();
-        ULONG64 minAddr = 0xffffffff;
-        ULONG64 maxAddr = 0;
-
-        ei = new EventIdentifier(event->getEventIdentifier()->getProviderID(), event->getEventIdentifier()->getOpCode(), "CallStack");
-        //callStackEvent->setEventIdentifier(ei);
-        callStackEvent->setEventIdentifier(ei);
-        callStackEvent->setProcessorID(processorId);
-        callStackEvent->setTimeStamp(*p_data);
-        callStackEvent->setProcessID(*(DWORD*)(++p_data));
-        callStackEvent->setThreadID(*((DWORD*)p_data + 1));
-        //event->setProcessName(EventProcess::processID2Name[*(DWORD*)p_data]);
-        ++p_data;
-
-        //second filter, filter according to revise processID
-        if (Filter::secondFilter(callStackEvent)) {
-            callStackEvent->setValueableEvent(false);
-            //return callStackEvent;
-        }
-        else {
-
-            //get call address number, -2 because of the callStack addresses begin from third position
-            stacksNum = (data_size / 8 - 2);
-            processID = callStackEvent->getProcessID();
-            //auto it = EventProcess::processID2ModuleAddressPair.find(callStackEvent->getProcessID());
-            if (EventProcess::processID2ModuleAddressPair.count(processID)!=0) {
-                auto minmaxAddrPair = EventProcess::processID2ModuleAddressPair[processID];
-                minAddr = minmaxAddrPair.first;
-                maxAddr = minmaxAddrPair.second;
-            }
-
-            for (int i = 0; i < stacksNum; ++i) {
-
-                stackAddress = *(p_data + i) & (0xffffffff);   //extract low32 bits of the address
-                if (stackAddress<minAddr || stackAddress>maxAddr)  continue;
-
-//                std::cout<<stackAddress<<";";
-
-                callStackEvent->stackAddresses.push_back(stackAddress);
-            }
-
-        }
-//        std::cout<<std::endl;
-        //return callStackEvent;
-        delete event;   //avoid memory leak
-        event = callStackEvent;
-    }
-
-    return event;
-}
-
-
-BaseEvent* WINAPI EventParser::getPropertiesByTdh(PEVENT_RECORD pEvent)
-{
-    // Callback that receives the events.
-    // Used to determine the data size of property values that contain a
-    // Used to calculate CPU usage
-    ULONG g_TimerResolution = 0;
-
-    // Used to determine if the session is a private session or kernel session.
-    // You need to know this when accessing some members of the EVENT_TRACE.Header
-    // member (for example, KernelTime or UserTime).
-    BOOL g_bUserMode = FALSE;
-
-    // Handle to the trace file that you opened.
-    TRACEHANDLE g_hTrace = 0;
-
-    DWORD status = ERROR_SUCCESS;
-    PTRACE_EVENT_INFO pInfo = nullptr;
-    LPWSTR pwsEventGuid = nullptr;
-
-    //filter process 0 and 4
-    if (pEvent->EventHeader.ProcessId == GetCurrentProcessId()) {
-        //event->setValueableEvent(false);
-        event = nullptr;
-        goto cleanup;
-    }
-
-    // Skips the event if it is the event trace header. Log files contain this event
-    // but real-time sessions do not. The event contains the same information as
-    // the EVENT_TRACE_LOGFILE.LogfileHeader member that you can access when you open
-    // the trace.
-
-    if (IsEqualGUID(pEvent->EventHeader.ProviderId, EventTraceGuid) &&
-        pEvent->EventHeader.EventDescriptor.Opcode == EVENT_TRACE_TYPE_INFO)
-    {
-        ; // Skip this event.
-    }
-    else
-    {
-        // Process the event. The pEvent->UserData member is a pointer to
-        // the event specific data, if it exists.
-
-        //pinfo contain some meta info
-        status = this->GetEventInformation(pEvent, pInfo);
-        if (pInfo == nullptr ||status == 0x490) {
-            //MyLogger::writeLog("事件信息获取失败，opcode=" + pEvent->EventHeader.EventDescriptor.Opcode);
-            event = nullptr;
-            goto cleanup;
-        }
-
-        //init event type
-
-        event = this->getEventWithIdentifier(pEvent);
-        if (event->getEventIdentifier()->getProviderID() == CallStackProvider)  goto cleanup;
-
-        // If the event contains event-specific data use TDH to extract
-        // the event data. For this example, to extract the data, the event
-        // must be defined by a MOF class or an instrumentation manifest.
-
-        // Need to get the PointerSize for each event to cover the case where you are
-        // consuming events from multiple log files that could have been generated on
-        // different architectures. Otherwise, you could have accessed the pointer
-        // size when you opened the trace above (see pHeader->PointerSize).
-
-        if (EVENT_HEADER_FLAG_32_BIT_HEADER == (pEvent->EventHeader.Flags & EVENT_HEADER_FLAG_32_BIT_HEADER))
-        {
-            g_PointerSize = 4;
-        }
-        else
-        {
-            g_PointerSize = 8;
-        }
-
-        for (USHORT i = 0; i < pInfo->TopLevelPropertyCount; ++i)
-        {
-            status = this->PrintProperties(pEvent, pInfo, i, NULL, 0);
-            //status = PrintProperties(pEvent, pInfo, i, (LPWSTR)((PBYTE)(pInfo)+pInfo->EventPropertyInfoArray[i].NameOffset), 0);
-            if (ERROR_SUCCESS != status)
-            {
-                MyLogger::writeLog("Printing top level properties failed.\n");
-                goto cleanup;
-            }
-        }
-    }
-
-    cleanup:
-
-    if (pInfo)
-    {
-        free(pInfo);
-    }
-
-    //if (pEvent)
-    //{
-    //    delete pEvent;
-    //}
-    if (ERROR_SUCCESS != status)
-    {
-        CloseTrace(g_hTrace);
-    }
-
-    return event;
-}
-=======
 
 //
 //BaseEvent*WINAPI EventParser:: GetPropertiesByTdh(PEVENT_RECORD pEvent)
@@ -532,7 +204,6 @@ BaseEvent* WINAPI EventParser::getPropertiesByTdh(PEVENT_RECORD pEvent)
 //    }
 //
 //}
->>>>>>> Stashed changes
 
 
 // Print the property.
@@ -561,12 +232,7 @@ DWORD EventParser:: PrintProperties4GetProperties(BaseEvent* event,PEVENT_RECORD
         {
             LastMember = pInfo->EventPropertyInfoArray[i].structType.StructStartIndex +
                          pInfo->EventPropertyInfoArray[i].structType.NumOfStructMembers;
-<<<<<<< Updated upstream
-
-            for (USHORT j = pInfo->EventPropertyInfoArray[i].structType.StructStartIndex; j < LastMember; ++j)
-=======
             for (USHORT j = pInfo->EventPropertyInfoArray[i].structType.StructStartIndex; j < LastMember; j++)
->>>>>>> Stashed changes
             {
                 status = PrintProperties4GetProperties(event,pEvent, pInfo, j, (LPWSTR)((PBYTE)(pInfo)+pInfo->EventPropertyInfoArray[i].NameOffset), k);
                 if (ERROR_SUCCESS != status)
@@ -580,15 +246,7 @@ DWORD EventParser:: PrintProperties4GetProperties(BaseEvent* event,PEVENT_RECORD
         {
             ZeroMemory(&DataDescriptors, sizeof(DataDescriptors));
 
-<<<<<<< Updated upstream
-            // To retrieve a member of a structure, you need to specify an array of descriptors.
-            // The first descriptor in the array identifies the name of the structure and the second
-            // descriptor defines the member of the structure whose data you want to retrieve.
-
-            if (pStructureName)
-=======
             if (pStructureName)     //���Ҫ������Ϊ�ṹ��Ա�����ԵĴ�С����ָ��������������������������
->>>>>>> Stashed changes
             {
                 DataDescriptors[0].PropertyName = (ULONGLONG)pStructureName;
                 DataDescriptors[0].ArrayIndex = StructIndex;
@@ -615,21 +273,12 @@ DWORD EventParser:: PrintProperties4GetProperties(BaseEvent* event,PEVENT_RECORD
             {
 
                 status = TdhGetPropertySize(
-<<<<<<< Updated upstream
-                        pEvent,
-                        0,
-                        NULL,
-                        DescriptorsCount,
-                        &DataDescriptors[0],
-                        &PropertySize);
-=======
                         pEvent,                 //���ݸ�EventRecordCallback�ص����¼���¼��event record��
                         0,
                         NULL,
                         DescriptorsCount,       //pPropertyData�������������ṹ��������
                         &DataDescriptors[0],    //PROPERTY_DATA_DESCRIPTOR�ṹ���飬���ڶ���Ҫ�������С�����ԡ�
                         &PropertySize);         //���ԵĴ�С�����ֽ�Ϊ��λ
->>>>>>> Stashed changes
 
                 //cout << "status:" << status << endl;
 
@@ -665,22 +314,12 @@ DWORD EventParser:: PrintProperties4GetProperties(BaseEvent* event,PEVENT_RECORD
                     goto cleanup;
                 }
 
-<<<<<<< Updated upstream
-
-                status = FormatAndPrintData(pEvent,
-=======
                 status = FormatAndPrintData(event,pEvent,
->>>>>>> Stashed changes
                                             pInfo->EventPropertyInfoArray[i].nonStructType.InType,
                                             pInfo->EventPropertyInfoArray[i].nonStructType.OutType,
                                             pData,
                                             PropertySize,
-<<<<<<< Updated upstream
-                                            pMapInfo,
-                                            paramName       //属性名
-=======
                                             pMapInfo
->>>>>>> Stashed changes
                 );
 
                 if (ERROR_SUCCESS != status)
@@ -724,11 +363,6 @@ DWORD EventParser:: PrintProperties4GetProperties(BaseEvent* event,PEVENT_RECORD
 DWORD EventParser:: FormatAndPrintData(BaseEvent* event,PEVENT_RECORD pEvent, USHORT InType, USHORT OutType, PBYTE pData, DWORD DataSize, PEVENT_MAP_INFO pMapInfo)
 {
     UNREFERENCED_PARAMETER(pEvent);
-<<<<<<< Updated upstream
-
-    DWORD status = ERROR_SUCCESS;
-=======
->>>>>>> Stashed changes
     dataType* paramValue = nullptr;
     DWORD status = ERROR_SUCCESS;
 
@@ -742,135 +376,6 @@ DWORD EventParser:: FormatAndPrintData(BaseEvent* event,PEVENT_RECORD pEvent, US
         case TDH_INTYPE_REVERSEDCOUNTEDSTRING:
         case TDH_INTYPE_NONNULLTERMINATEDSTRING:
         {
-<<<<<<< Updated upstream
-            paramValue =new dataType(Tools::WString2String((LPWSTR)pData));
-            break;
-        }
-
-        case TDH_INTYPE_ANSISTRING:
-        case TDH_INTYPE_COUNTEDANSISTRING:
-        case TDH_INTYPE_REVERSEDCOUNTEDANSISTRING:
-        case TDH_INTYPE_NONNULLTERMINATEDANSISTRING:
-        {
-            paramValue = new dataType((LPSTR)pData);
-            break;
-        }
-
-        case TDH_INTYPE_INT8:
-        case TDH_INTYPE_UINT8:
-        {
-            paramValue = new dataType(*(PBYTE)pData);
-            break;
-        }
-
-        case TDH_INTYPE_INT16:
-        case TDH_INTYPE_UINT16:
-        {
-            paramValue = new dataType(*(PUSHORT)pData);
-            break;
-        }
-
-        case TDH_INTYPE_INT32:
-        {
-            paramValue = new dataType(*(PLONG)pData);
-            break;
-        }
-
-        case TDH_INTYPE_UINT32:
-        {
-            if (TDH_OUTTYPE_HRESULT == OutType ||
-                TDH_OUTTYPE_WIN32ERROR == OutType ||
-                TDH_OUTTYPE_NTSTATUS == OutType ||
-                TDH_OUTTYPE_HEXINT32 == OutType)
-            {
-                paramValue = new dataType(*(PULONG)pData);
-            }
-            else if (TDH_OUTTYPE_IPV4 == OutType)
-            {
-                CHAR temp[36] = { 0 };
-
-                sprintf_s(temp, 36, "%d.%d.%d.%d", (*(PLONG)pData >> 0) & 0xff,
-                          (*(PLONG)pData >> 8) & 0xff,
-                          (*(PLONG)pData >> 16) & 0xff,
-                          (*(PLONG)pData >> 24) & 0xff);
-
-                paramValue = new dataType(temp);
-            }
-            else
-            {
-                //if (pMapInfo)
-                //{
-                //    PrintMapString(pMapInfo, pData);
-                //}
-                //else
-                //{
-                //    paramValue = dataType(*(PULONG)pData);
-                //}
-                paramValue = new dataType(*(PULONG)pData);
-            }
-            break;
-        }
-
-        case TDH_INTYPE_INT64:
-        case TDH_INTYPE_UINT64:
-        {
-            paramValue = new dataType(*(PULONGLONG)pData);
-            break;
-        }
-        case TDH_INTYPE_FLOAT:
-        {
-            paramValue = new dataType(*(PFLOAT)pData);
-            break;
-        }
-        case TDH_INTYPE_DOUBLE:
-        {
-            paramValue = new dataType(*(DOUBLE*)pData);
-            break;
-        }
-        case TDH_INTYPE_BOOLEAN:
-        {
-            paramValue = new dataType(*(PBOOL)pData);
-            break;
-        }
-            //case TDH_INTYPE_BINARY:
-            //{
-            //    if (TDH_OUTTYPE_IPV6 == OutType)
-            //    {
-            //        WCHAR IPv6AddressAsString[46];
-            //        PIPV6ADDRTOSTRING fnRtlIpv6AddressToString;
-
-            //        fnRtlIpv6AddressToString = (PIPV6ADDRTOSTRING)GetProcAddress(
-            //            GetModuleHandle(L"ntdll"), "RtlIpv6AddressToStringW");
-
-            //        if (NULL == fnRtlIpv6AddressToString)
-            //        {
-            //            wprintf(L"GetProcAddress failed with %lu.\n", status = GetLastError());
-            //            goto cleanup;
-            //        }
-
-            //        fnRtlIpv6AddressToString((IN6_ADDR*)pData, IPv6AddressAsString);
-
-            //        //wprintf(L"%s\n", IPv6AddressAsString);
-            //    }
-            //    else
-            //    {
-            //        for (DWORD i = 0; i < DataSize; i++)
-            //        {
-            //            wprintf(L"%.2x", pData[i]);
-            //        }
-
-            //        //wprintf(L"\n");
-            //    }
-
-            //    break;
-            //}
-        case TDH_INTYPE_GUID:
-        {
-            WCHAR szGuid[50];
-            StringFromGUID2(*(GUID*)pData, szGuid, sizeof(szGuid) - 1);
-
-            paramValue = new dataType(Tools::WString2String(szGuid));
-=======
             size_t StringLength = 0;
 
             if (TDH_INTYPE_COUNTEDSTRING == InType)
@@ -1146,18 +651,12 @@ DWORD EventParser:: FormatAndPrintData(BaseEvent* event,PEVENT_RECORD pEvent, US
 //            wprintf(L"%s\n", szGuid);
             paramValue = new dataType(WString2String(szGuid));
 
->>>>>>> Stashed changes
             break;
         }
 
         case TDH_INTYPE_POINTER:
         case TDH_INTYPE_SIZET:
         {
-<<<<<<< Updated upstream
-            paramValue = new dataType(*(PULONG)pData);
-            break;
-        }
-=======
 //            if (4 == g_PointerSize)
 //            {
 //                wprintf(L"0x%x\n", *(PULONG)pData);
@@ -1180,7 +679,6 @@ DWORD EventParser:: FormatAndPrintData(BaseEvent* event,PEVENT_RECORD pEvent, US
             break;
         }
 
->>>>>>> Stashed changes
         case TDH_INTYPE_SID:
         {
             WCHAR UserName[MAX_NAME];
@@ -1194,19 +692,14 @@ DWORD EventParser:: FormatAndPrintData(BaseEvent* event,PEVENT_RECORD pEvent, US
             {
                 if (ERROR_NONE_MAPPED == status)
                 {
-                    //wprintf(L"Unable to locate account for the specified SID\n");
+                    wprintf(L"Unable to locate account for the specified SID\n");
                     status = ERROR_SUCCESS;
                 }
                 else
                 {
-<<<<<<< Updated upstream
-                    //wprintf(L"LookupAccountSid failed with %lu\n", status = GetLastError());
-                }
-=======
                     wprintf(L"LookupAccountSid failed with %lu\n", status = GetLastError());
                 }
 
->>>>>>> Stashed changes
                 goto cleanup;
             }
             else
@@ -1375,87 +868,8 @@ void EventParser::  PrintMapString(PEVENT_MAP_INFO pMapInfo, PBYTE pData)
                     MatchFound = TRUE;
                 }
             }
-            break;
         }
 
-<<<<<<< Updated upstream
-        case TDH_INTYPE_HEXINT32:
-        {
-            paramValue = new dataType(*(PULONGLONG)pData);
-            break;
-        }
-
-        case TDH_INTYPE_HEXINT64:
-        {
-            paramValue = new dataType(*(PULONGLONG)pData);
-            break;
-        }
-
-        case TDH_INTYPE_UNICODECHAR:
-        {
-            paramValue = new dataType(*(PWCHAR)pData);
-            break;
-        }
-        case TDH_INTYPE_ANSICHAR:
-        {
-            string tempValue((PCHAR)pData);
-            paramValue = new dataType(tempValue);
-            break;
-        }
-        case TDH_INTYPE_WBEMSID:
-        {
-            WCHAR UserName[MAX_NAME];
-            WCHAR DomainName[MAX_NAME];
-            DWORD cchUserSize = MAX_NAME;
-            DWORD cchDomainSize = MAX_NAME;
-            SID_NAME_USE eNameUse;
-
-            if (reinterpret_cast<int>((PULONG) pData) > 0)
-            {
-                // A WBEM SID is actually a TOKEN_USER structure followed
-                // by the SID. The size of the TOKEN_USER structure differs
-                // depending on whether the events were generated on a 32-bit
-                // or 64-bit architecture. Also the structure is aligned
-                // on an 8-byte boundary, so its size is 8 bytes on a
-                // 32-bit computer and 16 bytes on a 64-bit computer.
-                // Doubling the pointer size handles both cases.
-
-                pData += g_PointerSize * 2;
-
-                if (!LookupAccountSid(NULL, (PSID)pData, reinterpret_cast<LPSTR>(UserName), &cchUserSize,
-                                      reinterpret_cast<LPSTR>(DomainName), &cchDomainSize, &eNameUse))
-                {
-                    if (ERROR_NONE_MAPPED == status)
-                    {
-                        wprintf(L"Unable to locate account for the specified SID\n");
-                        status = ERROR_SUCCESS;
-                    }
-                    goto cleanup;
-                }
-                else
-                {
-                    //wprintf(L"%s\\%s\n", DomainName, UserName);
-                }
-            }
-
-            break;
-        }
-
-        default:
-            status = ERROR_NOT_FOUND;
-    }
-
-    cleanup:
-
-    if (pEvent->EventHeader.ProviderId.Data1 == 1030727888)
-        int a = 0;
-    event->setProperty(paramName,paramValue);
-    //delete paramValue;
-    return status;
-}
-
-
-=======
         if (MatchFound)
         {
             //wprintf(L"\n");
@@ -1467,7 +881,6 @@ void EventParser::  PrintMapString(PEVENT_MAP_INFO pMapInfo, PBYTE pData)
     }
 }
 
->>>>>>> Stashed changes
 // Get the size of the array. For MOF-based events, the size is specified in the declaration or using
 // the MAX qualifier. For manifest-based events, the property can specify the size of the array
 // using the count attribute. The count attribue can specify the size directly or specify the name

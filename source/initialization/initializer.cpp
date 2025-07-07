@@ -103,62 +103,53 @@ inline void Initializer::initDefaultEnabledEvents() {
     initialize tracing filter according to filter.txt
 */
 void Initializer::initFilter() {
+    // 直接定义过滤的进程 ID
+    std::vector<int> filteredProcessIDs = {0, 4, 128};
+    for (int id : filteredProcessIDs) {
+        Filter::filteredProcessID.insert(id);
+    }
+    Filter::filteredProcessID.insert(GetCurrentProcessId());
 
-    std::ifstream filterFile(filterFileName);
-    std::string tempString = "";
+    // 直接定义过滤的事件标识
+// 直接定义过滤的事件标识
+    std::vector<std::pair<ULONG64, int>> filteredEventIdentifiers = {
+            {3740466758, 32}, {1030727888, 1}, {1030727888, 2}, {1030727889, 1},
+            {1030727889, 2}, {1030727889, 36}, {2924704302, 10}, {2924704302, 11},
+            {2924704302, 12}, {2924704302, 13}, {2924704302, 14}, {2924704302, 15},
+            {2924704302, 16}, {2924704302, 17}, {2924704302, 18}, {2924704302, 19},
+            {2924704302, 20}, {2924704302, 21}, {2924704302, 22}, {2924704302, 23},
+            {2924704302, 24}, {2924704302, 25}, {2924704302, 26}, {2924704302, 27},
+            {2586315456, 10}, {2586315456, 26}, {2586315456, 11}, {2586315456, 13},
+            {2586315456, 14}, {2586315456, 16}, {2586315456, 18}, {2586315456, 27},
+            {2586315456, 29}, {2586315456, 30}, {2586315456, 32}, {2586315456, 34},
+            {2586315456, 12}, {2586315456, 15}, {2586315456, 28}, {2586315456, 31},
+            {2586315456, 17}, {2429279289, 64}, {2429279289, 72}, {2429279289, 77},
+            {2429279289, 69}, {2429279289, 70}, {2429279289, 71}, {2429279289, 74},
+            {2429279289, 75}, {2429279289, 0}, {2429279289, 32}, {2429279289, 35},
+            {2429279289, 36}, {2429279289, 67}, {2429279289, 68}, {2429279289, 65},
+            {2429279289, 66}, {2429279289, 73}, {1030727892, 11}, {1030727892, 10},
+            {1030727892, 12}, {1030727892, 13}, {1030727892, 15}, {1030727892, 14},
+            {1030727892, 52}, {1030727892, 53}, {1030727892, 37}, {1030727892, 34},
+            {1030727892, 35}, {1171836109, 34}, {1171836109, 33}, {1171836109, 37},
+            {1171836109, 36}, {1171836109, 35}, {3458056116, 66}, {3458056116, 68},
+            {3458056116, 69}, {3458056116, 67}, {3458056116, 69}, {3458056116, 52},
+            {749821213, 10}, {749821213, 2}
+    };
 
-    if (!filterFile.is_open()) {
-        MyLogger::writeLog("filter.txt open failed!");
-        exit(-1);
+    for (const auto& pair : filteredEventIdentifiers) {
+        EventIdentifier* ei = new EventIdentifier(pair.first, pair.second);
+        Filter::filteredEventIdentifiers.insert(ei);
     }
 
-    std::regex re(" ");
-    std::sregex_token_iterator p;
-    std::sregex_token_iterator end;
+    // 直接定义过滤的图像文件
+    std::vector<std::string> filteredImageFiles = {
+            "C:\\Windows\\SysWOW64\\ntdll.dll"
+    };
 
-    //set the filtered processIDs, kellect will not parse events with these IDs.
-    while (getline(filterFile, tempString) && tempString != "") {
-
-        if (strcmp(tempString.c_str(), "filteredProcessID") == 0) {
-            while (getline(filterFile, tempString) && tempString != "") {
-                p = std::sregex_token_iterator(tempString.begin(), tempString.end(), re, -1);
-
-                while (p != end) {
-                    Filter::filteredProcessID.insert(Tools::String2Int(*p));
-                    ++p;
-                }
-            }
-            Filter::filteredProcessID.insert(GetCurrentProcessId());
-        }
-        //set parsed events.
-        else if (strcmp(tempString.c_str(), "filteredEventIdentifier") == 0) {
-
-            while (getline(filterFile, tempString) && tempString != "") {
-                p = std::sregex_token_iterator(tempString.begin(), tempString.end(), re, -1);
-                EventIdentifier* ei;
-                while (p != end) {
-                    ULONG64 providerID = Tools::String2ULONG64(*p);
-                    int opCode = Tools::String2Int(*(++p));
-                    ei = new EventIdentifier(providerID, opCode);
-                    Filter::filteredEventIdentifiers.insert(ei);
-                    ++p;
-                }
-            }
-        }
-        //set filtered image events.
-        else if (strcmp(tempString.c_str(), "filteredImageFile") == 0) {
-            while (getline(filterFile, tempString) && tempString != "") {
-                //modulesName2APIs.insert(std::map <std::string, std::set<std::string> >::value_type(tempString, std::set<std::string>()));
-            }
-        }
-        else {
-            // TODO report error
-            MyLogger::writeLog("filter.txt format error!");
-        }
-    }
 
     MyLogger::writeLog("initFilter succeed!");
 }
+
 
 /*
     initialize each process loaded modules with std::set<Module*, ModuleSortCriterion>().
@@ -178,7 +169,8 @@ void Initializer::initProcessID2ModulesMap() {
     for (; iter != end; ++iter) {
         EventImage::processID2Modules.insert(
                 iter->first, std::set<Module*, ModuleSortCriterion>()
-        );
+        );//遍历每个进程 ID（即 iter->first），在 processID2Modules 中插入一个空的模块集合（std::set<Module*, ModuleSortCriterion>()）。
+        // 这个集合将用于后续存储与该进程 ID 相关联的所有模块。
 
         /*
         initialize processID2ModuleAddressPair structure with processID2Name which is initilized before.
@@ -191,11 +183,11 @@ void Initializer::initProcessID2ModulesMap() {
 }
 void Initializer::initImages(std::string confFile) {
     std::cout << "------Begin to parse images------" << std::endl;
-    std::vector<std::string> unLoadedImages;
+    std::vector<std::string> unLoadedImages;   // 存储未加载的图像
     std::ifstream myfile(confFile);
     std::string currentImage = "";
     STATUS status = STATUS_FAIL;
-    bool existUnloadedImage = false;
+    bool existUnloadedImage = false;// 标记是否存在未加载的图像
 
     if (!myfile.is_open()) {
         MyLogger::writeLog("file initImages open failed!");
@@ -207,18 +199,18 @@ void Initializer::initImages(std::string confFile) {
         std::set<MyAPI*, MyAPISortCriterion> apis;
 
         //   imageFile
-        Filter::filteredImageFile.insert(currentImage);
+        Filter::filteredImageFile.insert(currentImage);// 将当前图像插入过滤器中
 
-        status = EventImage::getAPIsFromFile(currentImage, apis);
+        status = EventImage::getAPIsFromFile(currentImage, apis);// 从文件中获取 API
 
         if (status == STATUS_SUCCESS) {
             EventImage::modulesName2APIs.insert(
                     std::map <std::string, std::set<MyAPI*, MyAPISortCriterion> >::value_type(currentImage, apis)
             );
-        }
+        }// 成功则将 API 记录到模块名称与 API 的映射中
         else {
-            unLoadedImages.push_back(currentImage);
-            existUnloadedImage = true;
+            unLoadedImages.push_back(currentImage);// 记录未加载的图像
+            existUnloadedImage = true; // 标记存在未加载的图像
         }
     }
     std::cout << "------Parse images end...------" << std::endl;
@@ -294,28 +286,35 @@ void Initializer::initEventPropertiesMap(std::string confFile) {
     }
 
     //store the propertyIndex to propertyName
-    ifstream infile("config/propertyName.txt",ios::in);
+    std::string tempString = "UniqueProcessKey,ProcessId,ParentId,SessionId,ExitStatus,DirectoryTableBase,Flags,UserSID,ImageFileName,CommandLine,PackageFullName,ApplicationId,TThreadId,StackBase,StackLimit,UserStackBase,UserStackLimit,Affinity,Win32StartAddr,TebBase,SubProcessTag,BasePriority,PagePriority,IoPriority,ThreadFlags,NewThreadId,OldThreadId,NewThreadPriority,OldThreadPriority,PreviousCState,SpareByte,OldThreadWaitReason,OldThreadState,OldThreadWaitIdealProcessor,NewThreadWaitTime,Reserved,PageFaultCount,HandleCount,PeakVirtualSize,PeakWorkingSetSize,PeakPagefileUsage,QuotaPeakPagedPoolUsage,QuotaPeakNonPagedPoolUsage,VirtualSize,WorkingSetSize,PagefileUsage,QuotaPagedPoolUsage,QuotaNonPagedPoolUsage,PrivatePageCount,InitialTime,Status,Index,KeyHandle,KeyName,PID,size,daddr,saddr,dport,sport,startime,endtime,seqnum,connid,mss,sackopt,tsopt,wsopt,rcvwin,rcvwinscale,sndwinscale,Proto,FailureCode,IrpPtr,FileObject,TTID,CreateOptions,FileAttributes,ShareAccess,OpenPath,FileKey,Length,InfoClass,FileIndex,FileName,ExtraInfo,NtStatus,Offset,IoSize,IoFlags,DiskNumber,IrpFlags,TransferSize,ByteOffset,Irp,HighResResponseTime,IssuingThreadId,RoutineAddr,UniqMatchId,Routine,MajorFunction,MinorFunction,MessageID,IsServerPort,PortName,ReturnValue,Vector,SysCallAddress,SysCallNtStatus,ImageBase,ImageSize,ImageChecksum,TimeDateStamp,SignatureLevel,SignatureType,Reserved0,DefaultBase,Reserved1,Reserved2,Reserved3,Reserved4";
+
+    //ifstream infile("config/propertyName.txt",ios::in);
     std::regex re(",");
-    std::sregex_token_iterator p;
+    std::sregex_token_iterator p(tempString.begin(), tempString.end(), re, -1);
     std::sregex_token_iterator end;
-    std::string tempString;
-
-    if (!infile.is_open())
-    {
-        cout << "read file 'config/propertyName.txt' failed..." << endl;
-        return;
-    }
-    if (getline(infile, tempString) && tempString != "") {
-
-        p = std::sregex_token_iterator(tempString.begin(), tempString.end(), re, -1);
-
-        while (p != end) {
-            BaseEvent::propertyNameVector.push_back(*p);
-            ++p;
-        }
+    //std::string tempString;
+    // 分割字符串并存入向量
+    while (p != end) {
+        BaseEvent::propertyNameVector.push_back(*p);
+        ++p;
     }
 
-    infile.close();
+
+//    if (!infile.is_open())
+//    {
+//        cout << "read file 'config/propertyName.txt' failed..." << endl;
+//        return;
+//    }
+//    if (getline(infile, tempString) && tempString != "") {
+//
+//        p = std::sregex_token_iterator(tempString.begin(), tempString.end(), re, -1);
+//
+//        while (p != end) {
+//            BaseEvent::propertyNameVector.push_back(*p);
+//            ++p;
+//        }
+//    }
+//    infile.close();
 
 ////    for debug: get propertyIndex
 //    for (auto item : BaseEvent::propertyNameVector) {
@@ -339,15 +338,7 @@ void Initializer::initOutputThread() {
 
 void Initializer::initThreadParseProviders() {
 
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
 //    EventParser::threadParseProviders.insert(TcpIpProvider);
-=======
-    EventParser::threadParseProviders.insert(TcpIpProvider);
->>>>>>> Stashed changes
-=======
-//    EventParser::threadParseProviders.insert(TcpIpProvider);
->>>>>>> Stashed changes
     EventParser::threadParseProviders.insert(DiskProvider);
 
     {
@@ -415,29 +406,23 @@ STATUS Initializer:: InitProcessMap() {
         status = STATUS_FAIL;
 
     }else{
-<<<<<<< Updated upstream
         std::cout << "------Begin to initialize datas of process and thread...------" << std::endl;
-<<<<<<< Updated upstream
-=======
-
-        std::cout << "------Begin to initialize datas of process and thread123...------" << std::endl;
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
         //search first process information by snapshot got before
-
         BOOL bMore = Process32First(hProcessSnap, &pe32);
+
         while (bMore)
         {
             if (pe32.th32ProcessID != 0) {		//skip pid=0, which is idle process
-
                 EventProcess::processID2Name[pe32.th32ProcessID] = pe32.szExeFile;
                 EventProcess::processID2ParentProcessID[pe32.th32ProcessID] = pe32.th32ParentProcessID;
             }
-
             //search next process infomation by snapshot got before
             bMore = Process32Next(hProcessSnap, &pe32);
-
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            if (!bMore && GetLastError() != ERROR_NO_MORE_FILES) {
+                std::cerr << "Failed to retrieve next process information." << std::endl;
+                break; // Exit the loop if an error occurs
+            }
         }
 
         //set idle process mapping
@@ -445,39 +430,22 @@ STATUS Initializer:: InitProcessMap() {
         EventProcess::processID2Name[INIT_PROCESS_ID] =  "Unknown" ;
         std::cout << "------Initialize datas of process and thread end...------" << std::endl;
         //release snapshot
-
         CloseHandle(hProcessSnap);
     }
 
     return status;
 }
 
-void Initializer::writeUUID2File(){
-
-    ofstream fout;
-    fout.open(uuidFile);
-
-    fout<<getUUID();
-    fout.close();
+void Initializer::writeUUID2File() {
+    // 直接定义 UUID，假设要记录到日志
+    std::string uuid = "FBFFA15C-FEDE-4f96-9AF8-398294758A2A";
+    MyLogger::writeLog("UUID: " + uuid); // 或其他处理
 }
 
-STATUS Initializer::setUUIDFromFile(){
-
-    ifstream infile;
-    infile.open(uuidFile, ios::in);
-    if (!infile.is_open())
-    {
-//        cout << "Read uuid File failed,set uuid now." << endl;
-        return STATUS_FAIL;
-    }
-    //第一种读取方法，
-    char buf[1024] = { 0 };
-    while (infile>>buf)
-    {
-        setUUID(buf);
-        break;
-    }
-
+STATUS Initializer::setUUIDFromFile() {
+    // 直接定义 UUID
+    std::string uuid = "FBFFA15C-FEDE-4f96-9AF8-398294758A2A";
+    setUUID(uuid);
     return STATUS_SUCCESS;
 }
 
@@ -523,24 +491,16 @@ void Initializer::initHostUUID() {
 
 void Initializer::initNeededStruct() {
     EventParser::op->setOutputThreashold(opThreashold);
-    initImages();       //1
-    MyLogger::initLogger();
-    Tools::initVolume2DiskMap();
-    initProcessor2ThreadAndThread2Process();
+    initImages();       //读取etw事件有关配置文件
+    MyLogger::initLogger();//初始化日志系统
+    Tools::initVolume2DiskMap();//构建一个卷标到磁盘符号的映射，便于后续的磁盘操作和管理
+    initProcessor2ThreadAndThread2Process();//设置相关数组初始值
     if (InitProcessMap() || initThreadProcessMap()) {
         std::cout << "------Initialize process and thread failed!------" << std::endl;
         exit(-1);
     }
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-=======
-
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
     initEventPropertiesMap();       //2
     //default to trace all event types
-
     if(!enbaleFlagsInited){
         initDefaultEnabledEvents();
     }
@@ -548,7 +508,6 @@ void Initializer::initNeededStruct() {
     if(opThreashold == 0){
         initOutputThreashold(userEnabledFlags);
     }
-
     initFilter();       //3
     initProcessID2ModulesMap();
     initPrasePool();
@@ -557,13 +516,6 @@ void Initializer::initNeededStruct() {
     //set output threashold value, which depends on the event types we want to trace
 
     initOutputThread();
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-=======
-
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
 }
 
 void Initializer::showCommandList() {
@@ -591,13 +543,6 @@ void Initializer::showCommandList() {
                    "\t\t0x01(Thread_Pool)\n"
                    "\t\t0x02(Microsoft_Windows_DNS_Client)\n"
                    "\t\t0x03(Microsoft_Windows_PrintService)\n"
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-=======
-                   "\t\t0x04(Microsoft_Windows_DotNETRuntime)\n"
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
     );
     cmdList.append("-wdm , the event type you want to trace and out by wdm\n");
     cmdList.append("\trguments details:\n"
@@ -685,19 +630,14 @@ ULONG64 Initializer::init(GUID &p) {
             outputInited = true;
         }
         else if(strcmp(currentArv,"-wdm")==0){
-<<<<<<< Updated upstream
-            EventParser::isWdm=true;
-//            outputInited = true;
-=======
 //            if (!validArgLength(i, status))   break;
 //            std::string arg = argV[i++];
 //            userEnabledFlags = strcmp(arg.c_str(),"all") ==( 0x1|0x2|0x8|0x20|0x80)? 0x1ff:Tools::HexStr2DecInt(arg);
-            EventParser::op = new ConsoleOutPut();
+ //           EventParser::op = new ConsoleOutPut();
 //            EventParser::op = new FileOutPut("wdm");
             EventParser::isWdm=true;
-            status = EventParser::op->init();
-            outputInited = true;
->>>>>>> Stashed changes
+  //          status = EventParser::op->init();
+   //         outputInited = true;
 //            if(status == STATUS_SUCCESS)    enbaleFlagsInited = true;
         }
         else if (strcmp(currentArv, "-f") == 0 && !outputInited) {
@@ -749,10 +689,6 @@ ULONG64 Initializer::init(GUID &p) {
 
             if(status == STATUS_SUCCESS)    enbaleFlagsInited = true;
         }
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-=======
->>>>>>> Stashed changes
 //        else if(strcmp(currentArv,"-wdm")==0){
 //            if (!validArgLength(i, status))   break;
 //            std::string arg = argV[i++];
@@ -762,12 +698,6 @@ ULONG64 Initializer::init(GUID &p) {
 //            status = EventParser::op->init();
 //            outputInited = true;
 //            if(status == STATUS_SUCCESS)    enbaleFlagsInited = true;
-<<<<<<< Updated upstream
-=======
-
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
 //        }
         else if (strcmp(currentArv, "--outputThreshold") == 0) {
 
@@ -784,14 +714,10 @@ ULONG64 Initializer::init(GUID &p) {
             std::string arg = argV[i++];
             userProvider = Tools::HexStr2DecInt(arg);
             initUserGuid(userProvider,p);
-<<<<<<< Updated upstream
-//            EventParser::op = new FileOutPut();
-=======
 //           EventParser::op = new ConsoleOutPut();
 ////            EventParser::op = new FileOutPut();
 //            status = EventParser::op->init();
 //            outputInited = true;
->>>>>>> Stashed changes
         }
         else {
             status = isOutPutOption(currentArv) ? STATUS_DUPLICATE_OUTPUT : STATUS_UNKNOWN_OPTION;
@@ -871,14 +797,4 @@ void Initializer::initUserGuid(ULONG64 userProvider,GUID &ProviderId){
         struct __declspec(uuid("{DE7B24EA-73C8-4A09-985D-5BDADCFA9017}")) Microsoft_Windows_PrintService;
         ProviderId  = __uuidof(Microsoft_Windows_PrintService);
     }
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-=======
-    if(userProvider==0x04){
-        struct __declspec(uuid("{E13C0D23-CCBC-4E12-931B-D9CC2EEE27E4}")) Microsoft_Windows_DotNETRuntime;
-        ProviderId  = __uuidof(Microsoft_Windows_DotNETRuntime);
-    }
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
 }

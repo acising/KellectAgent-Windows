@@ -16,13 +16,6 @@ ULONG64 comingEventsNum = 0;
 EventParser ETWConfiguration::eventParser;
 json EventParser:: j;
 bool EventParser::isWdm;
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-=======
-int i=0;
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
 void EventParser::eventParseThreadFunc(BaseEvent* event) {
 
     event = ETWConfiguration::eventParser
@@ -40,17 +33,8 @@ void EventParser::eventParseThreadFunc(BaseEvent* event) {
             if(EventParser::isWdm){
                 STATUS status = event->toWdmJsonString(sJson);
                 if (status == STATUS_SUCCESS) {
-<<<<<<< Updated upstream
-//                    op->outputStringPointer(sJson);
-<<<<<<< Updated upstream
-                    op->output(*sJson);
-=======
                     op->outputStringPointer(sJson);
->>>>>>> Stashed changes
-//                    std::cout<<*sJson<<std::endl;
-=======
-                   op->output(*sJson);
->>>>>>> Stashed changes
+//                    op->output(*sJson);
                 }
                 delete sJson;
             }
@@ -111,7 +95,7 @@ VOID WINAPI EventParser::ConsumeEventMain(PEVENT_RECORD pEvent) {
                             STATUS status = event->toJsonString(sJson);
                             if (status == STATUS_SUCCESS) {
 
-                                op->pushOutputQueue(sJson);
+                                 op->pushOutputQueue(sJson);
                             }
                         }
                     }
@@ -131,12 +115,12 @@ VOID WINAPI EventParser::ConsumeUserEvent(PEVENT_RECORD pEvent) {
     status = ETWConfiguration::eventParser.GetEventInformation4GetProperties(pEvent, pInfo);
     std::wstring wstr(reinterpret_cast<wchar_t*>(reinterpret_cast<PBYTE>(pInfo) + pInfo->ProviderNameOffset));
     std::string providerName(wstr.begin(), wstr.end());
+
     for (ULONG i = 0; i < pInfo->TopLevelPropertyCount; i++)
     {
         std::string* sJson = new std::string();
         bool flag = false;
         status =ETWConfiguration::eventParser.PrintProperties4GetProperties(event,pEvent, pInfo, i, NULL, 0);
-
         if (ERROR_SUCCESS != status)
         {
             wprintf(L"Printing top level properties failed.\n");
@@ -156,6 +140,7 @@ VOID WINAPI EventParser::ConsumeUserEvent(PEVENT_RECORD pEvent) {
                 ",\"TimeStamp\":" + std::to_string(event->getTimeStamp()) +
                 ",\"Host-UUID\":" + Initializer::getUUID() +
                 ",\"args\":{");
+
 //        j["Event"]=providerName;
 //        j["Event_Id"]=pInfo->EventDescriptor.Id;
 //        j["PID"]=std::to_string(event->getProcessID());
@@ -186,13 +171,17 @@ VOID WINAPI EventParser::ConsumeUserEvent(PEVENT_RECORD pEvent) {
                 }
             }
 
-            //delete properies
+            delete pty.second;		//delete properies
         }
 
         event->setPropertiesDeleted(true);
         sJson->append("}}");
-        op->output(*sJson);
+//        op->output(*sJson);
+//        std::cout<<*sJson<<std::endl;
 
+        op->output(*sJson);
+//
+//        op->output(j.dump());
     }
     delete event;
 }

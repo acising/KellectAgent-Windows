@@ -14,7 +14,7 @@ private:
 	using MinMaxModuleAddressPair = std::pair<ULONG64, ULONG64>;
 	const static ULONG64 initMinAddress = 0xffffffff;
 	const static ULONG64 initMaxAddress = 0;
-	const static int ProcessNumSize = 21474836;
+	const static int ProcessNumSize = 65535;
 
 public:
 	friend class EventImage;
