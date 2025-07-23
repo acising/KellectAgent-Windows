@@ -171,7 +171,7 @@ VOID WINAPI EventParser::ConsumeUserEvent(PEVENT_RECORD pEvent) {
                 }
             }
 
-            delete pty.second;		//delete properies
+            	//delete properies
         }
 
         event->setPropertiesDeleted(true);
