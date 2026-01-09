@@ -164,8 +164,8 @@ public:
     inline STATUS initThreadProcessMap();
     STATUS initEnabledEvent(ULONG64 eventType);
     //static void initPropertyNames(std::wstring confFile = L"propertyName.txt");
-    static void initProcessID2ModulesMap();
-    static void initImages(std::string confFile = "config/initImages.txt");
+    static STATUS initProcessID2ModulesMap();
+    static STATUS initImages(std::string confFile = "config/initImages.txt");
     //void initFilter();
     void initOutputThread();
     void initNeededStruct();

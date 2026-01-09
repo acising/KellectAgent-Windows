@@ -32,7 +32,13 @@ extern std::map<ULONG64, std::string> addr2FuncNameUsed;
 
 void BaseEvent::fillProcessInfo(){
     int pid =getProcessID();
-    int ppid = EventProcess::processID2ParentProcessID[pid];
+    
+    // Find ppid in the map, if not found, default to -1
+    int ppid = -1;
+    auto ppidIter = EventProcess::processID2ParentProcessID.find(pid);
+    if (ppidIter != EventProcess::processID2ParentProcessID.end()) {
+        ppid = ppidIter->second;
+    }
 
     setParentProcessID(ppid);
 

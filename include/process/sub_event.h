@@ -20,7 +20,7 @@ public:
 	friend class EventImage;
 	friend class Initializer;
 
-    static int processID2ParentProcessID[ProcessNumSize];
+    static std::map<int, int> processID2ParentProcessID;
 	static std::map<int, std::string> processID2Name;
 	static std::map<std::string, int> processName2ID;
 	static ReadWriteMap<int, MinMaxModuleAddressPair> processID2ModuleAddressPair;
@@ -92,7 +92,7 @@ class EventThread :public BaseEvent {
 public:
 
     static int processorId2threadId[MAX_PROCESSOR_NUM];
-    static int threadId2processId[MAX_THREAD_NUM];
+    static std::map<ULONG64, int> threadId2processId;
 
 	static std::set<ULONG64> threadSet;
 	static void initThreadStruct();

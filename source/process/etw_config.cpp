@@ -107,52 +107,68 @@ start:
     EVENT_TRACE_PROPERTIES* mainSessionProperties = nullptr;
     //PWSTR LoggerName = (PWSTR)L"MyTrace";
 
+    std::cout << "Step 1: Allocating trace properties..." << std::endl;
     mainSessionProperties = allocateTraceProperties(NULL, NULL,true);
+    if (mainSessionProperties == nullptr) {
+        std::cerr << "Failed to allocate trace properties" << std::endl;
+        return 1;
+    }
 
+    std::cout << "Step 2: Starting trace session..." << std::endl;
     // Create the trace session.
     status = StartTrace(&SessionHandle, KERNEL_LOGGER_NAME, mainSessionProperties);
 
     if (ERROR_SUCCESS != status)
     {
+        std::cerr << "StartTrace failed with error: " << status << std::endl;
         if (ERROR_ALREADY_EXISTS == status)
         {
+            std::cout << "Kernel session already exists, stopping it..." << std::endl;
             status = ControlTrace(SessionHandle, KERNEL_LOGGER_NAME, mainSessionProperties, EVENT_TRACE_CONTROL_STOP);
-            wprintf(L"The Kernel Session is already in use. ");
-            wprintf(L"Restart the NT Kernel Logger automaticly... .\n");
+            std::cout << "Restarting the NT Kernel Logger..." << std::endl;
             goto start;
         }
 
-        wprintf(L"EnableTrace() failed with %lu\n", status);
+        std::cerr << "StartTrace failed with %lu" << status << std::endl;
         goto cleanup;
     }
 
-    wprintf(L"Press any key to end trace session..\n\n ");
+    std::cout << "Step 3: Trace session started successfully!" << std::endl;
+    std::cout << "Press any key to end trace session..\n\n " << std::endl;
     if (real_time_switch) {
         //enable callstack trace
-        if (Initializer::getListenCallStack())
+        if (Initializer::getListenCallStack()) {
+            std::cout << "Step 4: Initializing callstack tracing..." << std::endl;
             EventCallstack::initCallStackTracing(SessionHandle);
+        }
 
-    SetupEventConsumer((LPWSTR)KERNEL_LOGGER_NAME,TRUE);
+        std::cout << "Step 5: Setting up event consumer..." << std::endl;
+        SetupEventConsumer((LPWSTR)KERNEL_LOGGER_NAME,TRUE);
 
     }else {
+        std::cout << "Step 4: Waiting for user input..." << std::endl;
         getchar();
     }
 
 cleanup:
 
+    std::cout << "Step 6: Cleaning up resources..." << std::endl;
     if (SessionHandle)
     {
         status = ControlTrace(SessionHandle, KERNEL_LOGGER_NAME, mainSessionProperties, EVENT_TRACE_CONTROL_STOP);
 
         if (ERROR_SUCCESS != status)
         {
-            wprintf(L"ControlTrace(stop) failed with %lu\n", status);
+            std::cerr << "ControlTrace(stop) failed with " << status << std::endl;
         }
     }
 
-    if (mainSessionProperties)
+    if (mainSessionProperties) {
         free(mainSessionProperties);
+        std::cout << "Step 7: Trace properties freed" << std::endl;
+    }
 
+    std::cout << "mainSessionConfig completed" << std::endl;
     return 0;
 
 }

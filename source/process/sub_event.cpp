@@ -21,7 +21,7 @@ std::set <Module*, ModuleSortCriterion> EventImage::usedModuleSet;
 ReadWriteMap<int, EventProcess::MinMaxModuleAddressPair> EventProcess::processID2ModuleAddressPair;
 std::map<CallStackIdentifier, std::string*> EventCallstack::callStackRecord;
 std::atomic<int> EventCallstack::callStackRecordNum(0);
-int EventProcess::processID2ParentProcessID[ProcessNumSize];
+std::map<int, int> EventProcess::processID2ParentProcessID;
 std::map<std::string, std::string> processList;
 std::map<std::string, std::string> fileList;
 std::map<std::string, std::string> registryList;
@@ -187,9 +187,10 @@ void EventFile::parse() {
             ULONG64 threadId = tmp->getULONG64();
 			setThreadID(threadId);
 
-			if (threadId<MAX_THREAD_NUM && EventThread::threadId2processId[threadId] != -1) {
+			auto it = EventThread::threadId2processId.find(threadId);
+			if (it != EventThread::threadId2processId.end() && it->second != -1) {
 
-                int pid = EventThread::threadId2processId[threadId];
+                int pid = it->second;
 				setProcessID(pid);
 			}
 		}
@@ -206,12 +207,14 @@ int BaseEvent::setTIDAndPID(BaseEvent* ev) {
     int processId = INIT_PROCESS_ID;
 
 	if (threadId != INIT_THREAD_ID) {
-        processId = EventThread::threadId2processId[threadId];
+        // Find threadId in the map, if not found, default to INIT_PROCESS_ID
+        auto it = EventThread::threadId2processId.find(threadId);
+        processId = (it != EventThread::threadId2processId.end()) ? it->second : INIT_PROCESS_ID;
 
         //if there is no mapping of tid to pid , then call CreateToolhelp32Snapshot to enumerate all pids
 		if (processId == INIT_PROCESS_ID) {
 			processId = Tools::getProcessIDByTID(threadId);
-			EventThread::threadId2processId[threadId]=processId;
+			EventThread::threadId2processId[threadId] = processId;
 		}
 	}
 
@@ -783,7 +786,13 @@ void  EventDisk::parse() {
             if (d != nullptr) {
 
                 int issuingThreadId = d->getULONG64();
-                int processId = EventThread::threadId2processId[issuingThreadId];
+                int processId = INIT_PROCESS_ID;
+                
+                // Find issuingThreadId in the map, if not found, default to INIT_PROCESS_ID
+                auto it = EventThread::threadId2processId.find(issuingThreadId);
+                if (it != EventThread::threadId2processId.end()) {
+                    processId = it->second;
+                }
 
                 if (processId == INIT_PROCESS_ID) {
                     processId = Tools::getProcessIDByTID(issuingThreadId);
