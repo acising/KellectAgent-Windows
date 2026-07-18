@@ -8,6 +8,7 @@ private slots:
     void trimRemovesOldestBatch();
     void toggleMark();
     void totalDecodeErrors();
+    void searchRoleConcatenatesDisplayFields();
 };
 
 void TestModel::appendGrowsRowCount() {
@@ -36,6 +37,26 @@ void TestModel::totalDecodeErrors() {
     m.append({ QDateTime::currentDateTime(), "a", 2, false });
     m.append({ QDateTime::currentDateTime(), "b", 3, false });
     QCOMPARE(m.totalDecodeErrors(), 5);
+}
+void TestModel::searchRoleConcatenatesDisplayFields() {
+    LogModel m;
+    LogEntry e;
+    e.text = QStringLiteral(R"({"Event":"Process","PID":1234,"PName":"chrome.exe","OpenPath":"C:\\x"})");
+    e.event = QStringLiteral("Process");
+    e.pid = QStringLiteral("1234");
+    e.pname = QStringLiteral("chrome.exe");
+    e.detail = QStringLiteral("OpenPath=C:\\x");
+    m.append(e);
+    const QString search = m.data(m.index(0), LogModel::SearchRole).toString();
+    // 显示四字段都进搜索串
+    QVERIFY(search.contains("Process"));
+    QVERIFY(search.contains("1234"));
+    QVERIFY(search.contains("chrome.exe"));
+    QVERIFY(search.contains("OpenPath"));
+    // 关键契约:不含原始 JSON 文本/key 名,避免输入 "PID"/"Event" 命中所有行
+    QVERIFY(!search.contains("\"PID\""));
+    QVERIFY(!search.contains("\"Event\""));
+    QVERIFY(!search.contains(e.text));
 }
 
 QTEST_GUILESS_MAIN(TestModel)

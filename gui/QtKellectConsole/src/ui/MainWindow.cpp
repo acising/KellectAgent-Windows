@@ -116,7 +116,7 @@ MainWindow::MainWindow(SettingsStore* store, QWidget* parent)
     // 转发读 source 各 role,无需改;书签/autoscroll 的 index 走 proxy↔source 映射。
     proxy_ = new QSortFilterProxyModel(this);
     proxy_->setSourceModel(&model_);
-    proxy_->setFilterRole(LogModel::TextRole);       // 按正文匹配
+    proxy_->setFilterRole(LogModel::SearchRole);     // 按显示列(事件/PID/进程名/详情)匹配,不匹配原始 JSON
     proxy_->setFilterCaseSensitivity(Qt::CaseInsensitive);
 
     view_ = new QListView;
@@ -245,9 +245,11 @@ void MainWindow::onSave() {
     }
     const auto& rows = model_.rows();
     for (const auto& e : rows) {
-        const QString line = "[" + e.time.toString("HH:mm:ss.zzz") + "] " +
+        // 列序与显示一致:时间(去毫秒)|事件|PID|进程名|详情
+        const QString line = "[" + e.time.toString("HH:mm:ss") + "] " +
                              e.event +
                              (e.pid.isEmpty()    ? QString() : " PID=" + e.pid) +
+                             (e.pname.isEmpty()  ? QString() : " " + e.pname) +
                              (e.detail.isEmpty() ? QString() : " " + e.detail) +
                              "\n";
         f.write(line.toUtf8());

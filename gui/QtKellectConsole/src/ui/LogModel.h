@@ -11,7 +11,7 @@ class LogModel : public QAbstractListModel {
     Q_OBJECT
 public:
     enum Roles { TextRole = Qt::UserRole + 1, TimeRole, DecodeErrorsRole, MarkedRole,
-                 EventRole, PidRole, DetailRole, PNameRole };
+                 EventRole, PidRole, DetailRole, PNameRole, SearchRole };
 
     int rowCount(const QModelIndex& = {}) const override { return rows_.size(); }
     QVariant data(const QModelIndex& idx, int role) const override;
