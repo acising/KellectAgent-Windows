@@ -10,6 +10,13 @@ public:
         quint8 lastMask = 0;
         bool autoScroll = true;
         QString filterKeyword;
+        // 输出目标(本特性新增)
+        int outputMode = 0;           // 0=Console, 1=File, 2=Socket, 3=Kafka
+        QString outputFile;           // File 模式路径
+        QString socketHost;           // Socket 模式 host
+        quint16 socketPort = 0;       // Socket 模式 port
+        QString kafkaBroker;          // Kafka 模式 "ip:port"
+        QString kafkaTopic;           // Kafka 模式 topic(拼 -k 用 broker+"/"+topic)
     };
     explicit SettingsStore(QString path) : path_(std::move(path)) {}
     Settings load() const;

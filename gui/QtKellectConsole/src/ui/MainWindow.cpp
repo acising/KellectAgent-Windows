@@ -6,6 +6,8 @@
 #include "../domain/LogParser.h"
 #include <QCheckBox>
 #include <QComboBox>
+#include <QRadioButton>
+#include <QSpinBox>
 #include <QLineEdit>
 #include <QLabel>
 #include <QPushButton>
@@ -135,6 +137,8 @@ MainWindow::MainWindow(SettingsStore* store, QWidget* parent)
     connect(pathLabel_, &QLabel::linkActivated, this, &MainWindow::openSettingsDialog);
     statusLay->addWidget(statusLabel_, 1);
     statusLay->addWidget(pathLabel_);
+    outputLabel_ = new QLabel;
+    statusLay->addWidget(outputLabel_);
     root->addLayout(statusLay);
 
     setCentralWidget(central);
@@ -176,6 +180,15 @@ MainWindow::MainWindow(SettingsStore* store, QWidget* parent)
             model_.toggleMark(src.row());
     });
 
+    // forwarder 状态/错误 → 状态栏
+    connect(&forwarder_, &OutputForwarder::error, this, [this](const QString& m){
+        outputLabel_->setStyleSheet("color:#E07070;");
+        outputLabel_->setText(m);
+    });
+    connect(&forwarder_, &OutputForwarder::stateChanged, this, [this](const QString&){
+        updateOutputStatus();   // 用规范文案刷新(覆盖"连接中/重连中"等瞬态)
+    });
+
     // —— 自动滚动节流(QTimer 120ms,与 CollectionChanged 解耦)——
     scrollTimer_ = new QTimer(this);
     scrollTimer_->setInterval(120);
@@ -188,6 +201,7 @@ MainWindow::MainWindow(SettingsStore* store, QWidget* parent)
             view_->scrollToBottom();
     });
 
+    updateOutputStatus();
     loadSettings();
 }
 
@@ -210,10 +224,29 @@ void MainWindow::onStart() {
         statusLabel_->setText(tr("请先在设置中选择 kellect.exe"));
         return;
     }
-    proc_.start(kellectExePath_.trimmed(), buildKellectArgs(currentMask()));
+    const quint8 mask = currentMask();
+    updateOutputStatus();   // 先设规范文案;若下方 setMode(File) 随即 emit error(打不开),红字不被尾随调用覆盖(spec §8)
+    QStringList args;
+    if (static_cast<OutputMode>(outputMode_) == OutputMode::Kafka) {
+        if (kafkaBroker_.isEmpty() || kafkaTopic_.isEmpty()) {
+            statusLabel_->setText(tr("请先在设置中填 Kafka broker/topic"));
+            return;
+        }
+        args = QStringList{ "-e", maskToHex(mask),
+                            "-k", kafkaBroker_ + "/" + kafkaTopic_ };
+        forwarder_.setMode(OutputForwarder::Mode::None);   // kellect 直传,不 tee
+    } else {
+        args = buildKellectArgs(mask);                     // {"-e", hex, "-c"}
+        forwarder_.setFile(outputFile_);
+        forwarder_.setSocket(socketHost_, socketPort_);
+        forwarder_.setMode(static_cast<OutputMode>(outputMode_) == OutputMode::File   ? OutputForwarder::Mode::File   :
+                           static_cast<OutputMode>(outputMode_) == OutputMode::Socket ? OutputForwarder::Mode::Socket :
+                                                                                       OutputForwarder::Mode::None);
+    }
+    proc_.start(kellectExePath_.trimmed(), args);
 }
 
-void MainWindow::onStop() { proc_.stop(); }
+void MainWindow::onStop() { proc_.stop(); forwarder_.close(); }
 
 void MainWindow::onOutputLine(const QString& line, int decodeErrors) {
     const ParsedLine pl = parseKellectLine(line);
@@ -229,6 +262,7 @@ void MainWindow::onOutputLine(const QString& line, int decodeErrors) {
     model_.append(e);
     model_.trimIfFull();
     logDirty_ = true;
+    forwarder_.writeLine(line);   // tee 原始行;None/Kafka 模式自动 noop
 }
 
 void MainWindow::onSave() {
@@ -285,11 +319,12 @@ void MainWindow::openDetailDialog(const QModelIndex& proxyIndex) {
 }
 
 void MainWindow::openSettingsDialog() {
-    // 方案A:模态对话框,内含 exe 路径输入 + 浏览 + OK/取消
+    // 模态对话框:kellect.exe 路径 + 输出目标(控制台/文件/Socket/Kafka)
     QDialog dlg(this);
     dlg.setWindowTitle(tr("设置"));
     auto* lay = new QVBoxLayout(&dlg);
 
+    // —— kellect.exe 路径(原有)——
     auto* row = new QHBoxLayout;
     row->addWidget(new QLabel(tr("kellect.exe 路径:")));
     auto* pathEdit = new QLineEdit(kellectExePath_, &dlg);
@@ -298,9 +333,64 @@ void MainWindow::openSettingsDialog() {
     row->addWidget(browseBtn);
     lay->addLayout(row);
 
+    // —— 输出分组(本特性)——
+    auto* outBox = new QGroupBox(tr("输出"), &dlg);
+    auto* outLay = new QVBoxLayout(outBox);
+
+    auto* rConsole = new QRadioButton(tr("控制台"), outBox);
+    auto* rFile    = new QRadioButton(tr("文件"), outBox);
+    auto* rSocket  = new QRadioButton(tr("Socket"), outBox);
+    auto* rKafka   = new QRadioButton(tr("Kafka(kellect 直传,本地显示关)"), outBox);
+    rConsole->setChecked(static_cast<OutputMode>(outputMode_) == OutputMode::Console);
+    rFile->setChecked   (static_cast<OutputMode>(outputMode_) == OutputMode::File);
+    rSocket->setChecked (static_cast<OutputMode>(outputMode_) == OutputMode::Socket);
+    rKafka->setChecked  (static_cast<OutputMode>(outputMode_) == OutputMode::Kafka);
+    outLay->addWidget(rConsole);
+    outLay->addWidget(rFile);
+    outLay->addWidget(rSocket);
+    outLay->addWidget(rKafka);
+
+    // File 条件字段
+    auto* fileRow = new QHBoxLayout;
+    fileRow->addWidget(new QLabel(tr("路径:")));
+    auto* fileEdit = new QLineEdit(outputFile_, outBox);
+    fileEdit->setPlaceholderText(tr("C:\\out.log"));
+    fileRow->addWidget(fileEdit, 1);
+    auto* fileBrowse = new QPushButton(tr("浏览…"), outBox);
+    fileRow->addWidget(fileBrowse);
+    outLay->addLayout(fileRow);
+
+    // Socket 条件字段
+    auto* sockRow = new QHBoxLayout;
+    sockRow->addWidget(new QLabel(tr("host:")));
+    auto* hostEdit = new QLineEdit(socketHost_, outBox);
+    hostEdit->setPlaceholderText(tr("192.168.1.2"));
+    sockRow->addWidget(hostEdit);
+    sockRow->addWidget(new QLabel(tr("port:")));
+    auto* portSpin = new QSpinBox(outBox);
+    portSpin->setRange(0, 65535);
+    portSpin->setValue(socketPort_);
+    sockRow->addWidget(portSpin);
+    outLay->addLayout(sockRow);
+
+    // Kafka 条件字段
+    auto* kafkaRow = new QHBoxLayout;
+    kafkaRow->addWidget(new QLabel(tr("broker:")));
+    auto* brokerEdit = new QLineEdit(kafkaBroker_, outBox);
+    brokerEdit->setPlaceholderText(tr("192.168.1.2:9092"));
+    kafkaRow->addWidget(brokerEdit);
+    kafkaRow->addWidget(new QLabel(tr("topic:")));
+    auto* topicEdit = new QLineEdit(kafkaTopic_, outBox);
+    topicEdit->setPlaceholderText(tr("kellect"));
+    kafkaRow->addWidget(topicEdit);
+    outLay->addLayout(kafkaRow);
+
+    lay->addWidget(outBox);
+
     auto* btns = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
     lay->addWidget(btns);
 
+    // 浏览按钮
     connect(browseBtn, &QPushButton::clicked, this, [this, pathEdit]{
         const QString cur = pathEdit->text().isEmpty()
             ? QCoreApplication::applicationDirPath() : pathEdit->text();
@@ -308,12 +398,29 @@ void MainWindow::openSettingsDialog() {
                                                        tr("可执行文件 (*.exe)"));
         if (!path.isEmpty()) pathEdit->setText(path);
     });
+    connect(fileBrowse, &QPushButton::clicked, this, [this, fileEdit]{
+        const QString cur = fileEdit->text().isEmpty()
+            ? QCoreApplication::applicationDirPath() : fileEdit->text();
+        const auto path = QFileDialog::getSaveFileName(this, tr("选择输出文件"), cur,
+                                                       tr("日志文件 (*.log *.txt);;所有文件 (*.*)"));
+        if (!path.isEmpty()) fileEdit->setText(path);
+    });
     connect(btns, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
     connect(btns, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
 
     if (dlg.exec() == QDialog::Accepted) {
         kellectExePath_ = pathEdit->text();
+        if (rKafka->isChecked())        outputMode_ = static_cast<int>(OutputMode::Kafka);
+        else if (rSocket->isChecked())  outputMode_ = static_cast<int>(OutputMode::Socket);
+        else if (rFile->isChecked())    outputMode_ = static_cast<int>(OutputMode::File);
+        else                            outputMode_ = static_cast<int>(OutputMode::Console);
+        outputFile_  = fileEdit->text();
+        socketHost_  = hostEdit->text();
+        socketPort_  = static_cast<quint16>(portSpin->value());
+        kafkaBroker_ = brokerEdit->text();
+        kafkaTopic_  = topicEdit->text();
         updatePathLabel();
+        updateOutputStatus();
     }
 }
 
@@ -336,6 +443,13 @@ void MainWindow::loadSettings() {
     for (int b = 0; b < 8; ++b)
         if (auto* cb = flagBoxes_.value(static_cast<EventFlag>(1 << b)))
             cb->setChecked((s.lastMask >> b) & 1);
+    outputMode_  = s.outputMode;
+    outputFile_  = s.outputFile;
+    socketHost_  = s.socketHost;
+    socketPort_  = s.socketPort;
+    kafkaBroker_ = s.kafkaBroker;
+    kafkaTopic_  = s.kafkaTopic;
+    updateOutputStatus();
     updatePathLabel();
 }
 
@@ -345,11 +459,31 @@ void MainWindow::saveSettings() {
     s.lastMask = currentMask();
     s.autoScroll = autoScrollBox_->isChecked();
     s.filterKeyword = filterEdit_->text();
+    s.outputMode  = outputMode_;
+    s.outputFile  = outputFile_;
+    s.socketHost  = socketHost_;
+    s.socketPort  = socketPort_;
+    s.kafkaBroker = kafkaBroker_;
+    s.kafkaTopic  = kafkaTopic_;
     store_->save(s);
 }
 
 void MainWindow::closeEvent(QCloseEvent* e) {
     proc_.stop(); // C1:关闭前回收子进程,否则 Windows 不回收提权子进程
+    forwarder_.close();
     saveSettings();
     QMainWindow::closeEvent(e);
+}
+
+void MainWindow::updateOutputStatus() {
+    QString t;
+    switch (static_cast<OutputMode>(outputMode_)) {
+        case OutputMode::Console: t = tr("输出: 控制台"); break;
+        case OutputMode::File:    t = tr("输出: 文件 %1").arg(QFileInfo(outputFile_).fileName()); break;
+        case OutputMode::Socket:  t = tr("输出: socket %1:%2").arg(socketHost_).arg(socketPort_); break;
+        case OutputMode::Kafka:   t = tr("输出: kafka %1/%2(直传,显示关)").arg(kafkaBroker_).arg(kafkaTopic_); break;
+        default:                  t = tr("输出: 控制台"); break;
+    }
+    outputLabel_->setStyleSheet(QString());   // 清红
+    outputLabel_->setText(t);
 }

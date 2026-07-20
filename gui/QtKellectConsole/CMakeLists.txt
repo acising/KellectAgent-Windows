@@ -12,7 +12,7 @@ add_compile_options(/utf-8)
 # 静态 Qt 前缀(自编产物)
 set(CMAKE_PREFIX_PATH "D:/Code/Qt/5.15.2-static" CACHE PATH "Static Qt 5.15 prefix")
 
-find_package(Qt5 COMPONENTS Widgets Test REQUIRED)
+find_package(Qt5 COMPONENTS Widgets Network Test REQUIRED)
 
 # 强制 /MT(Release)/ /MTd(Debug),与静态 Qt 的 -static-runtime 一致
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
@@ -30,6 +30,7 @@ set(SOURCES
     src/domain/Utf8Accumulator.cpp
     src/domain/SettingsStore.cpp
     src/process/KellectProcessService.cpp
+    src/process/OutputForwarder.cpp
 )
 set(HEADERS
     src/ui/MainWindow.h
@@ -48,6 +49,7 @@ add_executable(KellectConsole WIN32
 target_include_directories(KellectConsole PRIVATE src)
 target_link_libraries(KellectConsole PRIVATE
     Qt5::Widgets
+    Qt5::Network
     Qt5::QWindowsIntegrationPlugin  # 静态 Qt 必需:平台插件静态链入
 )
 target_compile_definitions(KellectConsole PRIVATE UNICODE _UNICODE)

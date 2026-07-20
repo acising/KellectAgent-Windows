@@ -5,6 +5,7 @@
 #include <QString>
 #include "LogModel.h"
 #include "../process/KellectProcessService.h"
+#include "../process/OutputForwarder.h"
 #include "../domain/SettingsStore.h"
 #include "../domain/Flags.h" // Resolution #1: EventFlag 位于 namespace kellect
 
@@ -37,9 +38,16 @@ private:
     void loadSettings();
     void saveSettings();
     void updatePathLabel();
+    void updateOutputStatus();
 
     SettingsStore* store_;
     KellectProcessService proc_;
+    enum class OutputMode { Console = 0, File = 1, Socket = 2, Kafka = 3 };
+    OutputForwarder forwarder_;
+    int outputMode_ = 0;
+    QString outputFile_, socketHost_, kafkaBroker_, kafkaTopic_;
+    quint16 socketPort_ = 0;
+    QLabel* outputLabel_ = nullptr;
     LogModel model_;
     QHash<kellect::EventFlag, QCheckBox*> flagBoxes_; // Resolution #1: 全限定
     QComboBox* presetCombo_ = nullptr;
