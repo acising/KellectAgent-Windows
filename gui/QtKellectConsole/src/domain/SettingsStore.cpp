@@ -23,6 +23,8 @@ SettingsStore::Settings SettingsStore::load() const {
     d.socketPort  = static_cast<quint16>(o.value("socketPort").toInt(0));
     d.kafkaBroker = o.value("kafkaBroker").toString();
     d.kafkaTopic  = o.value("kafkaTopic").toString();
+    d.runAsService = o.value("runAsService").toBool(false);
+    d.serviceName  = o.value("serviceName").toString(QStringLiteral("KellectService"));
     return d;
 }
 
@@ -38,6 +40,8 @@ void SettingsStore::save(const Settings& s) const {
     o["socketPort"]  = s.socketPort;
     o["kafkaBroker"] = s.kafkaBroker;
     o["kafkaTopic"]  = s.kafkaTopic;
+    o["runAsService"] = s.runAsService;
+    o["serviceName"]  = s.serviceName;
     QFile f(path_);
     if (f.open(QIODevice::WriteOnly | QIODevice::Truncate))
         f.write(QJsonDocument(o).toJson(QJsonDocument::Indented));

@@ -189,6 +189,14 @@ MainWindow::MainWindow(SettingsStore* store, QWidget* parent)
         updateOutputStatus();   // 用规范文案刷新(覆盖"连接中/重连中"等瞬态)
     });
 
+    // 服务模式:SCM 状态/错误 → 状态栏
+    connect(&svc_, &WindowsServiceClient::stateChanged, this, [this](WindowsServiceClient::State s){
+        updateStatusFromServiceState(s);
+    });
+    connect(&svc_, &WindowsServiceClient::errorOccurred, this, [this](const QString& m){
+        statusLabel_->setText(tr("服务错误:%1").arg(m));
+    });
+
     // —— 自动滚动节流(QTimer 120ms,与 CollectionChanged 解耦)——
     scrollTimer_ = new QTimer(this);
     scrollTimer_->setInterval(120);
@@ -220,6 +228,7 @@ void MainWindow::applyPreset(int idx) {
 }
 
 void MainWindow::onStart() {
+    if (runAsService_) { startViaService(); return; }
     if (kellectExePath_.trimmed().isEmpty()) {
         statusLabel_->setText(tr("请先在设置中选择 kellect.exe"));
         return;
@@ -246,7 +255,65 @@ void MainWindow::onStart() {
     proc_.start(kellectExePath_.trimmed(), args);
 }
 
-void MainWindow::onStop() { proc_.stop(); forwarder_.close(); }
+void MainWindow::onStop() {
+    if (runAsService_) {
+        statusLabel_->setText(tr("正在停止服务…"));
+        svc_.stop();
+        svc_.stopPolling();
+        return;
+    }
+    proc_.stop(); forwarder_.close();
+}
+
+void MainWindow::startViaService() {
+    // 服务模式:把当前输出配置写入 HKLM\SOFTWARE\Kellect\Service,再启动 KellectService。
+    // kellect.exe 在 Session 0 运行,stdout 不可被 GUI 捕获 → 本地日志视图为空,
+    // 输出由服务写入其配置目标(文件/Socket/Kafka)。
+    if (!svc_.isInstalled()) {
+        statusLabel_->setText(tr("服务 %1 未安装,请先安装 KellectService").arg(serviceName_));
+        return;
+    }
+    QString mode;
+    switch (static_cast<OutputMode>(outputMode_)) {
+        case OutputMode::File:   mode = QStringLiteral("file");   break;
+        case OutputMode::Socket: mode = QStringLiteral("socket"); break;
+        case OutputMode::Kafka:  mode = QStringLiteral("kafka");  break;
+        default:
+            statusLabel_->setText(tr("服务模式不支持控制台输出,请在设置中选择 文件/Socket/Kafka"));
+            return;
+    }
+    WindowsServiceClient::OutputConfig cfg;
+    cfg.outputMode   = mode;
+    cfg.eventMask    = maskToHex(currentMask());
+    cfg.outputFile   = outputFile_;
+    cfg.socketHost   = socketHost_;
+    cfg.socketPort   = socketPort_;
+    cfg.kafkaBroker  = kafkaBroker_;
+    cfg.kafkaTopic   = kafkaTopic_;
+    if (!WindowsServiceClient::installRegistryConfig(cfg)) {
+        statusLabel_->setText(tr("写入服务注册表配置失败(需要管理员权限)"));
+        return;
+    }
+    forwarder_.setMode(OutputForwarder::Mode::None); // 输出归服务所有,GUI 不 tee
+    svc_.setServiceName(serviceName_);
+    svc_.startPolling();
+    statusLabel_->setText(tr("正在启动服务…"));
+    updateStatusFromServiceState(svc_.start());
+}
+
+void MainWindow::updateStatusFromServiceState(WindowsServiceClient::State s) {
+    QString t;
+    switch (s) {
+        case WindowsServiceClient::State::Running:      t = tr("服务运行中"); break;
+        case WindowsServiceClient::State::StartPending: t = tr("服务启动中…"); break;
+        case WindowsServiceClient::State::StopPending:  t = tr("服务停止中…"); break;
+        case WindowsServiceClient::State::Paused:       t = tr("服务已暂停"); break;
+        case WindowsServiceClient::State::Stopped:      t = tr("服务已停止"); break;
+        case WindowsServiceClient::State::NotInstalled: t = tr("服务未安装"); break;
+        default:                                        t = tr("服务状态未知"); break;
+    }
+    statusLabel_->setText(t);
+}
 
 void MainWindow::onOutputLine(const QString& line, int decodeErrors) {
     const ParsedLine pl = parseKellectLine(line);
@@ -385,6 +452,17 @@ void MainWindow::openSettingsDialog() {
     kafkaRow->addWidget(topicEdit);
     outLay->addLayout(kafkaRow);
 
+    // Windows 服务模式(本特性)
+    auto* svcRow = new QHBoxLayout;
+    auto* runAsSvcBox = new QCheckBox(tr("以 Windows 服务运行(KellectService 托管)"), outBox);
+    runAsSvcBox->setChecked(runAsService_);
+    svcRow->addWidget(runAsSvcBox);
+    svcRow->addWidget(new QLabel(tr("服务名:")));
+    auto* svcNameEdit = new QLineEdit(serviceName_, outBox);
+    svcNameEdit->setPlaceholderText(QStringLiteral("KellectService"));
+    svcRow->addWidget(svcNameEdit, 1);
+    outLay->addLayout(svcRow);
+
     lay->addWidget(outBox);
 
     auto* btns = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
@@ -419,6 +497,10 @@ void MainWindow::openSettingsDialog() {
         socketPort_  = static_cast<quint16>(portSpin->value());
         kafkaBroker_ = brokerEdit->text();
         kafkaTopic_  = topicEdit->text();
+        runAsService_ = runAsSvcBox->isChecked();
+        serviceName_  = svcNameEdit->text().trimmed().isEmpty()
+                        ? QStringLiteral("KellectService") : svcNameEdit->text().trimmed();
+        svc_.setServiceName(serviceName_);
         updatePathLabel();
         updateOutputStatus();
     }
@@ -449,6 +531,9 @@ void MainWindow::loadSettings() {
     socketPort_  = s.socketPort;
     kafkaBroker_ = s.kafkaBroker;
     kafkaTopic_  = s.kafkaTopic;
+    runAsService_ = s.runAsService;
+    serviceName_  = s.serviceName.isEmpty() ? QStringLiteral("KellectService") : s.serviceName;
+    svc_.setServiceName(serviceName_);
     updateOutputStatus();
     updatePathLabel();
 }
@@ -465,10 +550,13 @@ void MainWindow::saveSettings() {
     s.socketPort  = socketPort_;
     s.kafkaBroker = kafkaBroker_;
     s.kafkaTopic  = kafkaTopic_;
+    s.runAsService = runAsService_;
+    s.serviceName  = serviceName_;
     store_->save(s);
 }
 
 void MainWindow::closeEvent(QCloseEvent* e) {
+    if (runAsService_) svc_.stop(); // 回收服务托管的 kellect.exe
     proc_.stop(); // C1:关闭前回收子进程,否则 Windows 不回收提权子进程
     forwarder_.close();
     saveSettings();
@@ -484,6 +572,7 @@ void MainWindow::updateOutputStatus() {
         case OutputMode::Kafka:   t = tr("输出: kafka %1/%2(直传,显示关)").arg(kafkaBroker_).arg(kafkaTopic_); break;
         default:                  t = tr("输出: 控制台"); break;
     }
+    if (runAsService_) t = tr("[服务模式] ") + t;
     outputLabel_->setStyleSheet(QString());   // 清红
     outputLabel_->setText(t);
 }

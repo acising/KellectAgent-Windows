@@ -1,0 +1,253 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  kellect MSI - WiX v4/v5/v7 source (with install UI + customizable options).
+  Per-machine installer that:
+    * lays kellect.exe + KellectConsole.exe + KellectService.exe + 4 DLLs + config (9 files)
+      into [ProgramFilesFolder]kellect\ (Program Files (x86); collector is x86)
+    * registers KellectService (ownProcess, auto-start, LocalSystem, depends on Tcpip)
+    * pre-configures the service output mode by writing HKLM\SOFTWARE\Kellect\Service
+      from installer properties (OUTPUTMODE / SOCKETHOST / SOCKETPORT / KAFKABROKER / KAFKATOPIC)
+    * materializes %ProgramData%\Kellect\ with log.conf + log\, logs\, collect\ subfolders
+    * Start Menu shortcut (always) + optional Desktop shortcut (INSTALLDESKTOPSHORTCUT=1)
+    * install UI: one hand-authored SetupOptionsDlg (WixUI_Common; WIX0094 blocks stock sets; no license)
+    * major upgrades via a fixed UpgradeCode
+
+  Build:  wix build kellect.wxs -ext WixToolset.UI.wixext -o build-msi\Kellect-win-x64.msi
+  (build-msi.bat assembles stage\ first.)
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <?include Variables.wxi ?>
+
+  <Package Name="$(var.ProductDisplay)"
+           Manufacturer="$(var.Manufacturer)"
+           Version="$(var.Version)"
+           Language="1033"
+           UpgradeCode="$(var.UpgradeCode)">
+
+    <MajorUpgrade Schedule="afterInstallInitialize"
+                  DowngradeErrorMessage="A newer version of [ProductName] is already installed. Setup will now exit." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- ============ Customizable installer properties (UI or command-line) ============
+         Set on the command line, e.g.:
+           msiexec /i Kellect.msi OUTPUTMODE=socket SOCKETHOST=10.0.0.5 SOCKETPORT=9000 INSTALLDESKTOPSHORTCUT=1
+    -->
+    <Property Id="OUTPUTMODE" Value="file" />
+    <Property Id="SOCKETHOST" Value="127.0.0.1" />
+    <Property Id="SOCKETPORT" Value="9000" />
+    <Property Id="KAFKABROKER" Value="localhost:9092" />
+    <Property Id="KAFKATOPIC" Value="kellect" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/kellect" />
+    <Property Id="INSTALLDESKTOPSHORTCUT" Value="0" />
+
+    <!-- Install UI: stock dialog SETS are internal in WiX v7 (WIX0094), so UIRef WixUI_Common
+         + one hand-authored SetupOptionsDlg (folder + GUI + shortcut), shown After CostFinalize. -->
+    <Property Id="DefaultUIFont" Value="WixUI_Font_Normal" />
+    <!-- GUI installed by default (checkbox on). Uncheck -> INSTALLGUI cleared -> Gui feature skipped. -->
+    <Property Id="INSTALLGUI" Value="1" />
+
+    <UI>
+      <UIRef Id="WixUI_Common" />
+
+      <!-- WixUI_Common emits no TextStyle table; define the standard WixUI_Font_* locally (else Error 2228). -->
+      <TextStyle Id="WixUI_Font_Normal"     FaceName="Tahoma" Size="8" />
+      <TextStyle Id="WixUI_Font_Bigger"     FaceName="Tahoma" Size="12" />
+      <TextStyle Id="WixUI_Font_Title"      FaceName="Tahoma" Size="9" Bold="yes" />
+      <TextStyle Id="WixUI_Font_Emphasized" FaceName="Tahoma" Size="8" Bold="yes" />
+      <TextStyle Id="WixUI_Font_UIText"     FaceName="Tahoma" Size="8" />
+
+      <!-- Single setup-options page (folder + GUI + shortcut), shown After CostFinalize. The
+           Install button does SetTargetPath -> AddLocal/Remove Gui -> EndDialog Return. Only
+           CancelDlg is pulled in (SpawnDialog); fonts defined locally above. -->
+      <Dialog Id="SetupOptionsDlg" Width="370" Height="270" Title="[ProductName] Setup">
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="WixUI_Bmp_Banner" />
+        <Control Id="Title" Type="Text" X="15" Y="6" Width="340" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}Setup options" />
+        <Control Id="Description" Type="Text" X="25" Y="22" Width="330" Height="15" Transparent="yes" NoPrefix="yes" Text="Choose the install folder and options, then click Install." />
+        <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+
+        <!-- Typed PathEdit on INSTALLDIR. SetTargetPath on Install is REQUIRED, else execute-
+             CostFinalize re-resolves INSTALLDIR from the Directory table and reverts the typed
+             path to the default. No Browse button: BrowseDlg's SetTargetPath reverts invalid picks. -->
+        <Control Id="FolderLabel" Type="Text" X="20" Y="60" Width="330" Height="10" NoPrefix="yes" Text="Install folder (type a full path, e.g. D:\kellect):" />
+        <Control Id="FolderEdit" Type="PathEdit" X="20" Y="73" Width="330" Height="18" Property="INSTALLDIR" />
+
+        <Control Id="InstallGui" Type="CheckBox" X="20" Y="108" Width="330" Height="17" Property="INSTALLGUI" CheckBoxValue="1" Text="Install the kellect visualization GUI (KellectConsole.exe)" />
+        <!-- Hide this checkbox when the GUI is unchecked (meaningless without the GUI). -->
+        <Control Id="DesktopShortcut" Type="CheckBox" X="20" Y="132" Width="330" Height="17" Property="INSTALLDESKTOPSHORTCUT" CheckBoxValue="1" Text="Create a desktop shortcut (needs the GUI)" HideCondition="INSTALLGUI &lt;&gt; &quot;1&quot;" />
+
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+        <Control Id="Install" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="&amp;Install">
+          <Publish Event="SetTargetPath" Value="INSTALLDIR" Order="1" Condition="1" />
+          <Publish Event="AddLocal" Value="Gui" Order="2" Condition='INSTALLGUI = "1"' />
+          <Publish Event="Remove" Value="Gui" Order="3" Condition='INSTALLGUI &lt;&gt; "1"' />
+          <Publish Event="EndDialog" Value="Return" Order="4" Condition="1" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="Cancel">
+          <Publish Event="SpawnDialog" Value="CancelDlg" Condition="1" />
+        </Control>
+      </Dialog>
+    </UI>
+
+    <InstallUISequence>
+      <!-- Single options dialog, After CostFinalize so INSTALLDIR is resolved before AddLocal. -->
+      <Show Dialog="SetupOptionsDlg" After="CostFinalize" />
+      <!-- No Welcome/Exit page: stock SETS internal (WIX0094) + Common owns those symbols
+           (WIX7009). Single-page wizard: SetupOptions -> Install -> done. -->
+    </InstallUISequence>
+
+    <Feature Id="Complete" Title="$(var.ProductName)" Level="1"
+             Display="expand" Description="kellect service, collector, and GUI.">
+      <Feature Id="Core" Title="Service &amp; Collector" Level="1"
+               Description="KellectService.exe, kellect.exe, and runtime DLLs.">
+        <ComponentGroupRef Id="cg.MainFiles" />
+        <ComponentRef Id="cmp.ServiceReg" />
+      </Feature>
+      <Feature Id="Gui" Title="Visualization GUI" Level="1"
+               Description="KellectConsole.exe (Qt).">
+        <!-- GUI install state is toggled by the wizard's INSTALLGUI checkbox via
+             AddLocal/Remove on the Install button (WiX v7 dropped Feature <Condition>). -->
+        <ComponentRef Id="cmp.GuiExe" />
+        <ComponentRef Id="cmp.StartMenuShortcut" />
+        <ComponentRef Id="cmp.DesktopShortcut" />
+      </Feature>
+      <Feature Id="ProgramData" Title="Runtime data folders" Level="1"
+               Description="%ProgramData%\Kellect structure and corrected log.conf.">
+        <ComponentRef Id="cmp.ProgramDataConf" />
+        <ComponentRef Id="cmp.LogDir" />
+        <ComponentRef Id="cmp.LogsDir" />
+        <ComponentRef Id="cmp.CollectDir" />
+        <ComponentGroupRef Id="cg.ServiceConfig" />
+      </Feature>
+    </Feature>
+  </Package>
+
+  <!-- ===================== Directory tree ===================== -->
+  <Fragment>
+    <StandardDirectory Id="ProgramFilesFolder">
+      <Directory Id="INSTALLDIR" Name="kellect">
+        <Directory Id="ConfigDir" Name="config" />
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="StartMenuDir" Name="kellect" />
+    </StandardDirectory>
+    <StandardDirectory Id="DesktopFolder" />
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="KellectDataDir" Name="Kellect">
+        <Directory Id="KellectLogDir"     Name="log" />
+        <Directory Id="KellectLogsDir"    Name="logs" />
+        <Directory Id="KellectCollectDir" Name="collect" />
+        <!-- kellect loads config\ relative to its CWD; the service runs it with
+             CWD=%ProgramData%\Kellect\, so config must also live here. -->
+        <Directory Id="ConfigDataDir"     Name="config" />
+      </Directory>
+    </StandardDirectory>
+  </Fragment>
+
+  <!-- ===================== Main files + full config (9 files) ===================== -->
+  <Fragment>
+    <ComponentGroup Id="cg.MainFiles" Directory="INSTALLDIR">
+      <Component Id="cmp.CollectorExe" Guid="*">
+        <File Id="file.CollectorExe" Source="$(var.StageDir)kellect.exe" KeyPath="yes" />
+      </Component>
+      <Component Id="cmp.CollectorManifest" Guid="*">
+        <File Id="file.CollectorManifest" Source="$(var.StageDir)kellect.exe.manifest" KeyPath="yes" />
+      </Component>
+
+      <Component Id="cmp.ServiceExe" Guid="*">
+        <File Id="file.ServiceExe" Source="$(var.StageDir)KellectService.exe" KeyPath="yes" />
+        <ServiceInstall Name="KellectService" Type="ownProcess" Start="auto"
+                        ErrorControl="normal" Interactive="no">
+          <ServiceDependency Id="Tcpip" />
+        </ServiceInstall>
+        <ServiceControl Id="sc.KellectService" Name="KellectService"
+                        Start="install" Stop="both" Remove="both" Wait="yes" />
+      </Component>
+
+      <Component Id="cmp.DllLibrdkafka" Guid="*"><File Id="file.Librdkafka" Source="$(var.StageDir)librdkafka.dll" KeyPath="yes" /></Component>
+      <Component Id="cmp.DllLibrdkafkacpp" Guid="*"><File Id="file.Librdkafkacpp" Source="$(var.StageDir)librdkafkacpp.dll" KeyPath="yes" /></Component>
+      <Component Id="cmp.DllLibzstd" Guid="*"><File Id="file.Libzstd" Source="$(var.StageDir)libzstd.dll" KeyPath="yes" /></Component>
+      <Component Id="cmp.DllZlib" Guid="*"><File Id="file.Zlib" Source="$(var.StageDir)zlib.dll" KeyPath="yes" /></Component>
+
+      <!-- config\: complete 9-file set -->
+      <Component Id="cmp.CfgWin7"         Guid="*" Directory="ConfigDir"><File Id="file.CfgWin7"         Source="$(var.StageDir)config\eventStruct_win7.xml"  KeyPath="yes" /></Component>
+      <Component Id="cmp.CfgWin10"        Guid="*" Directory="ConfigDir"><File Id="file.CfgWin10"        Source="$(var.StageDir)config\eventStruct_win10.xml" KeyPath="yes" /></Component>
+      <Component Id="cmp.CfgEventStruct"  Guid="*" Directory="ConfigDir"><File Id="file.CfgEventStruct"  Source="$(var.StageDir)config\eventStruct.txt"       KeyPath="yes" /></Component>
+      <Component Id="cmp.CfgInitImages"   Guid="*" Directory="ConfigDir"><File Id="file.CfgInitImages"   Source="$(var.StageDir)config\initImages.txt"        KeyPath="yes" /></Component>
+      <Component Id="cmp.CfgFilter"       Guid="*" Directory="ConfigDir"><File Id="file.CfgFilter"       Source="$(var.StageDir)config\filter.txt"            KeyPath="yes" /></Component>
+      <Component Id="cmp.CfgFilterAll"    Guid="*" Directory="ConfigDir"><File Id="file.CfgFilterAll"    Source="$(var.StageDir)config\filter _all.txt"       KeyPath="yes" /></Component>
+      <Component Id="cmp.CfgPropName"     Guid="*" Directory="ConfigDir"><File Id="file.CfgPropName"     Source="$(var.StageDir)config\propertyName.txt"      KeyPath="yes" /></Component>
+      <Component Id="cmp.CfgUuid"         Guid="*" Directory="ConfigDir"><File Id="file.CfgUuid"         Source="$(var.StageDir)config\uuid"                   KeyPath="yes" /></Component>
+      <Component Id="cmp.CfgLogConf"      Guid="*" Directory="ConfigDir"><File Id="file.CfgLogConf"      Source="$(var.StageDir)config\log.conf"              KeyPath="yes" /></Component>
+    </ComponentGroup>
+  </Fragment>
+
+  <!-- ============ Service output-mode registry (pre-configures the service) ============
+       Writes HKLM\SOFTWARE\Kellect\Service from installer properties; the service reads
+       these at start (ServiceConfig::Load). Defaults = file mode. -->
+  <Fragment>
+    <Component Id="cmp.ServiceReg" Guid="*" Directory="INSTALLDIR">
+      <RegistryKey Root="HKLM" Key="SOFTWARE\Kellect\Service">
+        <RegistryValue Name="OutputMode" Type="string"  Value="[OUTPUTMODE]" KeyPath="yes" />
+        <RegistryValue Name="EventMask"  Type="string"  Value="0xFF" />
+        <RegistryValue Name="SocketHost" Type="string"  Value="[SOCKETHOST]" />
+        <RegistryValue Name="SocketPort" Type="integer" Value="[SOCKETPORT]" />
+        <RegistryValue Name="KafkaBroker" Type="string" Value="[KAFKABROKER]" />
+        <RegistryValue Name="KafkaTopic"  Type="string" Value="[KAFKATOPIC]" />
+      </RegistryKey>
+    </Component>
+  </Fragment>
+
+  <!-- ===================== GUI + Start Menu + optional Desktop shortcut ===================== -->
+  <Fragment>
+    <Component Id="cmp.GuiExe" Guid="*" Directory="INSTALLDIR">
+      <File Id="file.GuiExe" Source="$(var.StageDir)KellectConsole.exe" KeyPath="yes" />
+    </Component>
+    <Component Id="cmp.StartMenuShortcut" Guid="*" Directory="StartMenuDir">
+      <Shortcut Id="sc.StartMenu" Name="kellect Console" Target="[#file.GuiExe]"
+                WorkingDirectory="INSTALLDIR" Description="kellect visualization GUI" />
+      <RegistryValue Root="HKLM" Key="SOFTWARE\Kellect\Install" Name="StartMenu" Type="integer" Value="1" KeyPath="yes" />
+      <RemoveFolder Id="rf.StartMenuDir" Directory="StartMenuDir" On="uninstall" />
+    </Component>
+    <!-- Optional desktop shortcut, gated on INSTALLDESKTOPSHORTCUT=1 (set via UI checkbox or msiexec). -->
+    <Component Id="cmp.DesktopShortcut" Guid="E1040000-0000-0000-0000-00000000A004" Directory="DesktopFolder" Condition="INSTALLDESKTOPSHORTCUT=1">
+      <Shortcut Id="sc.Desktop" Name="kellect Console" Target="[#file.GuiExe]"
+                WorkingDirectory="INSTALLDIR" Description="kellect visualization GUI" />
+      <RegistryValue Root="HKLM" Key="SOFTWARE\Kellect\Install" Name="Desktop" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+  </Fragment>
+
+  <!-- ===================== ProgramData structure + corrected log.conf ===================== -->
+  <Fragment>
+    <!-- %ProgramData%\Kellect\ is RETAINED on uninstall (user data). Runtime-collected
+         files (collect\, log\, logs\) are untracked components, so they persist; the
+         installed log.conf below is still removed by its own component (refreshed on
+         reinstall). The subfolder components (cmp.LogDir/LogsDir/CollectDir) likewise
+         have no On="uninstall" RemoveFolder. -->
+    <Component Id="cmp.ProgramDataConf" Guid="*" Directory="KellectDataDir">
+      <CreateFolder />
+      <File Id="file.ServiceLogConf" Source="$(sys.SOURCEFILEDIR)log.conf" Name="log.conf" KeyPath="yes" />
+    </Component>
+    <!-- Retained on uninstall (collected runtime data). CreateFolder-only, explicit GUID. -->
+    <Component Id="cmp.LogDir"    Guid="E1010000-0000-0000-0000-00000000A001" Directory="KellectLogDir"><CreateFolder /></Component>
+    <Component Id="cmp.LogsDir"   Guid="E1020000-0000-0000-0000-00000000A002" Directory="KellectLogsDir"><CreateFolder /></Component>
+    <Component Id="cmp.CollectDir" Guid="E1030000-0000-0000-0000-00000000A003" Directory="KellectCollectDir"><CreateFolder /></Component>
+  </Fragment>
+  <!-- ===================== Config mirrored into the service CWD =====================
+       kellect loads config\ relative to its CWD. The service runs it with
+       CWD=%ProgramData%\Kellect\, so the same 9 config files are installed here too
+       (the INSTALLDIR\config\ copy is still installed for standalone/GUI use). -->
+  <Fragment>
+    <ComponentGroup Id="cg.ServiceConfig" Directory="ConfigDataDir">
+      <Component Id="cmp.SvcCfgWin7"        Guid="*"><File Id="file.SvcCfgWin7"        Source="$(var.StageDir)config\eventStruct_win7.xml"  KeyPath="yes" /></Component>
+      <Component Id="cmp.SvcCfgWin10"       Guid="*"><File Id="file.SvcCfgWin10"       Source="$(var.StageDir)config\eventStruct_win10.xml" KeyPath="yes" /></Component>
+      <Component Id="cmp.SvcCfgEventStruct" Guid="*"><File Id="file.SvcCfgEventStruct" Source="$(var.StageDir)config\eventStruct.txt"       KeyPath="yes" /></Component>
+      <Component Id="cmp.SvcCfgInitImages"  Guid="*"><File Id="file.SvcCfgInitImages"  Source="$(var.StageDir)config\initImages.txt"        KeyPath="yes" /></Component>
+      <Component Id="cmp.SvcCfgFilter"      Guid="*"><File Id="file.SvcCfgFilter"      Source="$(var.StageDir)config\filter.txt"            KeyPath="yes" /></Component>
+      <Component Id="cmp.SvcCfgFilterAll"   Guid="*"><File Id="file.SvcCfgFilterAll"   Source="$(var.StageDir)config\filter _all.txt"       KeyPath="yes" /></Component>
+      <Component Id="cmp.SvcCfgPropName"    Guid="*"><File Id="file.SvcCfgPropName"    Source="$(var.StageDir)config\propertyName.txt"      KeyPath="yes" /></Component>
+      <Component Id="cmp.SvcCfgUuid"        Guid="*"><File Id="file.SvcCfgUuid"        Source="$(var.StageDir)config\uuid"                   KeyPath="yes" /></Component>
+      <Component Id="cmp.SvcCfgLogConf"     Guid="*"><File Id="file.SvcCfgLogConf"     Source="$(var.StageDir)config\log.conf"              KeyPath="yes" /></Component>
+    </ComponentGroup>
+  </Fragment>
+</Wix>

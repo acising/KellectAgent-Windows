@@ -31,10 +31,12 @@ set(SOURCES
     src/domain/SettingsStore.cpp
     src/process/KellectProcessService.cpp
     src/process/OutputForwarder.cpp
+    src/process/WindowsServiceClient.cpp
 )
 set(HEADERS
     src/ui/MainWindow.h
     src/ui/LogHeader.h
+    src/process/WindowsServiceClient.h
 )
 
 # Resolution #2: qt5_add_resources 接受 .qrc(不是 .qss),否则 rcc 解析失败
@@ -51,6 +53,7 @@ target_link_libraries(KellectConsole PRIVATE
     Qt5::Widgets
     Qt5::Network
     Qt5::QWindowsIntegrationPlugin  # 静态 Qt 必需:平台插件静态链入
+    advapi32                         # WindowsServiceClient: SCM + 注册表 API
 )
 target_compile_definitions(KellectConsole PRIVATE UNICODE _UNICODE)
 set_target_properties(KellectConsole PROPERTIES
