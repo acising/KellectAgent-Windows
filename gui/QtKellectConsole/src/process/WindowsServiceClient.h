@@ -15,6 +15,7 @@
 #include <QString>
 #include <QTimer>
 #include <QtGlobal>
+#include <functional>
 
 namespace kellect {
 
@@ -66,11 +67,28 @@ public:
     // Synchronous state query (quiet; emits nothing). NotInstalled if absent.
     State state();
 
+    // Pure helpers exposed for unit testing the SCM polling control flow.
+    // mapDwordState: SERVICE_* DWORD -> State.
+    static State mapDwordState(unsigned long dwCurrentState);
+    // pollStates: drive a state provider until target is reached, abortState is
+    // hit (abortState==0 disables the abort check), or timeoutMs elapses. On
+    // timeout returns the last queried state (the service's real current state).
+    // Spins the event loop between checks so callers stay responsive.
+    static State pollStates(const std::function<unsigned long()>& nextDwordState,
+                            unsigned long targetState, unsigned long abortState,
+                            int timeoutMs, int pollMs = 200);
+
     // Drive the service to Running / Stopped, polling (spinning the event loop
     // so the UI stays responsive) until the target is reached or timeoutMs.
     // Returns the final state; may emit stateChanged / errorOccurred.
     State start(int timeoutMs = 15000);
     State stop(int timeoutMs = 15000);
+
+    // Pause/resume the host service (which suspends/resumes the collector's
+    // main thread via the service's CtrlHandler). Service-mode counterpart of
+    // stop(); same open→control→pollUntil→close pattern, no abort state.
+    State pause(int timeoutMs = 15000);
+    State resume(int timeoutMs = 15000);
 
     // Periodic state-poll timer (default 1 s) -> stateChanged.
     void startPolling(int intervalMs = 1000);

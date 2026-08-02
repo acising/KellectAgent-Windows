@@ -12,6 +12,7 @@
 
 class QCheckBox;
 class QComboBox;
+class QPushButton;
 class QLineEdit;
 class QLabel;
 class QListView;
@@ -20,6 +21,7 @@ class QSortFilterProxyModel;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
+    enum class OutputMode;   // 前向声明:方法签名提前引用(完整定义见私有成员区)
 public:
     explicit MainWindow(SettingsStore* store, QWidget* parent = nullptr);
 protected:
@@ -33,6 +35,9 @@ private slots:
     void openSettingsDialog();
 private:
     void openDetailDialog(const QModelIndex& proxyIndex);
+    // 弹某输出模式的字段编辑子对话框(openSettingsDialog 的"配置…"按钮调用)。
+    void editOutputFieldsDialog(OutputMode m, QString& file, QString& sockHost,
+                                quint16& sockPort, QString& kBroker, QString& kTopic);
 private:
     void applyPreset(int idx);
     quint8 currentMask() const;

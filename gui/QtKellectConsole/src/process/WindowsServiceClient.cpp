@@ -3,6 +3,7 @@
 
 #include <QCoreApplication>
 #include <QElapsedTimer>
+#include <functional>
 
 // windows.h after Qt headers (guarded) — the GUI build already defines NOMINMAX.
 #ifndef NOMINMAX
@@ -18,18 +19,10 @@ namespace kellect {
 namespace {
 constexpr const wchar_t* kRegKey = L"SOFTWARE\\Kellect\\Service";
 
+// Thin wrapper kept so existing call sites read naturally; the real table lives
+// in the member mapDwordState (exposed for tests). DWORD == unsigned long on Win.
 WindowsServiceClient::State mapState(DWORD dwCurrentState) {
-    using S = WindowsServiceClient::State;
-    switch (dwCurrentState) {
-        case SERVICE_STOPPED:          return S::Stopped;
-        case SERVICE_START_PENDING:    return S::StartPending;
-        case SERVICE_RUNNING:          return S::Running;
-        case SERVICE_PAUSE_PENDING:    return S::PausePending;
-        case SERVICE_PAUSED:           return S::Paused;
-        case SERVICE_CONTINUE_PENDING: return S::ContinuePending;
-        case SERVICE_STOP_PENDING:     return S::StopPending;
-        default:                       return S::Unknown;
-    }
+    return WindowsServiceClient::mapDwordState(dwCurrentState);
 }
 
 // One-shot quiet query. Returns NotInstalled if the service can't be opened.
@@ -57,25 +50,19 @@ WindowsServiceClient::State queryState(const QString& serviceName) {
 
 // Poll hSvc until dwCurrentState == targetState (or abortState is hit). Spins
 // the event loop between checks so the UI stays responsive. hSvc held by caller.
+// Delegates the polling loop to the testable member pollStates; the only thing
+// this wrapper adds is the real QueryServiceStatusEx state provider.
 WindowsServiceClient::State pollUntil(SC_HANDLE hSvc, DWORD targetState,
                                       DWORD abortState, int timeoutMs) {
-    QElapsedTimer t;
-    t.start();
-    while (true) {
-        SERVICE_STATUS_PROCESS ssp = {};
-        DWORD needed = 0;
-        if (QueryServiceStatusEx(hSvc, SC_STATUS_PROCESS_INFO,
-                                 reinterpret_cast<LPBYTE>(&ssp), sizeof(ssp), &needed)) {
-            if (ssp.dwCurrentState == targetState)
-                return mapState(ssp.dwCurrentState);
-            if (abortState != 0 && ssp.dwCurrentState == abortState)
-                return mapState(ssp.dwCurrentState);
-        }
-        if (t.hasExpired(timeoutMs))
-            return queryState(QString()); // fall back to a fresh quiet query
-        QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-        ::Sleep(200);
-    }
+    return WindowsServiceClient::pollStates(
+        [hSvc]() -> DWORD {
+            SERVICE_STATUS_PROCESS ssp = {};
+            DWORD needed = 0;
+            QueryServiceStatusEx(hSvc, SC_STATUS_PROCESS_INFO,
+                                 reinterpret_cast<LPBYTE>(&ssp), sizeof(ssp), &needed);
+            return ssp.dwCurrentState;   // 0 if the query failed
+        },
+        targetState, abortState, timeoutMs);
 }
 
 bool regWriteSz(const wchar_t* name, const QString& value) {
@@ -102,6 +89,37 @@ bool regWriteDword(const wchar_t* name, DWORD value) {
     return rc == ERROR_SUCCESS;
 }
 } // namespace
+
+WindowsServiceClient::State WindowsServiceClient::mapDwordState(unsigned long dwCurrentState) {
+    using S = State;
+    switch (dwCurrentState) {
+        case SERVICE_STOPPED:          return S::Stopped;
+        case SERVICE_START_PENDING:    return S::StartPending;
+        case SERVICE_RUNNING:          return S::Running;
+        case SERVICE_PAUSE_PENDING:    return S::PausePending;
+        case SERVICE_PAUSED:           return S::Paused;
+        case SERVICE_CONTINUE_PENDING: return S::ContinuePending;
+        case SERVICE_STOP_PENDING:     return S::StopPending;
+        default:                       return S::Unknown;
+    }
+}
+
+WindowsServiceClient::State WindowsServiceClient::pollStates(
+    const std::function<unsigned long()>& nextDwordState,
+    unsigned long targetState, unsigned long abortState,
+    int timeoutMs, int pollMs) {
+    QElapsedTimer t;
+    t.start();
+    unsigned long last = 0;
+    while (true) {
+        last = nextDwordState();
+        if (last == targetState)                   return mapDwordState(last);
+        if (abortState != 0 && last == abortState) return mapDwordState(last);
+        if (t.hasExpired(timeoutMs))               return mapDwordState(last);  // real last state (was: empty-name query)
+        QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+        ::Sleep(static_cast<DWORD>(qMax(0, pollMs)));
+    }
+}
 
 WindowsServiceClient::WindowsServiceClient(QString serviceName, QObject* parent)
     : QObject(parent), serviceName_(std::move(serviceName)) {
@@ -182,6 +200,62 @@ WindowsServiceClient::State WindowsServiceClient::stop(int timeoutMs) {
     SERVICE_STATUS st = {};
     ControlService(hSvc, SERVICE_CONTROL_STOP, &st); // best-effort; ignore "not running"
     const State result = pollUntil(hSvc, SERVICE_STOPPED, 0, timeoutMs);
+    CloseServiceHandle(hSvc);
+    CloseServiceHandle(hScm);
+    emitIfChanged(result);
+    return result;
+}
+
+WindowsServiceClient::State WindowsServiceClient::pause(int timeoutMs) {
+    const SC_HANDLE hScm = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_CONNECT);
+    if (!hScm) {
+        emit errorOccurred(tr("OpenSCManager failed (error %1). Run as administrator.")
+                               .arg(GetLastError()));
+        return State::Unknown;
+    }
+    const SC_HANDLE hSvc = OpenServiceW(
+        hScm, reinterpret_cast<LPCWSTR>(serviceName_.utf16()),
+        SERVICE_QUERY_STATUS | SERVICE_PAUSE_CONTINUE);
+    if (!hSvc) {
+        const DWORD e = GetLastError();
+        CloseServiceHandle(hScm);
+        emit errorOccurred(e == ERROR_SERVICE_DOES_NOT_EXIST
+                           ? tr("Service '%1' is not installed.").arg(serviceName_)
+                           : tr("OpenService('%1') failed (error %2).").arg(serviceName_).arg(e));
+        return (e == ERROR_SERVICE_DOES_NOT_EXIST) ? State::NotInstalled : State::Unknown;
+    }
+    SERVICE_STATUS st = {};
+    ControlService(hSvc, SERVICE_CONTROL_PAUSE, &st); // best-effort; service goes PausePending→Paused
+    // No abort state: if pause is rejected the service stays Running and we just
+    // fall through to queryState on timeout, surfacing the real (unchanged) state.
+    const State result = pollUntil(hSvc, SERVICE_PAUSED, 0, timeoutMs);
+    CloseServiceHandle(hSvc);
+    CloseServiceHandle(hScm);
+    emitIfChanged(result);
+    return result;
+}
+
+WindowsServiceClient::State WindowsServiceClient::resume(int timeoutMs) {
+    const SC_HANDLE hScm = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_CONNECT);
+    if (!hScm) {
+        emit errorOccurred(tr("OpenSCManager failed (error %1). Run as administrator.")
+                               .arg(GetLastError()));
+        return State::Unknown;
+    }
+    const SC_HANDLE hSvc = OpenServiceW(
+        hScm, reinterpret_cast<LPCWSTR>(serviceName_.utf16()),
+        SERVICE_QUERY_STATUS | SERVICE_PAUSE_CONTINUE);
+    if (!hSvc) {
+        const DWORD e = GetLastError();
+        CloseServiceHandle(hScm);
+        emit errorOccurred(e == ERROR_SERVICE_DOES_NOT_EXIST
+                           ? tr("Service '%1' is not installed.").arg(serviceName_)
+                           : tr("OpenService('%1') failed (error %2).").arg(serviceName_).arg(e));
+        return (e == ERROR_SERVICE_DOES_NOT_EXIST) ? State::NotInstalled : State::Unknown;
+    }
+    SERVICE_STATUS st = {};
+    ControlService(hSvc, SERVICE_CONTROL_CONTINUE, &st); // ContinuePending→Running
+    const State result = pollUntil(hSvc, SERVICE_RUNNING, 0, timeoutMs);
     CloseServiceHandle(hSvc);
     CloseServiceHandle(hScm);
     emitIfChanged(result);

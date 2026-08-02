@@ -326,6 +326,85 @@ The output case are as follows:
 ## Dateset
 We use KellectAgent as the collection tool and based on the script [Automic Red Team](https://github.com/redcanaryco/atomic-red-team) proposed by redcanaryco for data collection. The script is based on the tactics in [ATT&CK](https://attack.mitre.org/), and the data we collected is shared in [Kellect Website](http://www.kellect.org)
 
+## KellectConsole (Graphical Console)
+
+`gui/QtKellectConsole` ships an optional Qt-based graphical console for driving
+`kellect.exe`. It is a **single statically-linked executable** (~17 MB, zero
+runtime dependencies) built with **Qt 5.15 LTS** + MSVC `/MT`, so one binary
+runs on **Windows 7 SP1, 10 and 11**. It must run as **Administrator** (the
+manifest requests elevation — required for ETW).
+
+Launch `KellectConsole.exe`, then:
+
+1. **Settings** → point it at `kellect.exe` (defaults to the one beside the GUI).
+2. Tick the **kernel event classes** you want (or pick a preset).
+3. Choose an **output target**: Console (live on-screen view), File, Socket, or
+   Kafka. Console/File/Socket are tee'd from the live stream by the GUI so the
+   on-screen view is always available; Kafka is sent directly by `kellect.exe`.
+4. **Start**. The JSON event stream renders with per-event-type colouring,
+   decoded-error flags, and a details dialog on double-click.
+
+Tick **"Run as Windows Service"** in Settings to let `KellectService` host the
+collector (background / always-on). In that mode the control bar adds
+**Pause / Resume** alongside Stop.
+
+> The GUI launches `kellect.exe` with `-c` and does **not** expose `-u`. To
+> trace user-mode providers, run the binary directly (see below).
+
+Build:
+
+```
+cmd /c gui\QtKellectConsole\scripts\build.bat test
+```
+(Qt 5.15 static, MSVC v142 / 14.29, Windows SDK 10.0.19041.0.)
+
+## Windows Service & MSI Installer
+
+`KellectService.exe` runs `kellect.exe` as a Windows service. It reads its
+configuration from registry key `HKLM\SOFTWARE\Kellect\Service`:
+
+| Value | Meaning |
+|-------|---------|
+| `OutputMode` | `file` / `socket` / `kafka` (the service rejects `console`) |
+| `EventMask` | Hex event mask (default `0xFF`) |
+| `OutputFile` | File path (file mode) |
+| `SocketHost`, `SocketPort` | Socket sink (socket mode) |
+| `KafkaBroker`, `KafkaTopic` | `host:port` / topic (kafka mode) |
+| `ExePath`, `WorkDir` | Optional collector-path / working-dir override |
+
+The GUI's service mode writes these for you; they can also be set manually.
+
+**Install** via the MSI (recommended, production), or the dev convenience flags
+on the service binary:
+
+```
+KellectService.exe --install     :: register (dev)
+KellectService.exe --uninstall   :: remove (dev)
+```
+
+**MSI** — one pipeline builds collector + GUI + service + installer:
+
+```
+cmd /c scripts\build-all.bat
+```
+→ `installer\build-msi\Kellect-win-x64.msi` (custom install folder; collected
+data retained on uninstall).
+
+### User-mode providers (`-u`)
+
+`kellect.exe` can additionally trace **one** user-mode ETW provider via `-u`
+(single-select enum, not a bitmask):
+
+| Value | Provider |
+|-------|----------|
+| `0x01` | Thread Pool |
+| `0x02` | DNS Client |
+| `0x03` | Print Service |
+
+```
+kellect.exe -e all -u 0x02 -f dns.json   :: DNS resolution to a file (as Administrator)
+```
+
 ## Future Work
 
 1. <s>ETW-based Windows kernel events log collector（V1.0，released）</s>

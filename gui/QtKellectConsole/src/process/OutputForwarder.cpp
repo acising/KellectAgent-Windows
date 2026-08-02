@@ -5,19 +5,29 @@
 #include <QAbstractSocket>
 #include <QTimer>
 
-OutputForwarder::OutputForwarder(QObject* parent) : QObject(parent) {}
+namespace {
+// 文件输出周期 flush 间隔(P1):避免每行一次 flush syscall(ETW 高频时瓶颈)。
+// 数据丢失风险上限 ≈ 此间隔;close()/模式切换/析构均会立即 flush。
+constexpr int kFlushIntervalMs = 200;
+} // namespace
+
+OutputForwarder::OutputForwarder(QObject* parent) : QObject(parent) {
+    connect(&flushTimer_, &QTimer::timeout, this, [this] {
+        if (file_) file_->flush();   // 周期 flush;close() 已停定时器时不再触发
+    });
+}
 OutputForwarder::~OutputForwarder() { close(); }
 
 void OutputForwarder::setFile(const QString& path)   { filePath_ = path; }
 void OutputForwarder::setSocket(const QString& host, quint16 port) {
-    socketHost_ = host; socketPort_ = port;   // Task 3 才真正用
+    socketHost_ = host; socketPort_ = port;   // 存目标;openSocket 时用
 }
 
 void OutputForwarder::setMode(Mode m) {
     close();   // 先关旧 sink(flush 已写)
     mode_ = m;
     if (mode_ == Mode::File)         openFile();
-    else if (mode_ == Mode::Socket)  openSocket();   // Task 3
+    else if (mode_ == Mode::Socket)  openSocket();
 }
 
 void OutputForwarder::openFile() {
@@ -28,6 +38,7 @@ void OutputForwarder::openFile() {
         mode_ = Mode::None;        // 回退,不阻断运行
         return;
     }
+    flushTimer_.start(kFlushIntervalMs);   // 周期 flush 开启;close() 停
     emit stateChanged(tr("文件:%1").arg(filePath_));
 }
 
@@ -62,14 +73,14 @@ void OutputForwarder::scheduleReconnect() {
 void OutputForwarder::writeLine(const QString& line) {
     const QByteArray bytes = (line + '\n').toUtf8();
     if (mode_ == Mode::File && file_) {
-        file_->write(bytes);
-        file_->flush();
+        file_->write(bytes);   // flush 交由周期定时器(P1),避免每行一次 syscall
     } else if (mode_ == Mode::Socket && sock_) {
         sock_->write(bytes);
     }
 }
 
 void OutputForwarder::close() {
+    flushTimer_.stop();   // 先停周期 flush
     if (file_) { file_->flush(); file_->close(); delete file_; file_ = nullptr; }
     if (sock_) { sock_->abort(); delete sock_; sock_ = nullptr; }
     reconnectScheduled_ = false;
