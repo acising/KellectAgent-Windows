@@ -113,9 +113,6 @@ typedef struct _RTL_PROCESS_MODULES
 #define TCPIPEVENT			0x80
 #define ALLEVENT 0xff
 
-#define FILEOUTPUT			0x0
-#define CONSOLEOUTPUT		0x1
-#define SOCKETOUTPUT		0x2
 //#define EVENT 0x40
 //#define SIZEOFARGV 255
 
@@ -163,7 +160,6 @@ public:
 
     inline STATUS initThreadProcessMap();
     STATUS initEnabledEvent(ULONG64 eventType);
-    //static void initPropertyNames(std::wstring confFile = L"propertyName.txt");
     static STATUS initProcessID2ModulesMap();
     static STATUS initImages(std::string confFile = "config/initImages.txt");
     //void initFilter();
@@ -171,7 +167,6 @@ public:
     void initNeededStruct();
     void initSysNameMap();
     void showCommandList();
-//    void initEventPropertiesMap(std::string confFile = "config/eventStruct.txt");
     void initEventPropertiesMap(std::string confFile = "config/eventStruct_win10.xml");
     void initThreadParseProviders();
     void initProcessor2ThreadAndThread2Process();
@@ -205,8 +200,6 @@ private:
     static bool listenCallStack;
 
     static std::string uuid;
-    std::string uuidFile = "config\\uuid";
-    const char* eventStructFile = "config/eventStruct.xml";
     const char* filterFileName = "config/filter.txt";
     const char* imagesFile = "config/initImages.txt";
     ULONG64 opThreashold = 20;

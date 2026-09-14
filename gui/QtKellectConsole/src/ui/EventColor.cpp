@@ -10,6 +10,7 @@ EventDomain domainOfEvent(const QString& e) {
     if (e.startsWith("Registry")) return EventDomain::Registry;
     if (e.startsWith("TcpIp") || e.startsWith("Tcp") || e.startsWith("Udp"))
                                  return EventDomain::TcpIp;
+    if (e.startsWith("CallStack")) return EventDomain::CallStack;
     return EventDomain::None;
 }
 

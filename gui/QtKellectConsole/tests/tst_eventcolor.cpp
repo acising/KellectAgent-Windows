@@ -17,6 +17,7 @@ void TestColor::prefixMapping() {
     QCOMPARE(domainOfEvent("DiskIORead"),    EventDomain::Disk);
     QCOMPARE(domainOfEvent("RegistryCreate"),EventDomain::Registry);
     QCOMPARE(domainOfEvent("TcpIpConnect"),  EventDomain::TcpIp);
+    QCOMPARE(domainOfEvent("CallStack"),     EventDomain::CallStack);
 }
 void TestColor::unknownIsNone() {
     QCOMPARE(domainOfEvent(""),            EventDomain::None);

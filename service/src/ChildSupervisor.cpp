@@ -111,15 +111,6 @@ void ChildSupervisor::Resume() {
     }
 }
 
-void ChildSupervisor::Suspend() {
-    if (proc_.hThread) {
-        if (SuspendThread(proc_.hThread) == static_cast<DWORD>(-1))
-            EventLog::Warn(L"SuspendThread failed.");
-    }
-}
-
-void ChildSupervisor::Continue() { Resume(); }
-
 void ChildSupervisor::RequestStop() { stopRequested_ = true; }
 
 void ChildSupervisor::CloseChildHandles() {

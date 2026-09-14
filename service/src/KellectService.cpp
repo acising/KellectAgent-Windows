@@ -51,16 +51,6 @@ DWORD WINAPI CtrlHandlerEx(DWORD ctrl, DWORD eventType,
             if (g_supervisor) g_supervisor->RequestStop();
             if (g_hStop) SetEvent(g_hStop);
             break;
-        case SERVICE_CONTROL_PAUSE:
-            SetState(SERVICE_PAUSE_PENDING, 0, 3000, 1);
-            if (g_supervisor) g_supervisor->Suspend();
-            SetState(SERVICE_PAUSED);
-            break;
-        case SERVICE_CONTROL_CONTINUE:
-            SetState(SERVICE_CONTINUE_PENDING, 0, 3000, 1);
-            if (g_supervisor) g_supervisor->Continue();
-            SetState(SERVICE_RUNNING);
-            break;
         case SERVICE_CONTROL_INTERROGATE:
             if (g_hStatus) SetServiceStatus(g_hStatus, &g_status);
             break;

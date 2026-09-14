@@ -29,9 +29,7 @@ public:
                const std::wstring& workDir,
                const std::wstring& stdoutLogFile);
 
-    void Resume();     // unsuspend after start, or undo a Pause
-    void Suspend();    // service PAUSE -> best-effort SuspendThread
-    void Continue();   // service CONTINUE -> ResumeThread
+    void Resume();     // unsuspend the child after the service reports RUNNING
 
     // Signal the wait loop to terminate the child and return. Non-blocking.
     void RequestStop();

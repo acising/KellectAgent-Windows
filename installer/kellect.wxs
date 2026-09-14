@@ -169,15 +169,11 @@
       <Component Id="cmp.DllLibzstd" Guid="*"><File Id="file.Libzstd" Source="$(var.StageDir)libzstd.dll" KeyPath="yes" /></Component>
       <Component Id="cmp.DllZlib" Guid="*"><File Id="file.Zlib" Source="$(var.StageDir)zlib.dll" KeyPath="yes" /></Component>
 
-      <!-- config\: complete 9-file set -->
+      <!-- config\: runtime-read set (win7/win10 xml, initImages, filter, log.conf) -->
       <Component Id="cmp.CfgWin7"         Guid="*" Directory="ConfigDir"><File Id="file.CfgWin7"         Source="$(var.StageDir)config\eventStruct_win7.xml"  KeyPath="yes" /></Component>
       <Component Id="cmp.CfgWin10"        Guid="*" Directory="ConfigDir"><File Id="file.CfgWin10"        Source="$(var.StageDir)config\eventStruct_win10.xml" KeyPath="yes" /></Component>
-      <Component Id="cmp.CfgEventStruct"  Guid="*" Directory="ConfigDir"><File Id="file.CfgEventStruct"  Source="$(var.StageDir)config\eventStruct.txt"       KeyPath="yes" /></Component>
       <Component Id="cmp.CfgInitImages"   Guid="*" Directory="ConfigDir"><File Id="file.CfgInitImages"   Source="$(var.StageDir)config\initImages.txt"        KeyPath="yes" /></Component>
       <Component Id="cmp.CfgFilter"       Guid="*" Directory="ConfigDir"><File Id="file.CfgFilter"       Source="$(var.StageDir)config\filter.txt"            KeyPath="yes" /></Component>
-      <Component Id="cmp.CfgFilterAll"    Guid="*" Directory="ConfigDir"><File Id="file.CfgFilterAll"    Source="$(var.StageDir)config\filter _all.txt"       KeyPath="yes" /></Component>
-      <Component Id="cmp.CfgPropName"     Guid="*" Directory="ConfigDir"><File Id="file.CfgPropName"     Source="$(var.StageDir)config\propertyName.txt"      KeyPath="yes" /></Component>
-      <Component Id="cmp.CfgUuid"         Guid="*" Directory="ConfigDir"><File Id="file.CfgUuid"         Source="$(var.StageDir)config\uuid"                   KeyPath="yes" /></Component>
       <Component Id="cmp.CfgLogConf"      Guid="*" Directory="ConfigDir"><File Id="file.CfgLogConf"      Source="$(var.StageDir)config\log.conf"              KeyPath="yes" /></Component>
     </ComponentGroup>
   </Fragment>
@@ -235,18 +231,15 @@
   </Fragment>
   <!-- ===================== Config mirrored into the service CWD =====================
        kellect loads config\ relative to its CWD. The service runs it with
-       CWD=%ProgramData%\Kellect\, so the same 9 config files are installed here too
-       (the INSTALLDIR\config\ copy is still installed for standalone/GUI use). -->
+       CWD=%ProgramData%\Kellect\, so the same runtime-read config files are
+       installed here too (the INSTALLDIR\config\ copy is still installed for
+       standalone/GUI use). -->
   <Fragment>
     <ComponentGroup Id="cg.ServiceConfig" Directory="ConfigDataDir">
       <Component Id="cmp.SvcCfgWin7"        Guid="*"><File Id="file.SvcCfgWin7"        Source="$(var.StageDir)config\eventStruct_win7.xml"  KeyPath="yes" /></Component>
       <Component Id="cmp.SvcCfgWin10"       Guid="*"><File Id="file.SvcCfgWin10"       Source="$(var.StageDir)config\eventStruct_win10.xml" KeyPath="yes" /></Component>
-      <Component Id="cmp.SvcCfgEventStruct" Guid="*"><File Id="file.SvcCfgEventStruct" Source="$(var.StageDir)config\eventStruct.txt"       KeyPath="yes" /></Component>
       <Component Id="cmp.SvcCfgInitImages"  Guid="*"><File Id="file.SvcCfgInitImages"  Source="$(var.StageDir)config\initImages.txt"        KeyPath="yes" /></Component>
       <Component Id="cmp.SvcCfgFilter"      Guid="*"><File Id="file.SvcCfgFilter"      Source="$(var.StageDir)config\filter.txt"            KeyPath="yes" /></Component>
-      <Component Id="cmp.SvcCfgFilterAll"   Guid="*"><File Id="file.SvcCfgFilterAll"   Source="$(var.StageDir)config\filter _all.txt"       KeyPath="yes" /></Component>
-      <Component Id="cmp.SvcCfgPropName"    Guid="*"><File Id="file.SvcCfgPropName"    Source="$(var.StageDir)config\propertyName.txt"      KeyPath="yes" /></Component>
-      <Component Id="cmp.SvcCfgUuid"        Guid="*"><File Id="file.SvcCfgUuid"        Source="$(var.StageDir)config\uuid"                   KeyPath="yes" /></Component>
       <Component Id="cmp.SvcCfgLogConf"     Guid="*"><File Id="file.SvcCfgLogConf"     Source="$(var.StageDir)config\log.conf"              KeyPath="yes" /></Component>
     </ComponentGroup>
   </Fragment>

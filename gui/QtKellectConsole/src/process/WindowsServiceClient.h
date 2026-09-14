@@ -27,9 +27,6 @@ public:
         Stopped,
         StartPending,
         Running,
-        PausePending,
-        Paused,
-        ContinuePending,
         StopPending,
         Unknown
     };
@@ -83,12 +80,6 @@ public:
     // Returns the final state; may emit stateChanged / errorOccurred.
     State start(int timeoutMs = 15000);
     State stop(int timeoutMs = 15000);
-
-    // Pause/resume the host service (which suspends/resumes the collector's
-    // main thread via the service's CtrlHandler). Service-mode counterpart of
-    // stop(); same open→control→pollUntil→close pattern, no abort state.
-    State pause(int timeoutMs = 15000);
-    State resume(int timeoutMs = 15000);
 
     // Periodic state-poll timer (default 1 s) -> stateChanged.
     void startPolling(int intervalMs = 1000);

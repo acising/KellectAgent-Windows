@@ -80,7 +80,7 @@ For example, the following command can be used to collect all system logs and ou
 
 #### filter.txt
 
-Users can implement different functions by configuring filter.txt. Usually KellectAgent does not need to be modified to run, unless there are customized requirements.
+> **Note:** Filtering is currently **hardcoded** in the collector (`initFilter()`); `filter.txt` is **not read at runtime**. The file is still shipped, and its format is documented below, as the entry point for restoring configurable filtering.
 
 - The role of filter.txt is to filter events you don't need. There are three types of labels used for filtering, which are the process ID, event identifier, blacklist of image file path and whitelist of image file path. The default configuration is as follows:
 
@@ -345,8 +345,8 @@ Launch `KellectConsole.exe`, then:
    decoded-error flags, and a details dialog on double-click.
 
 Tick **"Run as Windows Service"** in Settings to let `KellectService` host the
-collector (background / always-on). In that mode the control bar adds
-**Pause / Resume** alongside Stop.
+collector (background / always-on). In that mode Start/Stop controls the
+background service.
 
 > The GUI launches `kellect.exe` with `-c` and does **not** expose `-u`. To
 > trace user-mode providers, run the binary directly (see below).

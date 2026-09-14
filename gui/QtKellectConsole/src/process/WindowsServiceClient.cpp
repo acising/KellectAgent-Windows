@@ -96,9 +96,6 @@ WindowsServiceClient::State WindowsServiceClient::mapDwordState(unsigned long dw
         case SERVICE_STOPPED:          return S::Stopped;
         case SERVICE_START_PENDING:    return S::StartPending;
         case SERVICE_RUNNING:          return S::Running;
-        case SERVICE_PAUSE_PENDING:    return S::PausePending;
-        case SERVICE_PAUSED:           return S::Paused;
-        case SERVICE_CONTINUE_PENDING: return S::ContinuePending;
         case SERVICE_STOP_PENDING:     return S::StopPending;
         default:                       return S::Unknown;
     }
@@ -200,62 +197,6 @@ WindowsServiceClient::State WindowsServiceClient::stop(int timeoutMs) {
     SERVICE_STATUS st = {};
     ControlService(hSvc, SERVICE_CONTROL_STOP, &st); // best-effort; ignore "not running"
     const State result = pollUntil(hSvc, SERVICE_STOPPED, 0, timeoutMs);
-    CloseServiceHandle(hSvc);
-    CloseServiceHandle(hScm);
-    emitIfChanged(result);
-    return result;
-}
-
-WindowsServiceClient::State WindowsServiceClient::pause(int timeoutMs) {
-    const SC_HANDLE hScm = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_CONNECT);
-    if (!hScm) {
-        emit errorOccurred(tr("OpenSCManager failed (error %1). Run as administrator.")
-                               .arg(GetLastError()));
-        return State::Unknown;
-    }
-    const SC_HANDLE hSvc = OpenServiceW(
-        hScm, reinterpret_cast<LPCWSTR>(serviceName_.utf16()),
-        SERVICE_QUERY_STATUS | SERVICE_PAUSE_CONTINUE);
-    if (!hSvc) {
-        const DWORD e = GetLastError();
-        CloseServiceHandle(hScm);
-        emit errorOccurred(e == ERROR_SERVICE_DOES_NOT_EXIST
-                           ? tr("Service '%1' is not installed.").arg(serviceName_)
-                           : tr("OpenService('%1') failed (error %2).").arg(serviceName_).arg(e));
-        return (e == ERROR_SERVICE_DOES_NOT_EXIST) ? State::NotInstalled : State::Unknown;
-    }
-    SERVICE_STATUS st = {};
-    ControlService(hSvc, SERVICE_CONTROL_PAUSE, &st); // best-effort; service goes PausePending→Paused
-    // No abort state: if pause is rejected the service stays Running and we just
-    // fall through to queryState on timeout, surfacing the real (unchanged) state.
-    const State result = pollUntil(hSvc, SERVICE_PAUSED, 0, timeoutMs);
-    CloseServiceHandle(hSvc);
-    CloseServiceHandle(hScm);
-    emitIfChanged(result);
-    return result;
-}
-
-WindowsServiceClient::State WindowsServiceClient::resume(int timeoutMs) {
-    const SC_HANDLE hScm = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_CONNECT);
-    if (!hScm) {
-        emit errorOccurred(tr("OpenSCManager failed (error %1). Run as administrator.")
-                               .arg(GetLastError()));
-        return State::Unknown;
-    }
-    const SC_HANDLE hSvc = OpenServiceW(
-        hScm, reinterpret_cast<LPCWSTR>(serviceName_.utf16()),
-        SERVICE_QUERY_STATUS | SERVICE_PAUSE_CONTINUE);
-    if (!hSvc) {
-        const DWORD e = GetLastError();
-        CloseServiceHandle(hScm);
-        emit errorOccurred(e == ERROR_SERVICE_DOES_NOT_EXIST
-                           ? tr("Service '%1' is not installed.").arg(serviceName_)
-                           : tr("OpenService('%1') failed (error %2).").arg(serviceName_).arg(e));
-        return (e == ERROR_SERVICE_DOES_NOT_EXIST) ? State::NotInstalled : State::Unknown;
-    }
-    SERVICE_STATUS st = {};
-    ControlService(hSvc, SERVICE_CONTROL_CONTINUE, &st); // ContinuePending→Running
-    const State result = pollUntil(hSvc, SERVICE_RUNNING, 0, timeoutMs);
     CloseServiceHandle(hSvc);
     CloseServiceHandle(hScm);
     emitIfChanged(result);

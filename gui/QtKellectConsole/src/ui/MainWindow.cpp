@@ -307,7 +307,6 @@ void MainWindow::updateStatusFromServiceState(WindowsServiceClient::State s) {
         case WindowsServiceClient::State::Running:      t = tr("服务运行中"); break;
         case WindowsServiceClient::State::StartPending: t = tr("服务启动中…"); break;
         case WindowsServiceClient::State::StopPending:  t = tr("服务停止中…"); break;
-        case WindowsServiceClient::State::Paused:       t = tr("服务已暂停"); break;
         case WindowsServiceClient::State::Stopped:      t = tr("服务已停止"); break;
         case WindowsServiceClient::State::NotInstalled: t = tr("服务未安装"); break;
         default:                                        t = tr("服务状态未知"); break;

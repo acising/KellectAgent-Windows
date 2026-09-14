@@ -6,10 +6,6 @@
 #pragma comment(lib,"ws2_32.lib")
 
 using namespace moodycamel;
-#define output2console 0x0
-#define output2file	   0x1
-#define output2kafka   0x2
-#define output2socket   0x4
 #define STATUS int
 #define STATUS_FAILED -1
 //#define STATUS_SUCCESS 0

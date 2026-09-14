@@ -1,7 +1,7 @@
 // Tests for WindowsServiceClient's pure SCM-polling control flow (P4).
 // - mapDwordState / pollStates are driven directly with scripted state
-//   sequences (no real SCM, no admin). pause()'s no-abort timeout fallback
-//   (Plan 1) is locked by pollStatesNoAbortTimesOutToLastState.
+//   sequences (no real SCM, no admin). pollStates' no-abort timeout fallback
+//   (used by stop()) is locked by pollStatesNoAbortTimesOutToLastState.
 // - nonexistentServiceIsNotInstalled hits the real SCM query path for a
 //   guaranteed-absent name (SC_MANAGER_CONNECT + SERVICE_QUERY_STATUS are
 //   non-elevated), asserting the NotInstalled contract the GUI relies on.
@@ -35,9 +35,6 @@ void TestWindowsServiceClient::mapDwordStateMapsAllStates() {
     QCOMPARE(W::mapDwordState(SERVICE_STOPPED),          W::State::Stopped);
     QCOMPARE(W::mapDwordState(SERVICE_START_PENDING),    W::State::StartPending);
     QCOMPARE(W::mapDwordState(SERVICE_RUNNING),          W::State::Running);
-    QCOMPARE(W::mapDwordState(SERVICE_PAUSE_PENDING),    W::State::PausePending);
-    QCOMPARE(W::mapDwordState(SERVICE_PAUSED),           W::State::Paused);
-    QCOMPARE(W::mapDwordState(SERVICE_CONTINUE_PENDING), W::State::ContinuePending);
     QCOMPARE(W::mapDwordState(SERVICE_STOP_PENDING),     W::State::StopPending);
     QCOMPARE(W::mapDwordState(999999u),                  W::State::Unknown);
 }
@@ -71,11 +68,11 @@ void TestWindowsServiceClient::pollStatesAbortsOnAbortState() {
 
 void TestWindowsServiceClient::pollStatesNoAbortTimesOutToLastState() {
     using W = kellect::WindowsServiceClient;
-    // pause() 场景:target=Paused、abort=0(无 abort);服务拒绝暂停,恒 Running。
-    // 超时应回退到真实态 Running(计划1 pause 的 no-abort 设计)。
+    // no-abort 超时回退:target=Stopped、abort=0(无 abort);服务恒 Running(没停成)。
+    // 超时应回退到真实态 Running(stop() 在服务未及时停止时的行为)。
     const W::State s = W::pollStates(
         []() -> DWORD { return SERVICE_RUNNING; },
-        SERVICE_PAUSED, 0, 60, 0);
+        SERVICE_STOPPED, 0, 60, 0);
     QCOMPARE(s, W::State::Running);
 }
 

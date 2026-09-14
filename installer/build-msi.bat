@@ -86,7 +86,7 @@ echo [stage] GUI from %GUI_SRC%
 copy /y "%GUI_SRC%\KellectConsole.exe"           "%STAGE%\" >nul ||goto :err
 
 REM ---------------------------------------------------------------------------
-REM config\ ? the 4 files kellect.wxs declares (collector's own copy)
+REM config\ - the files kellect.wxs declares (collector's own copy)
 REM ---------------------------------------------------------------------------
 set "CFG_SRC="
 if exist "%REPO_ROOT%\bin\config\eventStruct_win7.xml"            set "CFG_SRC=%REPO_ROOT%\bin\config"
@@ -96,7 +96,7 @@ if not defined CFG_SRC (
     exit /b 1
 )
 echo [stage] config from %CFG_SRC%
-REM Copy the COMPLETE config dir (9 files) - xcopy so future config files are staged automatically
+REM Copy the COMPLETE config dir - xcopy so future config files are staged automatically
 xcopy /e /i /y "%CFG_SRC%\*" "%STAGE%\config\" >nul
 if errorlevel 1 goto :err
 

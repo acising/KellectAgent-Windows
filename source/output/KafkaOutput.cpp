@@ -9,8 +9,9 @@ int KafkaOutPut::init() {
     if (status == STATUS_SUCCESS) {
 
         brokers_ = ip+":"+ std::to_string(port);
-        // create global config instance
-        global_conf = RdKafka::Conf::create(RdKafka::Conf::CONF_GLOBAL);
+        // create global config instance (freed on every path below; librdkafka
+        // copies what it needs once the producer is created)
+        RdKafka::Conf* global_conf = RdKafka::Conf::create(RdKafka::Conf::CONF_GLOBAL);
 
         // set error message
         std::string errMsg = "";
@@ -19,22 +20,19 @@ int KafkaOutPut::init() {
         if (global_conf->set("bootstrap.servers", brokers_, errMsg) !=
             RdKafka::Conf::CONF_OK) {
             std::cout << errMsg << std::endl;
-
+            delete global_conf;
             return STATUS_FAIL;
         }
 
-//    global_conf->set("event_cb", &event_cb, errMsg);
-//    global_conf->set("dr_cb", &delivery_cb, errMsg);
-
         // create producer instance
         producer = RdKafka::Producer::create(global_conf, errMsg);
+        delete global_conf;
         if (!producer) {
             std::cerr << "Failed to create producer: " << errMsg << std::endl;
             return STATUS_FAIL;
         }
 
         printf("created kafka producer %s\n", producer->name().c_str());
-        delete global_conf;
     }
     if(status == STATUS_SUCCESS)
         setInit(true);
@@ -44,6 +42,10 @@ int KafkaOutPut::init() {
     return status;
 }
 
+KafkaOutPut::~KafkaOutPut() {
+    delete producer;
+}
+
 void KafkaOutPut::output(std::string outputString){
 
     if (outputString.empty()) {
@@ -51,7 +53,6 @@ void KafkaOutPut::output(std::string outputString){
         return;
 //        continue;
     }
-    std::cout<<"KafkaOutPut:"<<outputString<<std::endl;
     retry:
     // 生产者根据主题发布信息
     RdKafka::ErrorCode err = producer->produce(

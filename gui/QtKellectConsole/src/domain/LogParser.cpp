@@ -44,8 +44,8 @@ static QString jsonValueToString(const QJsonValue& v) {
 // 精确名 + 3 条通配规则(startsWith("Reserved") / endsWith("Handle") / == "Flags")。
 static bool isHiddenKey(const QString& key) {
     static const QSet<QString> exact = {
-        QStringLiteral("PPID"), QStringLiteral("PPName"), QStringLiteral("Host-UUID"),
-        QStringLiteral("TimeStamp"), QStringLiteral("TID"), QStringLiteral("TTID"),
+        QStringLiteral("Host-UUID"),
+        QStringLiteral("TID"), QStringLiteral("TTID"),
         QStringLiteral("TThreadId"), QStringLiteral("ProcessId"), QStringLiteral("IrpPtr"),
         QStringLiteral("FileObject"), QStringLiteral("FileKey"), QStringLiteral("connid"),
         QStringLiteral("seqnum"), QStringLiteral("UniqueProcessKey"),
