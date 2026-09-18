@@ -90,19 +90,16 @@ MainWindow::MainWindow(SettingsStore* store, QWidget* parent)
     ctrlLay->addWidget(settingsBtn);
     bar->addWidget(ctrlBox);
 
-    // 组3:搜索 + 自动滚动 + 异常计数
+    // 组3:搜索 + 自动滚动
     auto* optBox = new QGroupBox(tr("显示"));
     auto* optLay = new QHBoxLayout(optBox);
     filterEdit_ = new QLineEdit;
     filterEdit_->setPlaceholderText(tr("搜索…"));
     autoScrollBox_ = new QCheckBox(tr("自动滚动"), optBox);
     autoScrollBox_->setChecked(true);
-    errLabel_ = new QLabel(QStringLiteral("⚠ 0"));
-    errLabel_->setObjectName("errLabel"); // Resolution #3:让 dark.qss 的 QLabel#errLabel 规则生效
     optLay->addWidget(new QLabel(tr("搜索:")));
     optLay->addWidget(filterEdit_);
     optLay->addWidget(autoScrollBox_);
-    optLay->addWidget(errLabel_);
     bar->addWidget(optBox, 1);
 
     root->addLayout(bar);
@@ -157,9 +154,6 @@ MainWindow::MainWindow(SettingsStore* store, QWidget* parent)
     });
     connect(&proc_, &KellectProcessService::startFailed, this, [this](const QString& r){
         statusLabel_->setText(tr("启动失败:%1").arg(r));
-    });
-    connect(&proc_, &KellectProcessService::decodeErrorCountChanged, this, [this](int n){
-        errLabel_->setText(QStringLiteral("⚠ %1").arg(n));
     });
     connect(filterEdit_, &QLineEdit::textChanged, proxy_, &QSortFilterProxyModel::setFilterFixedString);
     // 双击:打开详情对话框(显示解析后的分列字段 + 原始整行)。
@@ -233,6 +227,23 @@ void MainWindow::onStart() {
         statusLabel_->setText(tr("请先在设置中选择 kellect.exe"));
         return;
     }
+    // NT Kernel Logger 是系统单例会话:后台 KellectService 若在运行,其托管的
+    // kellect.exe 会与本 GUI 的子进程互相抢占会话(StartTrace 183 拉锯,且服务侧
+    // 子进程退出后会自动重启再抢回,直连侧几秒内被顶掉)。直连采集前先停服务,
+    // 停不下来就拒绝启动,避免两个采集器打架。
+    if (svc_.isInstalled()) {
+        const auto s = svc_.state();
+        if (s == WindowsServiceClient::State::Running ||
+            s == WindowsServiceClient::State::StartPending ||
+            s == WindowsServiceClient::State::StopPending) {
+            const auto after = svc_.stop(15000);
+            if (after != WindowsServiceClient::State::Stopped) {
+                statusLabel_->setText(tr("后台服务占用内核采集会话且未能停止,已取消启动(请手动停止 %1 或以管理员运行 GUI)")
+                                          .arg(serviceName_));
+                return;
+            }
+        }
+    }
     const quint8 mask = currentMask();
     updateOutputStatus();   // 先设规范文案;若下方 setMode(File) 随即 emit error(打不开),红字不被尾随调用覆盖(spec §8)
     QStringList args;
@@ -272,6 +283,12 @@ void MainWindow::startViaService() {
     if (!svc_.isInstalled()) {
         statusLabel_->setText(tr("服务 %1 未安装,请先安装 KellectService").arg(serviceName_));
         return;
+    }
+    // 直连子进程若还在跑,先停掉:NT Kernel Logger 是系统单例,服务托管的
+    // kellect 启动后会与它抢占会话(与 onStart 里的服务侧守卫互为镜像)。
+    if (proc_.state() != ProcessState::Idle) {
+        proc_.stop();
+        forwarder_.close();
     }
     QString mode;
     switch (static_cast<OutputMode>(outputMode_)) {
@@ -314,12 +331,11 @@ void MainWindow::updateStatusFromServiceState(WindowsServiceClient::State s) {
     statusLabel_->setText(t);
 }
 
-void MainWindow::onOutputLine(const QString& line, int decodeErrors) {
+void MainWindow::onOutputLine(const QString& line) {
     const ParsedLine pl = parseKellectLine(line);
     LogEntry e;
     e.time = QDateTime::currentDateTime();
     e.text = line;              // 原始整行(搜索/保存仍可用)
-    e.decodeErrors = decodeErrors;
     e.marked = false;
     e.event = pl.event;
     e.pid = pl.pid;

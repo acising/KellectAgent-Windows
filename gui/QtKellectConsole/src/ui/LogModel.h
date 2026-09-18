@@ -10,7 +10,7 @@ inline constexpr int kTrimBatch = 5000;
 class LogModel : public QAbstractListModel {
     Q_OBJECT
 public:
-    enum Roles { TextRole = Qt::UserRole + 1, TimeRole, DecodeErrorsRole, MarkedRole,
+    enum Roles { TextRole = Qt::UserRole + 1, TimeRole, MarkedRole,
                  EventRole, PidRole, DetailRole, PNameRole, SearchRole };
 
     int rowCount(const QModelIndex& = {}) const override { return rows_.size(); }
@@ -20,9 +20,7 @@ public:
     void trimIfFull();
     void toggleMark(int row);
     void clear();
-    int totalDecodeErrors() const;
     const QVector<LogEntry>& rows() const { return rows_; }
 private:
     QVector<LogEntry> rows_;
-    int totalErrors_ = 0;
 };

@@ -14,6 +14,41 @@
 #include "process/multithread_configuration.h"
 #define MAXIMUM_SESSION_NAME 1024
 extern VOID WINAPI GetPropertiesByTdh(PEVENT_RECORD pEvent);
+
+namespace {
+// Stop a session by logger name with a self-contained properties buffer
+// (ControlTrace accepts sessionHandle=0 when the logger name is given).
+void stopSessionByName(const char* loggerName) {
+    const size_t size = sizeof(EVENT_TRACE_PROPERTIES) + sizeof(WCHAR);
+    EVENT_TRACE_PROPERTIES* props = (EVENT_TRACE_PROPERTIES*)calloc(size, 1);
+    if (!props) return;
+    props->Wnode.BufferSize = (ULONG)size;
+    props->LoggerNameOffset = sizeof(EVENT_TRACE_PROPERTIES);
+    ControlTraceA((TRACEHANDLE)0, loggerName, props, EVENT_TRACE_CONTROL_STOP);
+    free(props);
+}
+
+// Console Ctrl+C/Break handler (registered for GUI-hosted runs): stopping the
+// session unblocks ProcessTrace, so the normal cleanup path (ControlTrace stop
+// + properties free in mainSessionConfig/subSessionConfig) runs and the
+// process exits naturally. Without this, killing the process leaves the NT
+// Kernel Logger active and the next start fights over it (StartTrace 183).
+BOOL WINAPI consoleCtrlHandler(DWORD ctrlType) {
+    switch (ctrlType) {
+        case CTRL_C_EVENT:
+        case CTRL_BREAK_EVENT:
+        case CTRL_CLOSE_EVENT:
+        case CTRL_LOGOFF_EVENT:
+        case CTRL_SHUTDOWN_EVENT:
+            stopSessionByName(KERNEL_LOGGER_NAME);
+            stopSessionByName("MyTrace");
+            return TRUE;    // handled: let the consumer thread unwind and exit
+        default:
+            return FALSE;
+    }
+}
+} // namespace
+
 ETWConfiguration& ETWConfiguration::operator=(const ETWConfiguration& config) {
 
     if (this == &config)
@@ -157,7 +192,9 @@ cleanup:
     {
         status = ControlTrace(SessionHandle, KERNEL_LOGGER_NAME, mainSessionProperties, EVENT_TRACE_CONTROL_STOP);
 
-        if (ERROR_SUCCESS != status)
+        // 4201(ERROR_WMI_GUID_NOT_FOUND): 会话已被控制台处理器先行停掉
+        // (优雅停止路径的正常双停),不算失败,不打印吓人的报错
+        if (ERROR_SUCCESS != status && status != ERROR_WMI_GUID_NOT_FOUND)
         {
             std::cerr << "ControlTrace(stop) failed with " << status << std::endl;
         }
@@ -312,7 +349,8 @@ cleanup:
     {
         status = ControlTrace(SessionHandle, NULL, subSessionProperties, EVENT_TRACE_CONTROL_STOP);
 
-        if (ERROR_SUCCESS != status)
+        // 4201 同 mainSessionConfig:会话已被控制台处理器停掉,属正常双停
+        if (ERROR_SUCCESS != status && status != ERROR_WMI_GUID_NOT_FOUND)
         {
             wprintf(L"ControlTrace(stop) failed with %lu\n", status);
             wprintf(L"cleanup SubSession Config failed with %lu.\n", status = GetLastError());
@@ -395,6 +433,7 @@ cleanup:
 
 int ETWConfiguration::ETWSessionConfig(bool real_time_switch)
 {
+    SetConsoleCtrlHandler(consoleCtrlHandler, TRUE);
 
     GUID guid={} ;
     PWSTR LoggerName = L"MyTrace";

@@ -8,7 +8,7 @@
     * pre-configures the service output mode by writing HKLM\SOFTWARE\Kellect\Service
       from installer properties (OUTPUTMODE / SOCKETHOST / SOCKETPORT / KAFKABROKER / KAFKATOPIC)
     * materializes %ProgramData%\Kellect\ with log.conf + log\, logs\, collect\ subfolders
-    * Start Menu shortcut (always) + optional Desktop shortcut (INSTALLDESKTOPSHORTCUT=1)
+    * Start Menu shortcut for the GUI (always, when the GUI feature is installed)
     * install UI: one hand-authored SetupOptionsDlg (WixUI_Common; WIX0094 blocks stock sets; no license)
     * major upgrades via a fixed UpgradeCode
 
@@ -24,13 +24,16 @@
            Language="1033"
            UpgradeCode="$(var.UpgradeCode)">
 
-    <MajorUpgrade Schedule="afterInstallInitialize"
+    <!-- AllowSameVersionUpgrades: ProductCode regenerates every build while
+         Version stays fixed; without this flag a same-version rebuild installs
+         SIDE BY SIDE with the previous test install instead of replacing it. -->
+    <MajorUpgrade Schedule="afterInstallInitialize" AllowSameVersionUpgrades="yes"
                   DowngradeErrorMessage="A newer version of [ProductName] is already installed. Setup will now exit." />
     <MediaTemplate EmbedCab="yes" />
 
     <!-- ============ Customizable installer properties (UI or command-line) ============
          Set on the command line, e.g.:
-           msiexec /i Kellect.msi OUTPUTMODE=socket SOCKETHOST=10.0.0.5 SOCKETPORT=9000 INSTALLDESKTOPSHORTCUT=1
+           msiexec /i Kellect.msi OUTPUTMODE=socket SOCKETHOST=10.0.0.5 SOCKETPORT=9000
     -->
     <Property Id="OUTPUTMODE" Value="file" />
     <Property Id="SOCKETHOST" Value="127.0.0.1" />
@@ -38,12 +41,12 @@
     <Property Id="KAFKABROKER" Value="localhost:9092" />
     <Property Id="KAFKATOPIC" Value="kellect" />
     <Property Id="ARPHELPLINK" Value="https://github.com/kellect" />
-    <Property Id="INSTALLDESKTOPSHORTCUT" Value="0" />
 
     <!-- Install UI: stock dialog SETS are internal in WiX v7 (WIX0094), so UIRef WixUI_Common
          + one hand-authored SetupOptionsDlg (folder + GUI + shortcut), shown After CostFinalize. -->
     <Property Id="DefaultUIFont" Value="WixUI_Font_Normal" />
-    <!-- GUI installed by default (checkbox on). Uncheck -> INSTALLGUI cleared -> Gui feature skipped. -->
+    <!-- GUI installed by default (radio "1"). "Skip the GUI" -> INSTALLGUI="0" -> Remove Gui
+         on the Install button. Never null: the choice is a RadioButtonGroup (see below). -->
     <Property Id="INSTALLGUI" Value="1" />
 
     <UI>
@@ -71,9 +74,17 @@
         <Control Id="FolderLabel" Type="Text" X="20" Y="60" Width="330" Height="10" NoPrefix="yes" Text="Install folder (type a full path, e.g. D:\kellect):" />
         <Control Id="FolderEdit" Type="PathEdit" X="20" Y="73" Width="330" Height="18" Property="INSTALLDIR" />
 
-        <Control Id="InstallGui" Type="CheckBox" X="20" Y="108" Width="330" Height="17" Property="INSTALLGUI" CheckBoxValue="1" Text="Install the kellect visualization GUI (KellectConsole.exe)" />
-        <!-- Hide this checkbox when the GUI is unchecked (meaningless without the GUI). -->
-        <Control Id="DesktopShortcut" Type="CheckBox" X="20" Y="132" Width="330" Height="17" Property="INSTALLDESKTOPSHORTCUT" CheckBoxValue="1" Text="Create a desktop shortcut (needs the GUI)" HideCondition="INSTALLGUI &lt;&gt; &quot;1&quot;" />
+        <!-- GUI choice is a RadioButtonGroup, NOT a CheckBox: a checkbox NULLs its property on
+             uncheck, and older MSI engines (notably Win7 SP1) do not reliably restore it on
+             re-check: the box looks re-checked but AddLocal never fires and Remove does.
+             Radio values are always well-defined ("1"/"0"), so the Install-button publishes
+             below are deterministic on every engine. -->
+        <Control Id="InstallGui" Type="RadioButtonGroup" X="20" Y="98" Width="330" Height="40" Property="INSTALLGUI">
+          <RadioButtonGroup Property="INSTALLGUI">
+            <RadioButton Value="1" X="0" Y="0" Width="330" Height="17" Text="Install the kellect visualization GUI" />
+            <RadioButton Value="0" X="0" Y="20" Width="330" Height="17" Text="Do not install the GUI" />
+          </RadioButtonGroup>
+        </Control>
 
         <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
         <Control Id="Install" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="&amp;Install">
@@ -108,7 +119,6 @@
              AddLocal/Remove on the Install button (WiX v7 dropped Feature <Condition>). -->
         <ComponentRef Id="cmp.GuiExe" />
         <ComponentRef Id="cmp.StartMenuShortcut" />
-        <ComponentRef Id="cmp.DesktopShortcut" />
       </Feature>
       <Feature Id="ProgramData" Title="Runtime data folders" Level="1"
                Description="%ProgramData%\Kellect structure and corrected log.conf.">
@@ -131,7 +141,6 @@
     <StandardDirectory Id="ProgramMenuFolder">
       <Directory Id="StartMenuDir" Name="kellect" />
     </StandardDirectory>
-    <StandardDirectory Id="DesktopFolder" />
     <StandardDirectory Id="CommonAppDataFolder">
       <Directory Id="KellectDataDir" Name="Kellect">
         <Directory Id="KellectLogDir"     Name="log" />
@@ -205,12 +214,6 @@
       <RegistryValue Root="HKLM" Key="SOFTWARE\Kellect\Install" Name="StartMenu" Type="integer" Value="1" KeyPath="yes" />
       <RemoveFolder Id="rf.StartMenuDir" Directory="StartMenuDir" On="uninstall" />
     </Component>
-    <!-- Optional desktop shortcut, gated on INSTALLDESKTOPSHORTCUT=1 (set via UI checkbox or msiexec). -->
-    <Component Id="cmp.DesktopShortcut" Guid="E1040000-0000-0000-0000-00000000A004" Directory="DesktopFolder" Condition="INSTALLDESKTOPSHORTCUT=1">
-      <Shortcut Id="sc.Desktop" Name="kellect Console" Target="[#file.GuiExe]"
-                WorkingDirectory="INSTALLDIR" Description="kellect visualization GUI" />
-      <RegistryValue Root="HKLM" Key="SOFTWARE\Kellect\Install" Name="Desktop" Type="integer" Value="1" KeyPath="yes" />
-    </Component>
   </Fragment>
 
   <!-- ===================== ProgramData structure + corrected log.conf ===================== -->
@@ -222,7 +225,7 @@
          have no On="uninstall" RemoveFolder. -->
     <Component Id="cmp.ProgramDataConf" Guid="*" Directory="KellectDataDir">
       <CreateFolder />
-      <File Id="file.ServiceLogConf" Source="$(sys.SOURCEFILEDIR)log.conf" Name="log.conf" KeyPath="yes" />
+      <File Id="file.ServiceLogConf" Source="$(var.StageDir)config\log.conf" Name="log.conf" KeyPath="yes" />
     </Component>
     <!-- Retained on uninstall (collected runtime data). CreateFolder-only, explicit GUID. -->
     <Component Id="cmp.LogDir"    Guid="E1010000-0000-0000-0000-00000000A001" Directory="KellectLogDir"><CreateFolder /></Component>

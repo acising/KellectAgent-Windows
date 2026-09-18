@@ -6,4 +6,3 @@ QPushButton { background: #2D2D30; border: 1px solid #3C3C3C; padding: 4px 12px;
 QPushButton:hover { background: #3C3C3C; }
 QLineEdit, QComboBox { background: #2D2D30; border: 1px solid #3C3C3C; padding: 2px; }
 QListView { background: #1E1E1E; border: 1px solid #3C3C3C; }
-QLabel#errLabel { color: #E07070; }

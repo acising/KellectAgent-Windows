@@ -14,8 +14,7 @@ EventDomain domainOfEvent(const QString& e) {
     return EventDomain::None;
 }
 
-QColor textColor(EventDomain d, bool decodeError) {
-    if (decodeError) return QColor("#E07070");
+QColor textColor(EventDomain d) {
     switch (d) {
         case EventDomain::Process:  return QColor("#9CDCFE"); // 浅蓝
         case EventDomain::Thread:   return QColor("#C586C0"); // 紫

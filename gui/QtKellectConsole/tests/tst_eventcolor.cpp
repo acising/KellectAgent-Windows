@@ -6,7 +6,7 @@ class TestColor : public QObject { Q_OBJECT
 private slots:
     void prefixMapping();
     void unknownIsNone();
-    void decodeErrorOverridesColor();
+    void domainColorsDiffer();
 };
 
 void TestColor::prefixMapping() {
@@ -23,11 +23,8 @@ void TestColor::unknownIsNone() {
     QCOMPARE(domainOfEvent(""),            EventDomain::None);
     QCOMPARE(domainOfEvent("WeirdEvent"),  EventDomain::None);
 }
-void TestColor::decodeErrorOverridesColor() {
-    QColor normal = textColor(EventDomain::File, false);
-    QColor errored = textColor(EventDomain::File, true);
-    QCOMPARE(errored, QColor("#E07070")); // 解码异常固定红
-    QVERIFY(normal != errored);
+void TestColor::domainColorsDiffer() {
+    QVERIFY(textColor(EventDomain::File) != textColor(EventDomain::Process));
 }
 
 QTEST_GUILESS_MAIN(TestColor)

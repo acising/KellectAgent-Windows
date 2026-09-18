@@ -65,7 +65,14 @@ STATUS Initializer::initEnabledEvent(ULONG64 eventType) {
     }
     if (eventType & FILEEVENT){
 
-        enabledFlags |= EVENT_TRACE_FLAG_FILE_IO_INIT | EVENT_TRACE_FLAG_DISK_FILE_IO | EVENT_TRACE_FLAG_FILE_IO|EVENT_TRACE_FLAG_CSWITCH;
+        //DISK_FILE_IO "requires disk IO"(evntrace.h): without DISK_IO the kernel
+        //emits no FileIo_Name-family events(opcodes 0/36), so fileKey2Name only
+        //covers files opened during the capture and most Read/Write events fail
+        //setFileName() and get dropped. DISK_IO is therefore enabled here too;
+        //DiskIo's own events stay out of the output because DiskIoGuid is not
+        //in listenedEventsProviders under a FILE-only mask (thirdFilter drops them).
+        enabledFlags |= EVENT_TRACE_FLAG_FILE_IO_INIT | EVENT_TRACE_FLAG_DISK_FILE_IO | EVENT_TRACE_FLAG_FILE_IO
+                | EVENT_TRACE_FLAG_DISK_IO | EVENT_TRACE_FLAG_DISK_IO_INIT | EVENT_TRACE_FLAG_CSWITCH;
         Filter::listenedEventsProviders.insert(FileGuid.Data1);
     }
     if (eventType & DISKEVENT){
@@ -109,6 +116,24 @@ void Initializer::initFilter() {
         Filter::filteredProcessID.insert(id);
     }
     Filter::filteredProcessID.insert(GetCurrentProcessId());
+
+    //blacklist the whole kellect toolchain (GUI host / service host / any sibling
+    //collector): the session-start process dump would otherwise surface our own
+    //processes' events in the stream
+    {
+        HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if (snapshot != INVALID_HANDLE_VALUE) {
+            PROCESSENTRY32W entry;
+            entry.dwSize = sizeof(entry);
+            if (Process32FirstW(snapshot, &entry)) {
+                do {
+                    if (Filter::isKellectFamilyImage(entry.szExeFile))
+                        Filter::filteredProcessID.insert(static_cast<int>(entry.th32ProcessID));
+                } while (Process32NextW(snapshot, &entry));
+            }
+            CloseHandle(snapshot);
+        }
+    }
 
     // 直接定义过滤的事件标识
 // 直接定义过滤的事件标识

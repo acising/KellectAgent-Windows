@@ -7,7 +7,6 @@ QVariant LogModel::data(const QModelIndex& idx, int role) const {
     switch (role) {
         case TextRole:        return e.text;
         case TimeRole:        return e.time;
-        case DecodeErrorsRole:return e.decodeErrors;
         case MarkedRole:      return e.marked;
         case EventRole:       return e.event;
         case PidRole:         return e.pid;
@@ -25,7 +24,6 @@ void LogModel::append(const LogEntry& e) {
     const int n = rows_.size();
     beginInsertRows({}, n, n);
     rows_.append(e);
-    totalErrors_ += e.decodeErrors;
     endInsertRows();
 }
 
@@ -33,7 +31,6 @@ void LogModel::trimIfFull() {
     if (rows_.size() <= kMaxLines) return;
     const int cut = kTrimBatch;
     beginRemoveRows({}, 0, cut - 1);
-    for (int i = 0; i < cut; ++i) totalErrors_ -= rows_[i].decodeErrors;
     rows_.remove(0, cut);
     endRemoveRows();
 }
@@ -47,8 +44,5 @@ void LogModel::toggleMark(int row) {
 void LogModel::clear() {
     beginResetModel();
     rows_.clear();
-    totalErrors_ = 0;
     endResetModel();
 }
-
-int LogModel::totalDecodeErrors() const { return totalErrors_; }

@@ -9,7 +9,7 @@ enum class EventDomain {
 
 // 解析 kellect JSON 的 "Event" 字段值 → 域(按前缀)。完整前缀表 plan 期可扩。
 EventDomain domainOfEvent(const QString& eventName);
-// 文字色:decodeError 优先红,否则域色。
-QColor textColor(EventDomain d, bool decodeError);
+// 文字色:按事件域取色。
+QColor textColor(EventDomain d);
 // 书签行背景色。
 QColor markBackground();

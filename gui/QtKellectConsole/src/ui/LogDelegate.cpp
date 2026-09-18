@@ -16,15 +16,14 @@ void LogDelegate::paint(QPainter* p, const QStyleOptionViewItem& o, const QModel
 
     // 从 model 各 role 取已解析字段(不再在委托里解析 JSON)
     const QDateTime time       = idx.data(LogModel::TimeRole).toDateTime();
-    const int decodeErrors     = idx.data(LogModel::DecodeErrorsRole).toInt();
     const QString eventStr     = idx.data(LogModel::EventRole).toString();
     const QString pidStr       = idx.data(LogModel::PidRole).toString();
     const QString pnameStr     = idx.data(LogModel::PNameRole).toString();
     const QString detail       = idx.data(LogModel::DetailRole).toString();
 
     const EventDomain domain   = domainOfEvent(eventStr);
-    const QColor eventColor    = textColor(domain, false);             // 事件列用域色
-    const QColor detailColor   = textColor(domain, decodeErrors > 0);  // 详情列:解码异常变红
+    const QColor eventColor    = textColor(domain);   // 事件列用域色
+    const QColor detailColor   = textColor(domain);   // 详情列同域色
     const QColor timeColor("#7A7A7A");
     const QColor pidColor("#9CDCFE");
     const QColor pnameColor("#CE9178"); // 棕色,与 PID/详情区分

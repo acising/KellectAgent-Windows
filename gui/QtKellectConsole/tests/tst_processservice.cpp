@@ -47,5 +47,9 @@ void TestProc::stopReturnsToIdle() {
     QCOMPARE(svc.state(), ProcessState::Idle);
 }
 
+// 优雅停止(CTRL_BREAK 会话清理)不在套件内验证:控制台信号是全控制台广播,
+// 共享控制台的 ctest 自身会被波及。该路径用独立进程对真实 kellect 做端到端
+// 验证(见 dist/ 下冒烟脚本):进程自然退出 + NT Kernel Logger 无残留。
+
 QTEST_GUILESS_MAIN(TestProc)
 #include "tst_processservice.moc"

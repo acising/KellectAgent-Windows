@@ -29,7 +29,7 @@ protected:
 private slots:
     void onStart();
     void onStop();
-    void onOutputLine(const QString& line, int decodeErrors);
+    void onOutputLine(const QString& line);
     void onSave();
     void onClear();
     void openSettingsDialog();
@@ -65,7 +65,6 @@ private:
     QString kellectExePath_;          // 方案A:路径真相源(替代 exeEdit_)
     QLineEdit* filterEdit_ = nullptr;
     QCheckBox* autoScrollBox_ = nullptr;
-    QLabel* errLabel_ = nullptr;
     QLabel* statusLabel_ = nullptr;
     QLabel* pathLabel_ = nullptr;     // 状态区显示当前 exe 路径(可点开设置)
     QListView* view_ = nullptr;

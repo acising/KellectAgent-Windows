@@ -16,9 +16,8 @@ public slots:
     void stop();
 signals:
     void stateChanged(ProcessState s);
-    void outputLine(const QString& line, int decodeErrors);
+    void outputLine(const QString& line);
     void startFailed(const QString& reason);
-    void decodeErrorCountChanged(int total);
 private:
     void setState(ProcessState s);
     void onStdout();
@@ -27,5 +26,4 @@ private:
     QProcess proc_;
     Utf8Accumulator acc_;
     ProcessState state_ = ProcessState::Idle;
-    int prevErrors_ = 0;
 };

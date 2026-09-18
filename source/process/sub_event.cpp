@@ -107,7 +107,19 @@ void EventFile::parse() {
 	case NOTDEFINEDTYPE1:
 	case NOTDEFINEDTYPE2:
 		return;
-	case RUNDOWN:
+	case RUNDOWN: {
+        // Session-start dump of every open file handle: bulk, no PID in the
+        // schema, zero analysis value. Still parsed because it feeds the
+        // fileObject->name map used to resolve later Read/Write events.
+        setTIDAndPID(this);
+
+        removeQuotesFromProperty(FileName);
+
+		fileKey2Name[fileObject] =getProperty(FileName)->getString();
+
+        setValueableEvent(false);
+        break;
+	}
 	case NAME:
 	case FILECREATE: {
 
@@ -686,6 +698,15 @@ void  EventProcess::parse() {
 		// for both update and add value
 		processID2Name[pid] = getProperty(ImageFileName)->getString();
 
+		//family process (GUI/service/another collector) started after this run:
+		//blacklist its PID so its later file/registry/... events die at firstFilter,
+		//and drop this ProcessStart event itself
+		if (Filter::isKellectFamilyImage(processID2Name[pid].c_str())) {
+			Filter::filteredProcessID.insert(static_cast<int>(pid));
+			setValueableEvent(false);
+			break;
+		}
+
 		if (EventImage::processID2Modules.count(pid) == 0)  {
 
             //for readwritemap
@@ -753,6 +774,20 @@ void  EventRegistry::parse() {
             std::string keyName = getProperty(KeyName)->getString();
             ULONG64 keyHandle = getProperty(KeyHandle)->getULONG64();
             keyHandle2KeyName.insertOverwirte(keyHandle,keyName);
+            break;
+        }
+        case REG_KCBRUNDOWNBEGIN:{
+            // Session-start registry-state dump (same suppression rationale as
+            // EventFile's RUNDOWN): feeds the keyHandle->name map only.
+            removeQuotesFromProperty(KeyName);
+            std::string keyName = getProperty(KeyName)->getString();
+            ULONG64 keyHandle = getProperty(KeyHandle)->getULONG64();
+            keyHandle2KeyName.insertOverwirte(keyHandle,keyName);
+            setValueableEvent(false);
+            break;
+        }
+        case REG_KCBRUNDOWNEND:{
+            setValueableEvent(false);
             break;
         }
         default:{

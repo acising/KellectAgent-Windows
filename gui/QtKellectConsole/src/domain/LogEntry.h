@@ -6,7 +6,6 @@
 struct LogEntry {
     QDateTime time;
     QString text;          // 原始整行
-    int decodeErrors = 0;
     bool marked = false;
     // 由 parseKellectLine 填充的分列字段(调用方负责解析)
     QString event;         // JSON 的 "Event" 值
