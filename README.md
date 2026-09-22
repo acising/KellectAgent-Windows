@@ -329,24 +329,22 @@ We use KellectAgent as the collection tool and based on the script [Automic Red 
 ## KellectConsole (Graphical Console)
 
 `gui/QtKellectConsole` ships an optional Qt-based graphical console for driving
-`kellect.exe`. It is a **single statically-linked executable** (~17 MB, zero
-runtime dependencies) built with **Qt 5.15 LTS** + MSVC `/MT`, so one binary
-runs on **Windows 7 SP1, 10 and 11**. It must run as **Administrator** (the
-manifest requests elevation — required for ETW).
+`kellect.exe`. It is built with the **official dynamic Qt 5.15 LTS** (msvc2019_64)
++ MSVC `/MD`; the ~200 KB exe ships with its Qt DLLs, platform plugin, and the
+VC++/UCRT runtime (app-local), so the install runs on **Windows 7 SP1, 10 and
+11** with no prerequisites. It must run as **Administrator** (the manifest
+requests elevation — required for ETW).
 
 Launch `KellectConsole.exe`, then:
 
-1. **Settings** → point it at `kellect.exe` (defaults to the one beside the GUI).
+1. **Settings** → `kellect.exe` is auto-detected at startup (GUI's own folder,
+   then one folder up — the install root); override in Settings if needed.
 2. Tick the **kernel event classes** you want (or pick a preset).
 3. Choose an **output target**: Console (live on-screen view), File, Socket, or
    Kafka. Console/File/Socket are tee'd from the live stream by the GUI so the
    on-screen view is always available; Kafka is sent directly by `kellect.exe`.
-4. **Start**. The JSON event stream renders with per-event-type colouring,
-   decoded-error flags, and a details dialog on double-click.
-
-Tick **"Run as Windows Service"** in Settings to let `KellectService` host the
-collector (background / always-on). In that mode Start/Stop controls the
-background service.
+4. **Start**. The JSON event stream renders with per-event-type colouring
+   and a details dialog on double-click.
 
 > The GUI launches `kellect.exe` with `-c` and does **not** expose `-u`. To
 > trace user-mode providers, run the binary directly (see below).
@@ -356,39 +354,26 @@ Build:
 ```
 cmd /c gui\QtKellectConsole\scripts\build.bat test
 ```
-(Qt 5.15 static, MSVC v142 / 14.29, Windows SDK 10.0.19041.0.)
+(Official dynamic Qt 5.15.2 msvc2019_64 at `%QTDIR%` — default
+`D:\Code\Qt\5.15.2\msvc2019_64`, MSVC v142 / 14.29, Windows SDK 10.0.19041.0.
+Fetch Qt once with:
+`pip install aqtinstall` then
+`python -m aqt install-qt windows desktop 5.15.2 win64_msvc2019_64 -O D:\Code\Qt --archives qtbase`.
+The build script copies the Qt DLLs + `platforms\qwindows.dll` beside the exe.)
 
-## Windows Service & MSI Installer
+## MSI Installer
 
-`KellectService.exe` runs `kellect.exe` as a Windows service. It reads its
-configuration from registry key `HKLM\SOFTWARE\Kellect\Service`:
-
-| Value | Meaning |
-|-------|---------|
-| `OutputMode` | `file` / `socket` / `kafka` (the service rejects `console`) |
-| `EventMask` | Hex event mask (default `0xFF`) |
-| `OutputFile` | File path (file mode) |
-| `SocketHost`, `SocketPort` | Socket sink (socket mode) |
-| `KafkaBroker`, `KafkaTopic` | `host:port` / topic (kafka mode) |
-| `ExePath`, `WorkDir` | Optional collector-path / working-dir override |
-
-The GUI's service mode writes these for you; they can also be set manually.
-
-**Install** via the MSI (recommended, production), or the dev convenience flags
-on the service binary:
-
-```
-KellectService.exe --install     :: register (dev)
-KellectService.exe --uninstall   :: remove (dev)
-```
-
-**MSI** — one pipeline builds collector + GUI + service + installer:
+**MSI** — one pipeline builds collector + GUI + installer:
 
 ```
 cmd /c scripts\build-all.bat
 ```
-→ `installer\build-msi\Kellect-win-x64.msi` (custom install folder; collected
-data retained on uninstall).
+→ `installer\build-msi\Kellect-win-x64.msi` (custom install folder; the GUI
+installs into `gui\` with its Qt/CRT runtime, the collector into the root).
+
+> The Windows-service wrapper (`KellectService`) was removed on 2026-09-19.
+> For unattended collection use Task Scheduler (`schtasks /sc onstart` with a
+> restart-on-failure setting) running `kellect.exe` directly.
 
 ### User-mode providers (`-u`)
 

@@ -18,18 +18,18 @@ public:
         return filteredProcessID.count(pid) != 0;
     }
 
-	//kellect toolchain processes (collector/GUI/service) are never collected:
+	//kellect toolchain processes (collector/GUI) are never collected:
 	//the initial PID snapshot may miss family members that started later, so
 	//EventProcess::parse also learns them dynamically from ProcessStart events
 	static inline bool isKellectFamilyImage(const char* imageFileName) {
-		static const char* family[] = { "kellect.exe", "KellectConsole.exe", "KellectService.exe" };
+		static const char* family[] = { "kellect.exe", "KellectConsole.exe" };
 		for (const char* f : family)
 			if (_stricmp(imageFileName, f) == 0) return true;
 		return false;
 	}
 
 	static inline bool isKellectFamilyImage(const wchar_t* imageFileName) {
-		static const wchar_t* family[] = { L"kellect.exe", L"KellectConsole.exe", L"KellectService.exe" };
+		static const wchar_t* family[] = { L"kellect.exe", L"KellectConsole.exe" };
 		for (const wchar_t* f : family)
 			if (_wcsicmp(imageFileName, f) == 0) return true;
 		return false;

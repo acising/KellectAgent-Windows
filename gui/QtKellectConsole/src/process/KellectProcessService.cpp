@@ -1,5 +1,6 @@
 // src/process/KellectProcessService.cpp
 #include "KellectProcessService.h"
+#include <QFileInfo>
 #include <windows.h>
 
 KellectProcessService::KellectProcessService(QObject* parent) : QObject(parent) {
@@ -31,6 +32,10 @@ void KellectProcessService::start(const QString& exe, const QStringList& args) {
     if (state_ != ProcessState::Idle) return;
     setState(ProcessState::Starting);
     acc_ = Utf8Accumulator{};
+    // 子进程 CWD 固定为 kellect.exe 所在目录:它按相对路径读旁边的 config\,
+    // 不能继承 GUI 的 CWD(GUI 装在 gui\ 子目录时,双击启动的 CWD 是 gui\,
+    // 采集器会因找不到 config\ 而采不到任何东西)。
+    proc_.setWorkingDirectory(QFileInfo(exe).absolutePath());
     proc_.start(exe, args);
     if (proc_.waitForStarted(5000)) {
         setState(ProcessState::Running);

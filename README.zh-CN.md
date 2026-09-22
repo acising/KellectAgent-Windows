@@ -331,21 +331,19 @@ C:\Windows\System32\dbghelp.dll
 
 ## KellectConsole(图形控制台)
 
-`gui/QtKellectConsole` 提供一个可选的 Qt 图形控制台来驱动 `kellect.exe`。它是
-**静态链接的单 exe**(~17 MB,零运行时依赖),基于 **Qt 5.15 LTS** + MSVC `/MT`
-构建,同一二进制可在 **Windows 7 SP1 / 10 / 11** 上运行。须以**管理员**身份运行
-(manifest 申请提权——ETW 必需)。
+`gui/QtKellectConsole` 提供一个可选的 Qt 图形控制台来驱动 `kellect.exe`。它基于
+**官方动态 Qt 5.15 LTS**(msvc2019_64)+ MSVC `/MD` 构建;约 200 KB 的 exe 随包携带
+Qt DLL、平台插件和 VC++/UCRT 运行时(app-local),在 **Windows 7 SP1 / 10 / 11** 上
+免前置依赖直接运行。须以**管理员**身份运行(manifest 申请提权——ETW 必需)。
 
 启动 `KellectConsole.exe` 后:
 
-1. **设置** → 指向 `kellect.exe`(默认取 GUI 同目录下的那个)。
+1. **设置** → `kellect.exe` 启动时自动探测(先 GUI 同目录,再上一级安装根目录),
+   需要时在设置中改指。
 2. 勾选需要的**内核事件类别**(或选一个预设)。
 3. 选择**输出目标**:控制台(屏幕实时视图)/ 文件 / Socket / Kafka。控制台、文件、
    Socket 由 GUI 从实时流 tee 出(屏幕视图始终可用);Kafka 由 `kellect.exe` 直传。
-4. **启动**。JSON 事件流按事件类型着色、解码异常标记、双击出详情对话框。
-
-在设置中勾选 **"以 Windows 服务运行"**,改由 `KellectService` 托管采集器(后台/常驻)。
-此模式下用 启动/停止 控制后台服务。
+4. **启动**。JSON 事件流按事件类型着色、双击出详情对话框。
 
 > GUI 始终以 `-c` 启动 `kellect.exe`,且**不暴露** `-u`。需追踪用户态提供者请直跑
 > 二进制(见下)。
@@ -355,37 +353,25 @@ C:\Windows\System32\dbghelp.dll
 ```
 cmd /c gui\QtKellectConsole\scripts\build.bat test
 ```
-(Qt 5.15 静态、MSVC v142 / 14.29、Windows SDK 10.0.19041.0。)
+(官方动态 Qt 5.15.2 msvc2019_64,位于 `%QTDIR%`——默认
+`D:\Code\Qt\5.15.2\msvc2019_64`,可环境变量覆盖;MSVC v142 / 14.29、Windows SDK
+10.0.19041.0。Qt 一次性获取:
+`pip install aqtinstall` 后执行
+`python -m aqt install-qt windows desktop 5.15.2 win64_msvc2019_64 -O D:\Code\Qt --archives qtbase`。
+构建脚本会把 Qt DLL 和 `platforms\qwindows.dll` 拷到 exe 旁。)
 
-## Windows 服务与 MSI 安装包
+## MSI 安装包
 
-`KellectService.exe` 把 `kellect.exe` 作为 Windows 服务运行。它从注册表项
-`HKLM\SOFTWARE\Kellect\Service` 读取配置:
-
-| 值 | 含义 |
-|----|------|
-| `OutputMode` | `file` / `socket` / `kafka`(服务拒绝 `console`)|
-| `EventMask` | 十六进制事件掩码(默认 `0xFF`)|
-| `OutputFile` | 文件路径(文件模式)|
-| `SocketHost`、`SocketPort` | Socket 接收端(socket 模式)|
-| `KafkaBroker`、`KafkaTopic` | `host:port` / topic(kafka 模式)|
-| `ExePath`、`WorkDir` | 可选:采集器路径 / 工作目录覆盖 |
-
-GUI 的服务模式会自动写入这些值;也可手动设置。
-
-**安装**:推荐用 MSI(生产方式),或服务二进制的开发便捷参数:
-
-```
-KellectService.exe --install     :: 注册(开发用)
-KellectService.exe --uninstall   :: 移除(开发用)
-```
-
-**MSI**——一条流水线构建采集器 + GUI + 服务 + 安装包:
+**MSI**——一条流水线构建采集器 + GUI + 安装包:
 
 ```
 cmd /c scripts\build-all.bat
 ```
-→ `installer\build-msi\Kellect-win-x64.msi`(支持自定义安装目录;卸载时保留已采集数据)。
+→ `installer\build-msi\Kellect-win-x64.msi`(支持自定义安装目录;GUI 随其 Qt/CRT
+运行时装进 `gui\` 子目录,采集器装在根目录)。
+
+> Windows 服务包装器(`KellectService`)已于 2026-09-19 移除。无人值守采集请用
+> 任务计划程序(`schtasks /sc onstart` + 失败重启策略)直接运行 `kellect.exe`。
 
 ### 用户态提供者(`-u`)
 

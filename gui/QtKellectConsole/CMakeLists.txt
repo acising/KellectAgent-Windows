@@ -9,13 +9,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # 源文件含 UTF-8 中文注释;MSVC 默认按系统 codepage(936)解析会报 C4819
 add_compile_options(/utf-8)
 
-# 静态 Qt 前缀(自编产物)
-set(CMAKE_PREFIX_PATH "D:/Code/Qt/5.15.2-static" CACHE PATH "Static Qt 5.15 prefix")
+# 动态 Qt 前缀(官方预编译 msvc2019_64;aqt 获取见 README)
+set(CMAKE_PREFIX_PATH "D:/Code/Qt/5.15.2/msvc2019_64" CACHE PATH "Dynamic Qt 5.15 prefix")
 
 find_package(Qt5 COMPONENTS Widgets Network Test REQUIRED)
 
-# 强制 /MT(Release)/ /MTd(Debug),与静态 Qt 的 -static-runtime 一致
-set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+# /MD(Release)/ /MDd(Debug):官方 Qt 以 /MD 发布,混链不受 Qt 支持;
+# CRT DLL 由 MSI 以 app-local 方式随包安装(Win7 无系统副本,Win10 冗余无害)
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL$<$<CONFIG:Debug>:DebugDLL>")
 
 set(SOURCES
     src/main.cpp
@@ -31,15 +32,13 @@ set(SOURCES
     src/domain/SettingsStore.cpp
     src/process/KellectProcessService.cpp
     src/process/OutputForwarder.cpp
-    src/process/WindowsServiceClient.cpp
 )
 set(HEADERS
     src/ui/MainWindow.h
     src/ui/LogHeader.h
-    src/process/WindowsServiceClient.h
 )
 
-# Resolution #2: qt5_add_resources 接受 .qrc(不是 .qss),否则 rcc 解析失败
+# qt5_add_resources 接受 .qrc(不是 .qss),否则 rcc 解析失败
 qt5_add_resources(QSS resources/dark.qrc)
 
 add_executable(KellectConsole WIN32
@@ -52,8 +51,6 @@ target_include_directories(KellectConsole PRIVATE src)
 target_link_libraries(KellectConsole PRIVATE
     Qt5::Widgets
     Qt5::Network
-    Qt5::QWindowsIntegrationPlugin  # 静态 Qt 必需:平台插件静态链入
-    advapi32                         # WindowsServiceClient: SCM + 注册表 API
 )
 target_compile_definitions(KellectConsole PRIVATE UNICODE _UNICODE)
 set_target_properties(KellectConsole PROPERTIES

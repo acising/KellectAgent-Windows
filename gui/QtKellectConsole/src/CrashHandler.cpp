@@ -5,6 +5,7 @@
 #include <QFileInfo>
 #include <QTextStream>
 #include <QDateTime>
+#include <QLocale>
 #include <QMessageLogContext>
 #include <QtGlobal>
 #include <exception>
@@ -47,7 +48,8 @@ void write(const char* source, const char* msg) {
     QFile f(path);
     if (!f.open(QIODevice::Append | QIODevice::Text)) return;
     QTextStream s(&f);
-    s << QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss.zzz")
+    // C locale 保证 ASCII 数字(同 MainWindow::onSave 的理由)
+    s << QLocale::c().toString(QDateTime::currentDateTime(), "yyyy-MM-dd HH:mm:ss.zzz")
       << " [" << source << "] " << msg << "\n";
     s.flush();
 }

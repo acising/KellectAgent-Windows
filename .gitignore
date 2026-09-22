@@ -1,42 +1,25 @@
-.DS_Store
-bin
-cmake-build-debug
-cmake-build-release
-.idea
-.claude
-*.zip
-skills-lock.json
+# ===== AI 工具与会话（本地保留） =====
+.claude/
 .agents/
-# docs/ contents are local-only EXCEPT the tracked superpowers specs/plans,
-# which are project deliverables (negation must use docs/*, not docs/, since a
-# gitignored parent dir cannot be re-included).
-docs/*
-!docs/superpowers/
+.zcode/
+.superpowers/
+/AGENTS.md
 
+# ===== docs：全部本地保留，不入库 =====
+docs/
 
-# KellectConsole (.NET)
-obj/
-*.user
-gui/*/bin/
-gui/*/obj/
+# ===== IDE =====
+.DS_Store
+.idea/
 
-# kellect 运行时日志(已跟踪的旧空 log 占位不受影响)
-release/log/*.log
-
-# WiX MSI build outputs (Step 3): staged binaries + built .msi + logs
+# ===== 构建产物 =====
+/bin/
+/build-*/
 installer/stage/
 installer/build-msi/
-installer/*.log
-
-# CMake build dirs (collector x86/x64 + service wrapper)
-build-*/
-
-# Top-level + GUI build logs
-/*.log
-gui/*/build.log
-
-# Portable bundle (binaries, not for git)
-KellectConsole-win-x64/
-
-# Test-build packages: MSI/zip copies + portable bundle (binaries, not for git)
 dist/
+
+# ===== 日志与二进制产物 =====
+*.log
+*.zip
+*.user

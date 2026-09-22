@@ -6,11 +6,10 @@ REM
 REM  Prereqs on the machine (one-time):
 REM    dotnet tool install -g wix        (WiX CLI, ~7.x)
 REM  Binary prereqs (produced by the other build steps):
-REM    scripts\build-service.bat          -> bin\KellectService.exe
 REM    (collector)                        -> bin\kellect.exe + DLLs + bin\config\
 REM    gui\QtKellectConsole\scripts\build.bat -> gui\QtKellectConsole\build\KellectConsole.exe
-REM  If bin\kellect.exe is absent (collector ATL toolchain gap), the script falls
-REM  back to release\ then KellectConsole-win-x64\ as a prebuilt collector source.
+REM  If bin\kellect.exe is absent, the script falls back to release\ as a
+REM  prebuilt collector source.
 REM ===========================================================================
 setlocal enableextensions enabledelayedexpansion
 
@@ -32,12 +31,11 @@ mkdir "%STAGE%"          2>nul
 mkdir "%STAGE%\config"   2>nul
 
 REM ---------------------------------------------------------------------------
-REM Collector artifacts: bin > release > KellectConsole-win-x64 (prebuilt)
+REM Collector artifacts: bin > release (prebuilt).
 REM ---------------------------------------------------------------------------
 set "COLLECTOR_SRC="
 if exist "%REPO_ROOT%\bin\kellect.exe"                            set "COLLECTOR_SRC=%REPO_ROOT%\bin"
 if not defined COLLECTOR_SRC if exist "%REPO_ROOT%\release\kellect.exe"              set "COLLECTOR_SRC=%REPO_ROOT%\release"
-if not defined COLLECTOR_SRC if exist "%REPO_ROOT%\KellectConsole-win-x64\kellect.exe" set "COLLECTOR_SRC=%REPO_ROOT%\KellectConsole-win-x64"
 if not defined COLLECTOR_SRC (
     echo ERROR: kellect.exe not found. Build the collector, or drop a prebuilt 1>&2
     echo        copy into release\. Aborting. 1>&2
@@ -55,7 +53,6 @@ REM     config + dlls), so resolve from the other collector-source candidates. -
 set "MANIFEST_SRC="
 if exist "%COLLECTOR_SRC%\kellect.exe.manifest"            set "MANIFEST_SRC=%COLLECTOR_SRC%\kellect.exe.manifest"
 if not defined MANIFEST_SRC if exist "%REPO_ROOT%\release\kellect.exe.manifest"            set "MANIFEST_SRC=%REPO_ROOT%\release\kellect.exe.manifest"
-if not defined MANIFEST_SRC if exist "%REPO_ROOT%\KellectConsole-win-x64\kellect.exe.manifest" set "MANIFEST_SRC=%REPO_ROOT%\KellectConsole-win-x64\kellect.exe.manifest"
 if not defined MANIFEST_SRC (
     echo ERROR: kellect.exe.manifest sidecar not found. 1>&2
     exit /b 1
@@ -63,27 +60,63 @@ if not defined MANIFEST_SRC (
 copy /y "%MANIFEST_SRC%"                          "%STAGE%\" >nul || goto :err
 
 REM ---------------------------------------------------------------------------
-REM Service binary (Step 1 output)
-REM ---------------------------------------------------------------------------
-if not exist "%REPO_ROOT%\bin\KellectService.exe" (
-    echo ERROR: bin\KellectService.exe not found. Run scripts\build-service.bat first. 1>&2
-    exit /b 1
-)
-echo [stage] service from %REPO_ROOT%\bin
-copy /y "%REPO_ROOT%\bin\KellectService.exe"     "%STAGE%\" >nul || goto :err
-
-REM ---------------------------------------------------------------------------
 REM GUI binary
 REM ---------------------------------------------------------------------------
 set "GUI_SRC="
 if exist "%REPO_ROOT%\gui\QtKellectConsole\build\KellectConsole.exe" set "GUI_SRC=%REPO_ROOT%\gui\QtKellectConsole\build"
-if not defined GUI_SRC if exist "%REPO_ROOT%\KellectConsole-win-x64\KellectConsole.exe" set "GUI_SRC=%REPO_ROOT%\KellectConsole-win-x64"
 if not defined GUI_SRC (
     echo ERROR: KellectConsole.exe not found. Run gui\QtKellectConsole\scripts\build.bat first. 1>&2
     exit /b 1
 )
 echo [stage] GUI from %GUI_SRC%
-copy /y "%GUI_SRC%\KellectConsole.exe"           "%STAGE%\" >nul ||goto :err
+mkdir "%STAGE%\gui" 2>nul
+copy /y "%GUI_SRC%\KellectConsole.exe"           "%STAGE%\gui\" >nul ||goto :err
+
+REM ---------------------------------------------------------------------------
+REM Qt runtime + CRT/UCRT for the dynamic-Qt GUI (must match kellect.wxs
+REM cg.QtRuntime). All into stage\gui\ - the MSI installs them as an INSTALLDIR
+REM \gui\ subfolder so the root stays clean. Win7 lacks system UCRT/CRT copies
+REM -> app-local deployment beside the GUI exe.
+REM ---------------------------------------------------------------------------
+if not defined QTDIR set "QTDIR=D:\Code\Qt\5.15.2\msvc2019_64"
+if not exist "%QTDIR%\bin\Qt5Core.dll" (
+    echo ERROR: dynamic Qt not found at %QTDIR% ^(set QTDIR to override^) 1>&2
+    exit /b 1
+)
+echo [stage] Qt runtime from %QTDIR%
+copy /y "%QTDIR%\bin\Qt5Core.dll"    "%STAGE%\gui\" >nul || goto :err
+copy /y "%QTDIR%\bin\Qt5Gui.dll"     "%STAGE%\gui\" >nul || goto :err
+copy /y "%QTDIR%\bin\Qt5Widgets.dll" "%STAGE%\gui\" >nul || goto :err
+copy /y "%QTDIR%\bin\Qt5Network.dll" "%STAGE%\gui\" >nul || goto :err
+mkdir "%STAGE%\gui\platforms" 2>nul
+copy /y "%QTDIR%\plugins\platforms\qwindows.dll" "%STAGE%\gui\platforms\" >nul || goto :err
+
+set "VCCRT_SRC=C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Redist\MSVC\14.29.30133\x64\Microsoft.VC142.CRT"
+set "UCRT_SRC=C:\Program Files (x86)\Windows Kits\10\Redist\10.0.19041.0\ucrt\DLLs\x64"
+if not exist "%VCCRT_SRC%\vcruntime140.dll" (
+    echo ERROR: VC142 CRT redist not found at !VCCRT_SRC! 1>&2
+    exit /b 1
+)
+if not exist "%UCRT_SRC%\ucrtbase.dll" (
+    echo ERROR: UCRT redist not found at !UCRT_SRC! 1>&2
+    exit /b 1
+)
+echo [stage] CRT from VC Redist 14.29.30133 + SDK 19041 UCRT
+copy /y "%VCCRT_SRC%\*.dll" "%STAGE%\gui\" >nul || goto :err
+copy /y "%UCRT_SRC%\*.dll"  "%STAGE%\gui\" >nul || goto :err
+REM Drop 9 redist files that are in NO shipped binary's import closure
+REM (verified 2026-09-19; re-check if Qt or code changes): concrt140, vccorlib140,
+REM msvcp140_2, msvcp140_atomic_wait, msvcp140_codecvt_ids,
+REM api-ms-win-crt-{conio,multibyte,private,process}-l1-1-0.
+del /q "%STAGE%\gui\concrt140.dll"            2>nul
+del /q "%STAGE%\gui\vccorlib140.dll"          2>nul
+del /q "%STAGE%\gui\msvcp140_2.dll"           2>nul
+del /q "%STAGE%\gui\msvcp140_atomic_wait.dll" 2>nul
+del /q "%STAGE%\gui\msvcp140_codecvt_ids.dll" 2>nul
+del /q "%STAGE%\gui\api-ms-win-crt-conio-l1-1-0.dll"     2>nul
+del /q "%STAGE%\gui\api-ms-win-crt-multibyte-l1-1-0.dll" 2>nul
+del /q "%STAGE%\gui\api-ms-win-crt-private-l1-1-0.dll"   2>nul
+del /q "%STAGE%\gui\api-ms-win-crt-process-l1-1-0.dll"   2>nul
 
 REM ---------------------------------------------------------------------------
 REM config\ - the files kellect.wxs declares (collector's own copy)
@@ -102,7 +135,7 @@ if errorlevel 1 goto :err
 
 echo.
 echo [stage] contents:
-dir /b "%STAGE%" & dir /b "%STAGE%\config"
+dir /b "%STAGE%" & dir /b "%STAGE%\config" & dir /b "%STAGE%\gui"
 echo.
 
 REM ---------------------------------------------------------------------------

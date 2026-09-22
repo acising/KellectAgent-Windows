@@ -17,8 +17,6 @@ void TestSettings::missingFileReturnsDefaults() {
     QCOMPARE(d.outputMode, 0);
     QCOMPARE(d.socketPort, quint16(0));
     QVERIFY(d.outputFile.isEmpty());
-    QCOMPARE(d.runAsService, false);                           // 本特性
-    QCOMPARE(d.serviceName, QStringLiteral("KellectService")); // 本特性
 }
 void TestSettings::roundTrip() {
     QString path = QDir::tempPath() + "/kellect_rt.json";
@@ -35,8 +33,6 @@ void TestSettings::roundTrip() {
     in.socketPort  = 6500;
     in.kafkaBroker = "10.0.0.1:9092";
     in.kafkaTopic  = "kellect";
-    in.runAsService = true;                                    // 本特性
-    in.serviceName  = "MyCustomSvc";                           // 本特性
     s.save(in);
     auto out = s.load();
     QCOMPARE(out.kellectExePath, in.kellectExePath);
@@ -49,8 +45,6 @@ void TestSettings::roundTrip() {
     QCOMPARE(out.socketPort, in.socketPort);
     QCOMPARE(out.kafkaBroker, in.kafkaBroker);
     QCOMPARE(out.kafkaTopic, in.kafkaTopic);
-    QCOMPARE(out.runAsService, in.runAsService);               // 本特性
-    QCOMPARE(out.serviceName, in.serviceName);                 // 本特性
 }
 void TestSettings::corruptedFileReturnsDefaults() {
     QString path = QDir::tempPath() + "/kellect_bad.json";

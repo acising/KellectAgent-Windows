@@ -17,9 +17,6 @@ public:
         quint16 socketPort = 0;       // Socket 模式 port
         QString kafkaBroker;          // Kafka 模式 "ip:port"
         QString kafkaTopic;           // Kafka 模式 topic(拼 -k 用 broker+"/"+topic)
-        // Windows 服务模式(本特性新增):以 KellectService 服务托管 kellect.exe
-        bool runAsService = false;    // true=通过服务启动,而非直接 spawn
-        QString serviceName = QStringLiteral("KellectService");
     };
     explicit SettingsStore(QString path) : path_(std::move(path)) {}
     Settings load() const;

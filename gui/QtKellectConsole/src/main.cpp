@@ -1,14 +1,11 @@
 // src/main.cpp
 #include <QApplication>
 #include <QFile>
-#include <QtPlugin>
 #include "ui/MainWindow.h"
 #include "domain/SettingsStore.h"
 #include "CrashHandler.h"
 #include <QStandardPaths>
 #include <windows.h>
-
-Q_IMPORT_PLUGIN(QWindowsIntegrationPlugin)
 
 static int run(int argc, char* argv[]) {
     QApplication::setAttribute(Qt::AA_EnableHighDpiScaling);

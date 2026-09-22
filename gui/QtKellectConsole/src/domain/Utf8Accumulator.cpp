@@ -1,39 +1,6 @@
 // src/domain/Utf8Accumulator.cpp
 #include "Utf8Accumulator.h"
 
-// 把一段 UTF-8 字节解码为 QString,非法字节替换为 U+FFFD。
-static QString decodeUtf8(const QByteArray& bytes) {
-    const unsigned char* p = reinterpret_cast<const unsigned char*>(bytes.constData());
-    int n = bytes.size();
-    QString out;
-    out.reserve(n);
-    int i = 0;
-    while (i < n) {
-        unsigned char b = p[i];
-        int need = 0;
-        uint32_t cp = 0;
-        if (b < 0x80)               { need = 1; cp = b; }
-        else if ((b & 0xE0) == 0xC0){ need = 2; cp = b & 0x1F; }
-        else if ((b & 0xF0) == 0xE0){ need = 3; cp = b & 0x0F; }
-        else if ((b & 0xF8) == 0xF0){ need = 4; cp = b & 0x07; }
-        else { out.append(QChar(0xFFFD)); ++i; continue; }
-
-        if (i + need > n) { // 行内末尾字节不足(buf_ 已保证切到 \n,raw 完整)→ 非法
-            out.append(QChar(0xFFFD)); ++i; continue;
-        }
-        bool ok = true;
-        for (int j = 1; j < need; ++j) {
-            unsigned char c = p[i + j];
-            if ((c & 0xC0) != 0x80) { ok = false; break; }
-            cp = (cp << 6) | (c & 0x3F);
-        }
-        if (!ok) { out.append(QChar(0xFFFD)); ++i; continue; }
-        out.append(QString::fromUcs4(&cp, 1));
-        i += need;
-    }
-    return out;
-}
-
 void Utf8Accumulator::feed(const QByteArray& bytes) {
     buf_ += bytes;
     if (!bomChecked_) {
@@ -52,8 +19,10 @@ bool Utf8Accumulator::takeLine(QString& out) {
     if (idx < 0) return false;
     QByteArray raw = buf_.left(idx);
     buf_.remove(0, idx + 1);
-    out = decodeUtf8(raw);
-    // 去 \r 与行首 BOM 残余
+    // 非法序列由 QString::fromUtf8 以 U+FFFD 替换(逐序列粒度,
+    // 早先手写解码器为逐字节,仅计数时代有区别,显示效果相同)
+    out = QString::fromUtf8(raw);
+    // 去 \r 与行内 BOM 残余
     if (out.endsWith('\r')) out.chop(1);
     out.remove(QChar(0xFEFF));
     return true;

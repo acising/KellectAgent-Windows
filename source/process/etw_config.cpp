@@ -115,9 +115,10 @@ PEVENT_TRACE_PROPERTIES ETWConfiguration::allocateTraceProperties(
         //StringCbCopy((LPWSTR)((char*)TraceProperties + TraceProperties->LogFileNameOffset), (logfile_path.length() + 1) * 2, logfile_path.c_str());
     }
 
-    TraceProperties->MinimumBuffers = 100; // Limit file size to 100MB max
-    TraceProperties->BufferSize = 1024; // Use 1024KB trace buffer
-    TraceProperties->MaximumBuffers = 1024;
+    TraceProperties->MinimumBuffers = 100;   // 预留 100 个缓冲(内存下限)
+    TraceProperties->BufferSize = 1024;      // 每缓冲 1MB
+    TraceProperties->MaximumBuffers = 1024;  // 缓冲数上限
+    TraceProperties->FlushTimer = 1;         // 最长 1 秒强制刷给实时消费者(与系统默认一致,显式自文档)
 
     if (LoggerName != nullptr) {
         StringCchCopyW((LPWSTR)((PCHAR)TraceProperties + TraceProperties->LoggerNameOffset),
@@ -192,9 +193,12 @@ cleanup:
     {
         status = ControlTrace(SessionHandle, KERNEL_LOGGER_NAME, mainSessionProperties, EVENT_TRACE_CONTROL_STOP);
 
-        // 4201(ERROR_WMI_GUID_NOT_FOUND): 会话已被控制台处理器先行停掉
-        // (优雅停止路径的正常双停),不算失败,不打印吓人的报错
-        if (ERROR_SUCCESS != status && status != ERROR_WMI_GUID_NOT_FOUND)
+        // 4201(ERROR_WMI_INSTANCE_NOT_FOUND)/4200(ERROR_WMI_GUID_NOT_FOUND):
+        // 会话已被控制台处理器先行停掉(优雅停止的正常双停),不算失败。
+        // 两码别记反:4201 是 INSTANCE、4200 是 GUID(SDK winerror.h 实测)
+        if (ERROR_SUCCESS != status &&
+            status != ERROR_WMI_INSTANCE_NOT_FOUND &&
+            status != ERROR_WMI_GUID_NOT_FOUND)
         {
             std::cerr << "ControlTrace(stop) failed with " << status << std::endl;
         }
@@ -227,14 +231,14 @@ PEVENT_TRACE_PROPERTIES AllocateTraceProperties(
     TraceProperties->Wnode.BufferSize = BufferSize;
     TraceProperties->Wnode.ClientContext = 1; // Use QueryPerformanceCounter for time stamps
     TraceProperties->Wnode.Flags = WNODE_FLAG_TRACED_GUID;
-    TraceProperties->FlushTimer = 1;
+    TraceProperties->FlushTimer = 1;          // 最长 1 秒强制刷
     TraceProperties->LoggerNameOffset = sizeof(EVENT_TRACE_PROPERTIES);
     TraceProperties->LogFileNameOffset = sizeof(EVENT_TRACE_PROPERTIES) +
                                          (MAXIMUM_SESSION_NAME * sizeof(WCHAR));
     TraceProperties->LogFileMode = EVENT_TRACE_REAL_TIME_MODE;
-    TraceProperties->MaximumFileSize = 1; // Limit file size to 100MB max
-    TraceProperties->BufferSize = 5120; // Use 512KB trace buffers
-    TraceProperties->MinimumBuffers = 128;
+    TraceProperties->MaximumFileSize = 1; // 单文件上限 1MB(仅文件模式生效)
+    TraceProperties->BufferSize = 5120; // 每缓冲 5MB
+    TraceProperties->MinimumBuffers = 128; // 预留 128 个缓冲
     TraceProperties->MaximumBuffers = 512;
     if (LoggerName != NULL) {
         StringCchCopy((LPSTR)((PCHAR)TraceProperties + TraceProperties->LoggerNameOffset),
@@ -349,8 +353,10 @@ cleanup:
     {
         status = ControlTrace(SessionHandle, NULL, subSessionProperties, EVENT_TRACE_CONTROL_STOP);
 
-        // 4201 同 mainSessionConfig:会话已被控制台处理器停掉,属正常双停
-        if (ERROR_SUCCESS != status && status != ERROR_WMI_GUID_NOT_FOUND)
+        // 会话已被控制台处理器停掉,属正常双停(4201=INSTANCE/4200=GUID)
+        if (ERROR_SUCCESS != status &&
+            status != ERROR_WMI_INSTANCE_NOT_FOUND &&
+            status != ERROR_WMI_GUID_NOT_FOUND)
         {
             wprintf(L"ControlTrace(stop) failed with %lu\n", status);
             wprintf(L"cleanup SubSession Config failed with %lu.\n", status = GetLastError());
@@ -439,7 +445,7 @@ int ETWConfiguration::ETWSessionConfig(bool real_time_switch)
     PWSTR LoggerName = L"MyTrace";
     ULONG matchAnyKeywords=0;
      if(enable_flag!=0 ) {
-        std::cout<<"keneral start"<<enable_flag <<std::endl;
+        std::cout << "kernel session start, mask = 0x" << std::hex << enable_flag << std::dec << std::endl;
         MainSessionConfigThread t1(*this, real_time_switch);
         t1.startThread();
         t1.wait();

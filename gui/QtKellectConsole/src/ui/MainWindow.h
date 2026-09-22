@@ -6,9 +6,8 @@
 #include "LogModel.h"
 #include "../process/KellectProcessService.h"
 #include "../process/OutputForwarder.h"
-#include "../process/WindowsServiceClient.h"
 #include "../domain/SettingsStore.h"
-#include "../domain/Flags.h" // Resolution #1: EventFlag 位于 namespace kellect
+#include "../domain/Flags.h"
 
 class QCheckBox;
 class QComboBox;
@@ -45,8 +44,6 @@ private:
     void saveSettings();
     void updatePathLabel();
     void updateOutputStatus();
-    void startViaService();   // 服务模式启动分支
-    void updateStatusFromServiceState(kellect::WindowsServiceClient::State s);
 
     SettingsStore* store_;
     KellectProcessService proc_;
@@ -55,14 +52,11 @@ private:
     int outputMode_ = 0;
     QString outputFile_, socketHost_, kafkaBroker_, kafkaTopic_;
     quint16 socketPort_ = 0;
-    bool runAsService_ = false;                          // Windows 服务模式开关
-    QString serviceName_ = QStringLiteral("KellectService");
-    kellect::WindowsServiceClient svc_;                 // 服务模式 SCM 客户端(无 parent,成员析构回收)
     QLabel* outputLabel_ = nullptr;
     LogModel model_;
-    QHash<kellect::EventFlag, QCheckBox*> flagBoxes_; // Resolution #1: 全限定
+    QHash<kellect::EventFlag, QCheckBox*> flagBoxes_;
     QComboBox* presetCombo_ = nullptr;
-    QString kellectExePath_;          // 方案A:路径真相源(替代 exeEdit_)
+    QString kellectExePath_;          // kellect.exe 路径(唯一真相源)
     QLineEdit* filterEdit_ = nullptr;
     QCheckBox* autoScrollBox_ = nullptr;
     QLabel* statusLabel_ = nullptr;

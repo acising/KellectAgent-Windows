@@ -5,6 +5,7 @@
 #include "EventColor.h"
 #include <QPainter>
 #include <QFontMetrics>
+#include <QLocale>
 #include <algorithm>
 
 void LogDelegate::paint(QPainter* p, const QStyleOptionViewItem& o, const QModelIndex& idx) const {
@@ -47,8 +48,8 @@ void LogDelegate::paint(QPainter* p, const QStyleOptionViewItem& o, const QModel
         p->drawText(col, Qt::AlignLeft | Qt::AlignVCenter, shown);
     };
 
-    // 时间(去掉毫秒,更紧凑)
-    const QString ts = "[" + time.toString("HH:mm:ss") + "]";
+    // 时间(去掉毫秒,更紧凑);C locale 保证 ASCII 数字,不随系统区域格式漂移
+    const QString ts = "[" + QLocale::c().toString(time, "HH:mm:ss") + "]";
     drawCol(x0, kColTimeW, ts, timeColor);
 
     // 事件

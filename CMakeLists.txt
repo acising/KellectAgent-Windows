@@ -23,11 +23,7 @@ file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/source/dlls/" DESTINATION "${CMAKE_RUNTIM
 include_directories(./include)
 add_executable(kellect ${SRC_ALL})
 target_link_libraries(kellect ${THIRD_LIB})
-
-# Windows service wrapper (KellectService.exe). Self-contained: it does NOT
-# depend on the collector target, so it can also be built standalone via
-#   cmake -S service -B build-service -G Ninja
-option(KELLECT_BUILD_SERVICE "Build the Windows service wrapper" ON)
-if(KELLECT_BUILD_SERVICE)
-	add_subdirectory(service)
-endif()
+# 关闭 easylogging++ 默认日志文件(myeasylog.log 重定向到 nul 设备):
+# 默认 logger 在读取配置前就会创建该文件,conf 层拦不住;writeLog 停用期间
+# 诊断日志无内容
+target_compile_definitions(kellect PRIVATE ELPP_NO_DEFAULT_LOG_FILE)
