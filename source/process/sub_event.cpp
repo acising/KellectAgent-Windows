@@ -411,10 +411,13 @@ void  EventImage::parse() {
 
 		Module tempModule = Module(baseAddress, baseAddress + moduleSize, imageFileName);
 
-		//erase unloaded image in correlate process_module map. 
+		//erase unloaded image in correlate process_module map.
 		processID2Modules.eraseValueItemWithKey(processID, &tempModule);
 
-		//TODO : update the min and max module address of the exact process, skip this now.
+		//processID2ModuleAddressPair 的 min/max 在此处不缩小:范围只做粗过滤
+		//(get_properties_kernel.cpp 用它排除明显越界的栈地址),偏宽是安全的
+		//——多放过的地址在 parse 阶段的模块精确匹配中自然淘汰;缩小时反而
+		//可能因重算窗口期漏帧。IMAGELOAD 分支已正确扩大范围。
 
 		break;
 	}
@@ -1097,14 +1100,14 @@ ULONG64 ProviderID = event->getEventIdentifier()->getProviderID();
 int OpCode = event->getEventIdentifier()->getOpCode();
 bool flag = false;
 sJson->append(
-        "{\"Event\":\"" + eventName +
+        "{\"Event\":\"" + Tools::jsonEscape(eventName) +
         "\",\"PID\":" + std::to_string(event->getProcessID()) +
-        ",\"PName\":\"" + event->getProcessName() +
+        ",\"PName\":\"" + Tools::jsonEscape(event->getProcessName()) +
         "\",\"PPID\":" + std::to_string(event->getParentProcessID()) +
-        ",\"PPName\":\"" + event->getParentProcessName() +
+        ",\"PPName\":\"" + Tools::jsonEscape(event->getParentProcessName()) +
         "\",\"TID\":" + std::to_string(event->getThreadID()) +
         ",\"TimeStamp\":" + std::to_string(event->getTimeStamp()) +
-        ",\"Host-UUID\":" + Initializer::getUUID() +
+        ",\"Host-UUID\":\"" + Initializer::getUUID() + "\"" +
         ",\"args\":{");
 
 //event->getProperty
@@ -1120,7 +1123,7 @@ for (auto pty : event->getProperties()) {
         if (pty.second->getIsString()) {
             std::string argValue = pty.second->getString();
             sJson->append("\"" + pty.first + "\":\"" +
-                          argValue + "\"");
+                          Tools::jsonEscape(argValue) + "\"");
         }
         else {
             sJson->append("\"" + pty.first + "\":" +

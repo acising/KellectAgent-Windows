@@ -1,5 +1,6 @@
 #include "output/output.h"
 #include "process/event_parse.h"
+#include "tools/tools.h"
 #include <iostream>
 #include <map>
 #include <string>
@@ -130,14 +131,14 @@ VOID WINAPI EventParser::ConsumeUserEvent(PEVENT_RECORD pEvent) {
 //    添加eventID
 
         sJson->append(
-                "{\"Event\":\"" + providerName + "\",\"Event_ID\":" + std::to_string(pInfo->EventDescriptor.Id) +
-                "\",\"PID\":" + std::to_string(event->getProcessID()) +
-                ",\"PName\":\"" + event->getProcessName() +
+                "{\"Event\":\"" + Tools::jsonEscape(providerName) + "\",\"Event_ID\":" + std::to_string(pInfo->EventDescriptor.Id) +
+                ",\"PID\":" + std::to_string(event->getProcessID()) +
+                ",\"PName\":\"" + Tools::jsonEscape(event->getProcessName()) +
                 "\",\"PPID\":" + std::to_string(event->getParentProcessID()) +
-                ",\"PPName\":\"" + event->getParentProcessName() +
+                ",\"PPName\":\"" + Tools::jsonEscape(event->getParentProcessName()) +
                 "\",\"TID\":" + std::to_string(event->getThreadID()) +
                 ",\"TimeStamp\":" + std::to_string(event->getTimeStamp()) +
-                ",\"Host-UUID\":" + Initializer::getUUID() +
+                ",\"Host-UUID\":\"" + Initializer::getUUID() + "\"" +
                 ",\"args\":{");
 
 //        j["Event"]=providerName;
@@ -162,7 +163,7 @@ VOID WINAPI EventParser::ConsumeUserEvent(PEVENT_RECORD pEvent) {
                 if (pty.second->getIsString()) {
                     std::string argValue = pty.second->getString();
                     sJson->append("\"" + pty.first + "\":\"" +
-                                  argValue + "\"");
+                                  Tools::jsonEscape(argValue) + "\"");
                 }
                 else {
                     sJson->append("\"" + pty.first + "\":" +
