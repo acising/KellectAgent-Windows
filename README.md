@@ -80,48 +80,34 @@ For example, the following command can be used to collect all system logs and ou
 
 #### filter.txt
 
-> **Note:** Filtering is currently **hardcoded** in the collector (`initFilter()`); `filter.txt` is **not read at runtime**. The file is still shipped, and its format is documented below, as the entry point for restoring configurable filtering.
+Runtime filter configuration, read by `initFilter()` at startup. Three sections with human-readable entries:
 
-- The role of filter.txt is to filter events you don't need. There are three types of labels used for filtering, which are the process ID, event identifier, blacklist of image file path and whitelist of image file path. The default configuration is as follows:
-
-```c++
+```text
+# config/filter.txt
 filteredProcessID
-0 4 128
+0
+4
+128
 
-filteredEventIdentifier
-3740466758 32
-1030727888 1
-1030727888 2
-1030727889 1
-1030727889 2
-1030727889 36
-749821213 10
-749821213 2
-...
+droppedEventName
 
 filteredImageFile
 C:\Windows\SysWOW64\ntdll.dll
 ```
 
-**Label descriptions:**
+**Section descriptions:**
 
 1. *[filteredProcessID]*
 
-    Indicates to filter events based on the list of PIDs separated by spaces.
+    PIDs whose events are dropped (one per line). Built-in entries {0, 4, 128} are always present; additional PIDs from this file are additive.
 
-2. *[filteredEventIdentifier]*
+2. *[droppedEventName]*
 
-    Indicates tracing events through the combination of Event ProviderID and opcode, which we call EventIdentifier. The specific event log details can be obtained in [Microsoft Documentation](https://docs.microsoft.com/en-us/windows/win32/etw/fileio). ProviderID is the decimal form of the first part of the Guid class, and opcode is the EventType value under Remarks of BaseEvent Class Page.
-    
-    > **Note:** The event identifiers under this label are whitelisted and are the types of events we need to collect.
+    Event names (from `eventStruct_win10.xml`) dropped at the earliest filter stage, before any parsing. Use for high-volume low-value noise (e.g. `FileIODirNotify`). The CLI `-x` option has the same effect and adds to this list at runtime.
 
-![image-20220503171251436](images/eventType.png)
+3. *[filteredImageFile]*
 
-![image-20220503171255065](images/guid.png)
-
-​	3.*[filteredImageFile]*
-
-​		ImageLoad events and corresponding CallStacks will be **filtered** by the Image file path listed in this label.
+    ImageLoad events and corresponding CallStacks will be **filtered** by the Image file path listed in this section.
 
 #### initImages.txt
 
@@ -151,7 +137,7 @@ Configure the log output format and path information.
 
 #### uuid
 
-Set the UUID of the current host. If not specified, KellectAgent will automatically generate a UUID and output it to the file.
+A unique identifier for the current host. Generated via `CoCreateGuid` on first run and persisted to `config/uuid`; subsequent runs reuse the same value. Each machine gets a different UUID.
 
 ## **Output Format**
 
@@ -216,7 +202,7 @@ The output case are as follows:
 	"PPName": "QQPCRTP.exe",
 	"TID": 9516,
 	"TimeStamp": 133253085392394264,
-	"Host-UUID": "FBFFA15C-FEDE-4f96-9AF8-398294758A2A",
+	"Host-UUID": "XXXXXXXX-XXXX-4XXX-XXXX-XXXXXXXXXXXX",
 	"Args": {
 		"CreateOptions": 18890752,
 		"FileAttributes": 0,
@@ -237,7 +223,7 @@ The output case are as follows:
 	"PPName": "svchost.exe",
 	"TID": 44940,
 	"TimeStamp": 133253092340669753,
-	"Host-UUID": "FBFFA15C-FEDE-4f96-9AF8-398294758A2A",
+	"Host-UUID": "XXXXXXXX-XXXX-4XXX-XXXX-XXXXXXXXXXXX",
 	"Args": {
 		"stackInfo": "C:\Program Files (x86)\Google\Update\1.3.36.152\goopdate.dll:DllEntry,
         C:\Program Files (x86)\Google\Update\1.3.36.152\goopdate.dll:DllEntry,

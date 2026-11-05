@@ -48,6 +48,16 @@ public:
 		return !Filter::filteredImageFile.count(imageFileName);
 	};
 
+	//events dropped by name via option "-x" (high-volume low-value noise);
+	//names are resolved to (provider, opcode) identifiers in initFilter(),
+	//after the eventStruct xml has been loaded
+	static std::set<EventIdentifier*, EventIdentifierSortCriterion> droppedEventIdentifiers;
+	static inline bool filterDroppedIdentifier(ULONG64 providerId, int opCode) {
+		if (droppedEventIdentifiers.empty()) return false;
+		EventIdentifier ie = EventIdentifier(providerId, opCode);
+		return droppedEventIdentifiers.count(&ie) != 0;
+	}
+
 private:
 	static inline bool filterPID(int pid) {
 		//filteredProcessID是过滤黑名单

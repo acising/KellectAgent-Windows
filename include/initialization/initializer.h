@@ -5,6 +5,8 @@
 #include <windows.h>
 #include <iostream>
 #include <fstream>
+#include <set>
+#include <string>
 #include "DbgHelp.h"
 
 /*defined status code*/
@@ -149,10 +151,8 @@ public:
 
     ULONG64 init(GUID &p);
 
-    inline void writeUUID2File();
-    inline STATUS setUUIDFromFile();
-    inline STATUS setUUIDByFunction();
-    inline void initHostUUID();
+    // 生成或恢复本机唯一 UUID:优先读 config/uuid,不存在则 CoCreateGuid 并持久化
+    void initHostUUID();
 	inline bool validArgLength(int i, STATUS& status);
     inline bool isOutPutOption(char* option);
     inline void initDefaultEnabledEvents();
@@ -198,6 +198,7 @@ private:
     ULONG64 enabledFlags = 0;
     bool enbaleFlagsInited = false;
     static bool listenCallStack;
+    static std::set<std::string> userDroppedEventNames;   // "-x" 或 filter.txt 指定的丢弃事件名
 
     static std::string uuid;
     const char* filterFileName = "config/filter.txt";

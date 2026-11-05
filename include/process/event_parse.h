@@ -77,6 +77,11 @@ public:
     static json j;
     static json argsJson;
 
+    // 输出线程优雅退出:通知 final flush 后返回(供 ETW 会话清理路径调用)
+    static void requestOutputStop() {
+        if (op) op->requestStop();
+    }
+
 private:
     static Filter filter;
     static Output* op;

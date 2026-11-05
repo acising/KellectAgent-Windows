@@ -7,6 +7,8 @@
 #include <strsafe.h>
 #include <fstream>
 #include <iostream>
+#include <chrono>
+#include <thread>
 #include <evntrace.h>
 #include <cstdlib>
 #include "process/etw_config.h"
@@ -208,6 +210,12 @@ cleanup:
         free(mainSessionProperties);
         std::cout << "Step 7: Trace properties freed" << std::endl;
     }
+
+    // 通知输出线程做 final flush 后退出(ETW 已停,管道内事件已全部解析完入队)
+    EventParser::requestOutputStop();
+    // 给输出线程最多 1 秒完成 final flush(detach 线程无法 join,
+    // 短暂等待让 flush 大概率完成后再返回)
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
     std::cout << "mainSessionConfig completed" << std::endl;
     return 0;

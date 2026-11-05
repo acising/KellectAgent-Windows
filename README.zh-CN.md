@@ -81,48 +81,34 @@ kellect.exe -e all -f test.json
 
 #### filter.txt
 
-> **注意：** 过滤规则当前**硬编码**在采集器内（`initFilter()`），运行期**不读取** `filter.txt`。该文件仍随包发布、格式说明保留如下，作为日后恢复可配置过滤的入口。
+运行时过滤配置，启动时由 `initFilter()` 读取。三个配置节，使用人类可读的条目：
 
-​	用户可以通过配置filter.txt实现不同功能。通常KellectAgent运行不需要进行修改，除非有定制化的需求。
-
-```json
+```text
+# config/filter.txt
 filteredProcessID
-0 4 128
+0
+4
+128
 
-filteredEventIdentifier
-3740466758 32
-1030727888 1
-1030727888 2
-1030727889 1
-1030727889 2
-1030727889 36
-749821213 10
-749821213 2
-...
+droppedEventName
 
 filteredImageFile
 C:\Windows\SysWOW64\ntdll.dll
 ```
 
-**配置文件不同标签详情：**
+**配置节说明：**
 
 1. *[filteredProcessID]*
 
-   表示根据此标签中的 ID 列表过滤具体事件。 进程 ID 由空格分隔。
+   PID 黑名单（每行一个）。内置条目 {0, 4, 128} 始终存在；此文件中的额外 PID 为增量添加。
 
-2. *[filteredEventIdentifier]*
+2. *[droppedEventName]*
 
-   表示通过Event ProviderID和opcode的组合过滤事件，我们称之为EventIdentifier。 具体的事件日志详情可以在[微软文档](https://docs.microsoft.com/en-us/windows/win32/etw/fileio)中获取. ProviderID 是 Guid 类第一部分的十进制形式，opcode 是每个 BaseEvent Class Page 的 Remarks 下的 EventType 值。
-
-   > 注意：该标签下的事件标识符为白名单列表，是我们需要采集的事件类型。
-
-   [![image-20220503171251436](https://camo.githubusercontent.com/0d8e30388ebd9df55ce302d1fb37bb5e84f1edd598604e33b8667dbf14203376/687474703a2f2f3132312e34302e3136382e36302f6b656c6c6563742f6576656e74547970652e706e67)](https://camo.githubusercontent.com/0d8e30388ebd9df55ce302d1fb37bb5e84f1edd598604e33b8667dbf14203376/687474703a2f2f3132312e34302e3136382e36302f6b656c6c6563742f6576656e74547970652e706e67)
-
-   [![image-20220503171255065](https://camo.githubusercontent.com/fa83496afb6f388c337e59491df6e122e4f0e896314879201824b9576ded7a75/687474703a2f2f3132312e34302e3136382e36302f6b656c6c6563742f677569642e706e67)](https://camo.githubusercontent.com/fa83496afb6f388c337e59491df6e122e4f0e896314879201824b9576ded7a75/687474703a2f2f3132312e34302e3136382e36302f6b656c6c6563742f677569642e706e67)
+   事件名黑名单（来自 `eventStruct_win10.xml`），在最早的过滤阶段丢弃，不进入解析管线。用于治理高量低值噪声（如 `FileIODirNotify`）。CLI 的 `-x` 参数效果相同，运行时追加到该列表。
 
 3. *[filteredImageFile]*
 
-   可以通过此标签中列出的Image文件路径**过滤** 加载Image 的事件。
+   通过 Image 文件路径**过滤**加载 Image 的事件及对应的 CallStack。
 
 #### initImages.txt
 
@@ -152,7 +138,7 @@ C:\Windows\System32\dbghelp.dll
 
 #### uuid
 
-设置当前主机的UUID。若未指定，则KellectAgent会自动生成UUID并输出到该文件中。
+当前主机的唯一标识。首次运行时通过 `CoCreateGuid` 生成并持久化到 `config/uuid`；后续运行复用同一值。每台机器各自生成不同的 UUID。
 
 ## **输出格式**
 
@@ -215,7 +201,7 @@ C:\Windows\System32\dbghelp.dll
 	"PPName": "QQPCRTP.exe",
 	"TID": 9516,
 	"TimeStamp": 133253085392394264,
-	"Host-UUID": "FBFFA15C-FEDE-4f96-9AF8-398294758A2A",
+	"Host-UUID": "XXXXXXXX-XXXX-4XXX-XXXX-XXXXXXXXXXXX",
 	"Args": {
 		"CreateOptions": 18890752,
 		"FileAttributes": 0,
@@ -236,7 +222,7 @@ C:\Windows\System32\dbghelp.dll
 	"PPName": "svchost.exe",
 	"TID": 44940,
 	"TimeStamp": 133253092340669753,
-	"Host-UUID": "FBFFA15C-FEDE-4f96-9AF8-398294758A2A",
+	"Host-UUID": "XXXXXXXX-XXXX-4XXX-XXXX-XXXXXXXXXXXX",
 	"Args": {
 		"stackInfo": "C:\Program Files (x86)\Google\Update\1.3.36.152\goopdate.dll:DllEntry,
         C:\Program Files (x86)\Google\Update\1.3.36.152\goopdate.dll:DllEntry,

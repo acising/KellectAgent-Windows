@@ -710,6 +710,14 @@ void  EventProcess::parse() {
 			break;
 		}
 
+		// PID reuse cleanup (plan B): new process with a blacklisted PID but a
+		// non-family image — release the stale entry (covers missed PROCESSEND).
+		// Guard: permanent entries {0,4,128,self} are never released.
+		if (pid != 0 && pid != 4 && pid != 128 &&
+            pid != (ULONG64)GetCurrentProcessId()) {
+            Filter::filteredProcessID.erase(static_cast<int>(pid));
+        }
+
 		if (EventImage::processID2Modules.count(pid) == 0)  {
 
             //for readwritemap
@@ -731,6 +739,15 @@ void  EventProcess::parse() {
 		//process end ,clear correlate modules set
 		EventImage::processID2Modules.erase(pid);
 		processID2ModuleAddressPair.erase(pid);
+
+		// PID reuse cleanup (plan A): release this PID from the dynamic filter
+		// blacklist so a future process reusing the PID isn't silently dropped.
+		// Guard: permanent entries {0,4,128,self} are never released.
+		if (pid != 0 && pid != 4 && pid != 128 &&
+            pid != (ULONG64)GetCurrentProcessId()) {
+            Filter::filteredProcessID.erase(static_cast<int>(pid));
+        }
+
 		break;
 	}
 	case PROCESSDEFUNCT: 

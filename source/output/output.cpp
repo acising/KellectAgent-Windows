@@ -12,6 +12,7 @@ void FileOutPut::output(std::string outputString) {
     }
 
     outputStream << outputString;
+    outputStream.flush();   // 进程可能在任意时刻 exit(),每批写完立即落盘
 }
 
 STATUS FileOutPut::init() {
@@ -131,18 +132,20 @@ STATUS SocketOutPut::init() {
 
 void Output::outputStrings(){
 
-    while (true) {
+    while (!stopRequested) {
 
         int tempCnt = 0;
         std::string resJson;
         std::unique_lock<std::mutex> ulk(m);
 
-        while ((tempCnt = count.load()) < outputThreshold) {
-
-            cv.wait(ulk);
-            //std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-            //output("输出队列未满，继续等待\n");
+        // 攒够阈值 OR 500ms 超时 OR 收到停止信号,都走出等待。
+        // 定时 flush 保证低流量时事件最迟 500ms 到达输出端;
+        // requestStop() 通过 notify_all 唤醒此处并因 stopRequested 退出循环。
+        while (!stopRequested && (tempCnt = count.load()) < outputThreshold) {
+            if (cv.wait_for(ulk, std::chrono::milliseconds(flushIntervalMs)) == std::cv_status::timeout)
+                break;
         }
+
         tempCnt = count.fetch_and(0);       //reset count
 
         std::string** sRes = new std::string*[maxDequeNumber];
@@ -150,14 +153,29 @@ void Output::outputStrings(){
 
         for (int i = 0; i < tempCnt; ++i) {
             resJson +=(*sRes[i])+"\n";
-            //if ((*sRes[i]).size() < 10)
-            //    int a = 0;
-            //output(*sRes[i]);
             delete sRes[i];
         }
         delete[] sRes;
 
-        output(resJson);
+        if (tempCnt > 0)
+            output(resJson);
+    }
+
+    // final flush: 停止信号到达后,把队列里剩余的事件全部写出再返回
+    {
+        int remaining = static_cast<int>(count.exchange(0));
+        if (remaining > 0 || q.size_approx() > 0) {
+            std::string resJson;
+            std::string** sRes = new std::string*[maxDequeNumber];
+            size_t got = q.try_dequeue_bulk(sRes, maxDequeNumber);
+            for (size_t i = 0; i < got; ++i) {
+                resJson += (*sRes[i]) + "\n";
+                delete sRes[i];
+            }
+            delete[] sRes;
+            if (!resJson.empty())
+                output(resJson);
+        }
     }
 }
 void Output::outputStringPointer(std::string *rjson) {
