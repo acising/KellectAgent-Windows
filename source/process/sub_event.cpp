@@ -1,26 +1,29 @@
+#include <windows.h>
+#include <tlhelp32.h>
 #include "tools/logger.h"
 #include "tools/tools.h"
 #include "process/sub_event.h"
 #include <fstream>
 #include <regex>
 #include <algorithm>
+#include <condition_variable>
+#include <deque>
+#include <mutex>
+#include <thread>
 #include <codecvt>
-#include <atlconv.h>
 #include "nlohmann/json.hpp"
 #include "filter.h"
 //#include "process/etw_config.h"
 #include "process/event_parse.h"
 #include "tools/providerInfo.h"
+#include "runtime/evidence.h"
+#include "process/pe_metadata.h"
 
 ReadWriteMap<ULONG64,std::string> EventRegistry::keyHandle2KeyName;
 std::map< ULONG64, std::string*> EventPerfInfo::systemCallMap;
 std::map< ULONG64, std::string*> EventPerfInfo::systemCallMapUsed;
 std::set<ULONG64> EventThread::threadSet;
-std::set <Module*, ModuleSortCriterion> EventImage::globalModuleSet;
-std::set <Module*, ModuleSortCriterion> EventImage::usedModuleSet;
-ReadWriteMap<int, EventProcess::MinMaxModuleAddressPair> EventProcess::processID2ModuleAddressPair;
-std::map<CallStackIdentifier, std::string*> EventCallstack::callStackRecord;
-std::atomic<int> EventCallstack::callStackRecordNum(0);
+std::mutex EventImage::modulesApiMutex;
 std::map<int, int> EventProcess::processID2ParentProcessID;
 std::map<std::string, std::string> processList;
 std::map<std::string, std::string> fileList;
@@ -28,6 +31,142 @@ std::map<std::string, std::string> registryList;
 std::map<std::string, std::string> socketList;
 std::set<std::string> noEventList;
 std::string Initializer::uuid;  //declare static property
+
+namespace {
+
+// ---- deferred export-table loader -----------------------------------------
+// LoadLibrary + PE export walk costs hundreds of microseconds per image and
+// used to run inside EventImage::parse (first on the ETW callback thread, then
+// on the ordered parse thread). A burst of ImageLoad events (process start
+// storms, WOW64 processes) would stall every other event behind it. The loader
+// runs on its own thread; CallStack reads the tables under modulesApiMutex and
+// simply resolves fewer API names until a table is published.
+std::mutex g_apiQueueMutex;
+std::condition_variable g_apiQueueCv;
+std::deque<std::string> g_apiQueue;
+bool g_apiLoaderStarted = false;
+bool g_apiLoaderStop = false;
+std::thread g_apiLoader;
+const size_t kApiQueueLimit = 4096;
+constexpr size_t kMaxCachedModules = 256;
+constexpr size_t kMaxCachedExports = 128 * 1024;
+size_t g_cachedExports = 0;
+bool g_adaptiveExports = true;
+
+std::wstring ImagePath(const std::string& utf8) {
+    const int length = static_cast<int>(utf8.size());
+    const int count = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8.data(), length, nullptr, 0);
+    if (!count)
+        return {};
+    std::wstring result(count, L'\0');
+    MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8.data(), length, &result[0], count);
+    return result;
+}
+
+void ApiLoaderLoop() {
+    for (;;) {
+        std::string imageFileName;
+        {
+            std::unique_lock<std::mutex> lock(g_apiQueueMutex);
+            g_apiQueueCv.wait(lock, [] { return g_apiLoaderStop || !g_apiQueue.empty(); });
+            if (g_apiLoaderStop)
+                return;
+            imageFileName = std::move(g_apiQueue.front());
+            g_apiQueue.pop_front();
+        }
+        EventImage::loadModuleApis(imageFileName);
+    }
+}
+
+} // namespace
+
+void EventImage::PreEnumerateModules() {
+    HANDLE procSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (procSnap == INVALID_HANDLE_VALUE)
+        return;
+
+    PROCESSENTRY32W pe{};
+    pe.dwSize = sizeof(pe);
+    if (Process32FirstW(procSnap, &pe)) {
+        do {
+            const DWORD pid = pe.th32ProcessID;
+            if (pid == 0)
+                continue;
+            HANDLE modSnap = CreateToolhelp32Snapshot(
+                TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, pid);
+            if (modSnap == INVALID_HANDLE_VALUE)
+                continue;
+
+            MODULEENTRY32W me{};
+            me.dwSize = sizeof(me);
+            if (Module32FirstW(modSnap, &me)) {
+                auto& modules = processID2Modules[static_cast<int>(pid)];
+                do {
+                    const ULONG64 begin = reinterpret_cast<ULONG64>(me.modBaseAddr);
+                    const ULONG64 end = begin + me.modBaseSize;
+                    std::string path = Tools::WString2String(me.szExePath);
+                    modules.erase(begin);
+                    modules.emplace(begin, Module(begin, end, path));
+                } while (Module32NextW(modSnap, &me));
+            }
+            CloseHandle(modSnap);
+        } while (Process32NextW(procSnap, &pe));
+    }
+    CloseHandle(procSnap);
+}
+
+void EventImage::startApiLoader() {
+    std::lock_guard<std::mutex> lock(g_apiQueueMutex);
+    if (g_apiLoaderStarted)
+        return;
+    g_apiLoaderStarted = true;
+    g_apiLoaderStop = false;
+    g_apiLoader = std::thread(ApiLoaderLoop);
+}
+
+void EventImage::stopApiLoader() {
+    {
+        std::lock_guard<std::mutex> lock(g_apiQueueMutex);
+        g_apiLoaderStop = true;
+        g_apiLoaderStarted = false;
+        g_apiQueue.clear();
+    }
+    g_apiQueueCv.notify_one();
+    if (g_apiLoader.joinable())
+        g_apiLoader.join();
+}
+
+bool EventImage::enqueueModuleApis(const std::string& imageFileName) {
+    {
+        std::lock_guard<std::mutex> lock(g_apiQueueMutex);
+        if (!g_apiLoaderStarted || g_apiQueue.size() >= kApiQueueLimit)
+            return false;
+        g_apiQueue.push_back(imageFileName);
+    }
+    g_apiQueueCv.notify_one();
+    return true;
+}
+
+void EventImage::loadModuleApis(const std::string& imageFileName) {
+    auto path = ImagePath(imageFileName);
+    kellect::PeMetadata metadata;
+    if (path.empty() || !kellect::ReadPeMetadata(path, metadata) || metadata.exports.empty())
+        return;
+
+    std::lock_guard<std::mutex> lock(EventImage::modulesApiMutex);
+    if (EventImage::modulesName2APIs.count(imageFileName) ||
+        EventImage::modulesName2APIs.size() >= kMaxCachedModules ||
+        metadata.exports.size() > kMaxCachedExports - g_cachedExports)
+        return;
+    auto& apis = EventImage::modulesName2APIs[imageFileName];
+    for (auto& entry : metadata.exports)
+        apis.insert(new MyAPI(entry.rva, std::move(entry.name)));
+    g_cachedExports += apis.size();
+}
+
+void EventImage::setAdaptiveExports(bool enabled) {
+    g_adaptiveExports = enabled;
+}
 using json = nlohmann::json;
 std::string jsonString = R"({ "ProcessStart": "EVENT_EXECUTE", "ThreadStart": "EVENT_CREATE_THREAD", "RegistryDeleteValue": "EVENT_MODIFY_FILE_ATTRIBUTES", "FileIORead": "EVENT_READ",
 "FileIOFileCreate": "EVENT_CREATE_OBJECT", "FileIOWrite": "EVENT_WRITE", "RegistrySetValue": "EVENT_MODIFY_FILE_ATTRIBUTES", "RegistryCreate": "EVENT_CREATE_OBJECT",
@@ -88,8 +227,10 @@ void setFileName(BaseEvent* ev) {
 			ev->setProperty(BaseEvent::FileName, tempDataType);
 		}
 		else {
-            // if not match any filename , filter it
-            ev->setValueableEvent(false);
+            // Handles opened before the capture started have no name in the
+            // map. Dropping those Read/Write/Rename events loses most file
+            // activity, so keep the event and mark the path as unknown.
+            ev->setProperty(BaseEvent::FileName, new dataType(std::string("<unknown>")));
         }
 	}
 }
@@ -102,72 +243,80 @@ void EventFile::parse() {
 		fileObject = dt->getULONG64();
 	}
 
+    // Missing properties must never dereference a null dataType: a short or
+    // drifting schema would otherwise crash the parser (seen as 0xc0000005 at
+    // a dataType getter). Empty values simply skip the name-map update.
+    auto stringProp = [this](int id) -> std::string {
+        dataType* p = getProperty(id);
+        return p ? p->getString() : std::string();
+    };
+    auto u64Prop = [this](int id) -> ULONG64 {
+        dataType* p = getProperty(id);
+        return p ? p->getULONG64() : 0;
+    };
+
 	switch (getEventIdentifier()->getOpCode()) {
 
 	case NOTDEFINEDTYPE1:
 	case NOTDEFINEDTYPE2:
 		return;
 	case RUNDOWN: {
-        // Session-start dump of every open file handle: bulk, no PID in the
-        // schema, zero analysis value. Still parsed because it feeds the
-        // fileObject->name map used to resolve later Read/Write events.
         setTIDAndPID(this);
-
         removeQuotesFromProperty(FileName);
-
-		fileKey2Name[fileObject] =getProperty(FileName)->getString();
-
+        {
+            std::string name = stringProp(FileName);
+            if (!name.empty())
+                fileKey2Name[fileObject] = name;
+        }
         setValueableEvent(false);
         break;
 	}
 	case NAME:
 	case FILECREATE: {
-
         setTIDAndPID(this);
-
         removeQuotesFromProperty(FileName);
-
 		//ReadWriteMap will OverWrite the item if the key is exist.
 		//fileKey2Name.insertOverwirte(fileObject, fileName);
-		fileKey2Name[fileObject] =getProperty(FileName)->getString();
-
+        {
+            std::string name = stringProp(FileName);
+            if (!name.empty())
+                fileKey2Name[fileObject] = name;
+        }
         break;
 	}
 	case FILEDELETE_: {
-
         setTIDAndPID(this);
 		fileKey2Name.erase(fileObject);
-
         break;
 	}
 	case CREATE: {
-
 		//ReadWriteMap will OverWrite the item if the key is exist.
 		//fileObject2Name.insertOverwirte(fileObject, getProperty(OpenPath)->getString());
-
         removeQuotesFromProperty(OpenPath);
-		fileObject2Name[fileObject] = getProperty(OpenPath)->getString();
-
+        {
+            std::string name = stringProp(OpenPath);
+            if (!name.empty())
+                fileObject2Name[fileObject] = name;
+        }
 		break;
 	}
 	case DIRENUM:
 	case NOTIFY: {
         // do nothing in directory enumeration and directory notification events
-
         removeQuotesFromProperty(FileName);
-
-        //To be verified
-        std::string fileName = getProperty(FileName)->getString();
-        ULONG64 fileKey = getProperty(FileKey)->getULONG64();
-        fileKey2Name[fileKey] = fileName;
-
-        if(fileObject!= 1)
-            fileObject2Name[fileObject] = fileName;
-
+        {
+            std::string fileName = stringProp(FileName);
+            ULONG64 fileKey = u64Prop(FileKey);
+            if (!fileName.empty()) {
+                if (fileKey != 0)
+                    fileKey2Name[fileKey] = fileName;
+                if (fileObject != 1)
+                    fileObject2Name[fileObject] = fileName;
+            }
+        }
 		break;
 	}
 	case CLEANUP:{
-//        ULONG64 fileKey = getProperty(FileKey)->getULONG64();
         setFileName(this);
         break;
     }
@@ -178,15 +327,16 @@ void EventFile::parse() {
         setFileName(this);
         break;
 	case CLOSE: {
-		ULONG64 fileKey = getProperty(FileKey)->getULONG64();
+		ULONG64 fileKey = u64Prop(FileKey);
 		setFileName(this);
-
 		fileObject2Name.erase(fileObject);
-		fileKey2Name.erase(fileKey);
+        if (fileKey != 0)
+            fileKey2Name.erase(fileKey);
 		break;
 	}
 	default:
-		setValueableEvent(false);
+        // Unhandled FileIo opcodes (Flush/QueryInfo/FSControl/OperationEnd)
+        // still carry their decoded fields; keep them instead of dropping.
 		break;
 	}
 
@@ -247,6 +397,10 @@ void EventThread::parse() {
 	case THREADSTART:
 	case THREADDCSTART: {
 
+		if (!getProperty(ProcessId) || !getProperty(TThreadId)) {
+			setValueableEvent(false);
+			break;
+		}
 		pid = getProperty(ProcessId)->getULONG64();
 		tid = getProperty(TThreadId)->getULONG64();
 
@@ -258,6 +412,10 @@ void EventThread::parse() {
 	case THREADEND:
 	case THREADDCEND: {
 
+		if (!getProperty(ProcessId) || !getProperty(TThreadId)) {
+			setValueableEvent(false);
+			break;
+		}
 		pid = getProperty(ProcessId)->getULONG64();
 		tid = getProperty(TThreadId)->getULONG64();
 
@@ -266,12 +424,16 @@ void EventThread::parse() {
 		break;
 	}
 	case CSWITCH: {
-		//processorId2threadId.insert(getProcessorID(), getProperty(NewThreadId)->getULONG64());
-        //set the newTID with processorID
-		processorId2threadId[getProcessorID()] = getProperty(NewThreadId)->getULONG64();
+        // NewThreadId is absent in some builds / short frames. Never
+        // dereference a missing property (0xc0000005 at dataType::getULONG64).
+        dataType* newTid = getProperty(NewThreadId);
+        if (newTid)
+            processorId2threadId[getProcessorID()] = newTid->getULONG64();
+		setValueableEvent(false);	// cswitch is scheduling noise
+		break;
 	}
 	default: {
-		setValueableEvent(false);	//filter cswitch
+		setValueableEvent(false);
 		break;
 	}
 	}
@@ -285,400 +447,235 @@ void EventThread::parse() {
 	}
 }
 
-STATUS EventImage::getExportAPIs(LPVOID hModule, std::string& fileName, std::set<MyAPI*, MyAPISortCriterion>& apis) {
-	PIMAGE_EXPORT_DIRECTORY pExportDirectory;//指向导出目录结构。
-	PIMAGE_DOS_HEADER pDosHeader;//指向 DOS 头部结构。
-	PIMAGE_NT_HEADERS pNtHeader;//指向 NT 头部结构。
-	PIMAGE_SECTION_HEADER pSecHeader;
-	PDWORD pAddressName;//指向导出函数名称
-	PWORD pAddressOfNameOrdinals;//指向导出函数序号
-	PDWORD pAddresOfFunction;//指向导出函数地址
-	std::set<MyAPI> tempAPIs;
-    PCHAR pApi;
-    DWORD rva;
-	pDosHeader = (PIMAGE_DOS_HEADER)hModule;//将 hModule 转换为 DOS 头指针，并检查其魔数是否为 IMAGE_DOS_SIGNATURE。如果不匹配，记录日志并返回失败状态。
-	if (pDosHeader->e_magic != IMAGE_DOS_SIGNATURE) {
-		MyLogger::writeLog("Not PE file-2");
-		return STATUS_FAILED;
-	}
-
-	//get the PIMAGE_NT_HEADERS structure
-	pNtHeader = (PIMAGE_NT_HEADERS)((PBYTE)hModule + pDosHeader->e_lfanew);//获取 NT 头部，验证其签名是否为 IMAGE_NT_SIGNATURE。如果不匹配，记录日志并返回失败状态。
-
-	if (pNtHeader->Signature != IMAGE_NT_SIGNATURE) {
-		MyLogger::writeLog("Not PE file-2");
-		return STATUS_FAILED;
-	}
-	if (pNtHeader->FileHeader.Machine == 0x014c) {
-		pExportDirectory = (PIMAGE_EXPORT_DIRECTORY)(((PIMAGE_NT_HEADERS32)pNtHeader)->OptionalHeader.DataDirectory[0].VirtualAddress + (PBYTE)hModule);
-	}//查文件的机器类型（32位或64位），并根据类型计算导出目录的地址。
-	else {
-        //AMD64 machine architecture
-        pExportDirectory = (PIMAGE_EXPORT_DIRECTORY)(((PIMAGE_NT_HEADERS64)((PBYTE)hModule + pDosHeader->e_lfanew))->
-                OptionalHeader.DataDirectory[0].VirtualAddress + (PBYTE)hModule);
-    }
-    pAddressName = (PDWORD)((PBYTE)hModule + pExportDirectory->AddressOfNames);
-    pAddressOfNameOrdinals = (PWORD)((PBYTE)hModule + pExportDirectory->AddressOfNameOrdinals);
-    pAddresOfFunction = (PDWORD)((PBYTE)hModule + pExportDirectory->AddressOfFunctions);//根据导出目录的字段获取指向名称、序号和函数地址的指针。
-
-    if (pExportDirectory->AddressOfFunctions + pExportDirectory->AddressOfNames == 0 || pExportDirectory->NumberOfNames == 0) {
-		return STATUS_FAILED;
-	}//检查导出函数地址和名称的有效性。如果无效，返回失败状态。
-	//parse export table
-	for (DWORD i = 0; i < (pExportDirectory->NumberOfNames); ++i) {
-
-        pApi = (PCHAR)((PBYTE)hModule + *pAddressName);
-		++pAddressName;
-		rva = pAddresOfFunction[*pAddressOfNameOrdinals];
-		++pAddressOfNameOrdinals;
-		//module.insertAPI(Tools::StringToWString(std::string(pFunc)), module.getAddressBegin() + rva);
-		apis.insert(std::set<MyAPI*, MyAPISortCriterion>::value_type
-		(new MyAPI(rva,pApi)));
-
-	}
-	return STATUS_SUCCESS;
-}
-
-STATUS EventImage::getAPIsFromFile(std::string& fileName, std::set<MyAPI*, MyAPISortCriterion>& apis) {
-	
-	HANDLE hFile = nullptr;
-	HANDLE hMap = nullptr;
-	LPVOID hBase = nullptr;
-	STATUS status = STATUS_FAILED;
-
-	hFile = CreateFileA(fileName.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	if (hFile == INVALID_HANDLE_VALUE) {
-		MyLogger::writeLog("Open file"+fileName+ " failed\n");
-		MyLogger::writeLog("error code:" + Tools::DecInt2HexStr(GetLastError()));
-		goto cleanup;
-	}
-	hMap = CreateFileMapping(hFile, NULL, PAGE_READONLY | SEC_IMAGE, 0, 0, 0);
-	if (hMap == nullptr) {
-		MyLogger::writeLog("hMap file failed:");
-		goto cleanup;
-	}
-	hBase = MapViewOfFile(hMap, FILE_MAP_READ, 0, 0, 0);
-	if (hBase == nullptr)
-	{
-		MyLogger::writeLog("MapViewOfFile failed-2: ");
-		goto cleanup;
-	}
-
-	//current_module_name = moduleName;
-	status = getExportAPIs(hBase,fileName, apis);
-cleanup:
-	CloseHandle(hFile);
-	CloseHandle(hMap);
-	UnmapViewOfFile(hBase);
-
-	return status;
-}
-
-void  EventImage::parse() {
-
-	ULONG64 baseAddress = getProperty(ImageBase)->getULONG64();
-	ULONG64 moduleSize = getProperty(ImageSize)->getULONG64();
-	ULONG64 processID = getProperty(ProcessId)->getULONG64();
-	int opCode = getEventIdentifier()->getOpCode();
-
-	std::string imageFileName = getProperty(FileName)->getString();
-
-	setProcessID(processID);
-
-    //filter pid
-    if(Filter::pidFilter(processID)){
+void EventImage::parse() {
+    auto* pidField = getProperty(ProcessId);
+    auto* base = getProperty(ImageBase);
+    auto* size = getProperty(ImageSize);
+    auto* filename = getProperty(FileName);
+    if (!pidField || !base || !size || !filename) {
         setValueableEvent(false);
         return;
     }
-    if(!Initializer::getListenCallStack()){
-        if (Filter::filterImageFile(imageFileName)||Filter::secondFilter(this)) {
-            setValueableEvent(false);
-            return;
-        }
-    }
 
-	//set process info
-    fillProcessInfo(); //fill parentProcess and process Information
-
-    if(imageFileName.find(".exe") != -1){   //won't parse ".exe" PE file
+    const auto pid = static_cast<int>(pidField->getULONG64());
+    const auto address = base->getULONG64();
+    const auto length = size->getULONG64();
+    auto path = filename->getString();
+    setProcessID(pid);
+    if (Filter::secondFilter(this))
+        return;
+    if (!Initializer::getListenCallStack() && Filter::filterImageFile(path)) {
+        setValueableEvent(false);
         return;
     }
+    fillProcessInfo();
+    if (!Initializer::getListenCallStack())
+        return;
 
-	switch (opCode)
-	{
-	case IMAGEDCEND:
-	case IMAGEUNLOAD: {
-
-		Module tempModule = Module(baseAddress, baseAddress + moduleSize, imageFileName);
-
-		//erase unloaded image in correlate process_module map.
-		processID2Modules.eraseValueItemWithKey(processID, &tempModule);
-
-		//processID2ModuleAddressPair 的 min/max 在此处不缩小:范围只做粗过滤
-		//(get_properties_kernel.cpp 用它排除明显越界的栈地址),偏宽是安全的
-		//——多放过的地址在 parse 阶段的模块精确匹配中自然淘汰;缩小时反而
-		//可能因重算窗口期漏帧。IMAGELOAD 分支已正确扩大范围。
-
-		break;
-	}
-	case IMAGELOAD:
-	case IMAGEDCSTART: {
-		Module* module = new Module(baseAddress, baseAddress + moduleSize, imageFileName);
-
-		int cnt = -1;
-		cnt = processID2Modules.countValueNumWithKey(processID,module);
-
-		if (cnt == 0 || cnt == -1) {	//there are no modules set mapping with the processID, so add the pid-modules item.
-
-			auto globalModuleIter = globalModuleSet.find(module);
-
-			//push unloaded image module to globalModuleSet
-			if(globalModuleIter == globalModuleSet.end())	globalModuleSet.insert(module);		
-			else {
-				Module* tempModule = module;
-				delete tempModule;		//avoid memory leak
-						
-				module = *globalModuleIter;			//if this image module has been stored into globalModuleSet, reuses it.
-			}
-			
-            if (cnt == 0) {	// pid2moduleSet item exists,just update the item
-				processID2Modules.insertValueItemWithKey(processID, module);
-
-				//modify min and max module begin address to filter callstack addresses
-				//the reason why do not get the reference pair here is for thread safe, in processEnd part ,there will be some erase operations.
-				auto minmaxPair = EventProcess::processID2ModuleAddressPair[processID];	
-				if (baseAddress < minmaxPair.first)	minmaxPair.first = baseAddress;
-				if (baseAddress + moduleSize > minmaxPair.second)	minmaxPair.second = baseAddress + moduleSize;
-
-				//reassign the updated pair
-				EventProcess::processID2ModuleAddressPair.insertOverwirte(processID,minmaxPair);
-			}
-			else {	// pid2moduleset item not exists, so insert the item into processID2Modules .
-
-				processID2Modules.insert(processID, std::set<Module*, ModuleSortCriterion>());
-				
-				processID2Modules.insertValueItemWithKey(processID, module);	//not overwrited
-
-				EventProcess::processID2ModuleAddressPair.insert
-				(processID, std::make_pair(baseAddress, baseAddress + moduleSize));
-			}
-            //===============================================================
-
-            if(Filter::filteredImageFile.count(imageFileName) == 0){
-//                std::cout<< processID <<" ,imageName:"<<imageFileName<<"  BaseAddress:"<< baseAddress<<std::endl;
-                std::set<MyAPI*, MyAPISortCriterion> apis;
-                Filter::filteredImageFile.insert(imageFileName);
-                int status = EventImage::getAPIsFromFile(imageFileName, apis);
-
-                if (status == STATUS_SUCCESS) {
-                    //std::cout << currentImage << "  " << apis.size() << std::endl;
-                    EventImage::modulesName2APIs.insert(
-                            std::map <std::string, std::set<MyAPI*, MyAPISortCriterion> >::value_type(imageFileName, apis)
-                    );
-                }
-            }
-            //===============================================================
-		}
-		else	//find moduleSet mapping with the processID, do nothing.
-		{
-			delete module;
-		}
-			
-		break;
-	}
-	default:
-		break;
-	}
-
+    switch (getEventIdentifier()->getOpCode()) {
+        case IMAGEUNLOAD: {
+            auto process = processID2Modules.find(pid);
+            if (process != processID2Modules.end())
+                process->second.erase(address);
+            break;
+        }
+        case IMAGELOAD:
+        case IMAGEDCSTART: {
+            if (!length || length > UINT64_MAX - address)
+                break;
+            auto& modules = processID2Modules[pid];
+            modules.erase(address);
+            modules.emplace(address, Module(address, address + length, path));
+            break;
+        }
+    }
 }
 
+
+namespace {
+// behaviour scope: keep stacks on lifecycle / create / write / delete / rename /
+// connect events, but not on every Read/Write byte or Send/Recv packet.
+bool g_behaviorStackScope = true;
+
+bool StackWanted(const GUID& guid, UCHAR opcode) {
+    if (!g_behaviorStackScope)
+        return true;
+    const DWORD provider = guid.Data1;
+    // Measured on Windows 11 26200: classic stack walking for FileIO/Registry/
+    // TCP events starves ETW itself (etw_lost hundreds of thousands) even at
+    // moderate rates. The default scope therefore only stacks process/thread/
+    // image lifecycle; --profile diagnostic restores the full set.
+    if (provider == FileGuid.Data1 || provider == RegistryGuid.Data1 ||
+        provider == TcpIpGuid.Data1 || provider == DiskIoGuid.Data1)
+        return false;
+    return true;   // process / thread / image
+}
+} // namespace
+
+void EventCallstack::SetStackScope(bool behaviorScope) {
+    g_behaviorStackScope = behaviorScope;
+}
+
+#define KELLECT_ADD_STACK(guid, op) \
+    do { if (StackWanted(guid, (UCHAR)(op))) \
+             callStackEvents[idx++] = { guid, (UCHAR)(op), { 0 } }; } while (0)
+
 //start tracing callstack configuration
-void EventCallstack::initCallStackTracing(TRACEHANDLE &SessionHandle) {
+ULONG EventCallstack::initCallStackTracing(TRACEHANDLE SessionHandle) {
 
     int idx = 0;
     CLASSIC_EVENT_ID callStackEvents[100]={};
 
     if(Filter::listenedEventsProviders.count(ProcessProvider)){
-        callStackEvents[idx++] = { ProcessGuid, 1,{ 0 }};   //start
-        callStackEvents[idx++] = { ProcessGuid, 2,{ 0 }};   //end
-        callStackEvents[idx++] = { ProcessGuid, 3,{ 0 }};   //dcstart
-        callStackEvents[idx++] = { ProcessGuid, 4,{ 0 }};   //dcend
+        KELLECT_ADD_STACK(ProcessGuid, 1);   //start
+        KELLECT_ADD_STACK(ProcessGuid, 2);   //end
+        KELLECT_ADD_STACK(ProcessGuid, 3);   //dcstart
+        KELLECT_ADD_STACK(ProcessGuid, 4);   //dcend
     }
     if(Filter::listenedEventsProviders.count(FileProvider)){
-        callStackEvents[idx++] = { FileGuid, 32,{ 0 }}; //filecreate
-        callStackEvents[idx++] = { FileGuid, 35,{ 0 }}; //filedelete
-        callStackEvents[idx++] = { FileGuid, 64,{ 0 }}; //create
-        callStackEvents[idx++] = { FileGuid, 67,{ 0 }}; //read
-        callStackEvents[idx++] = { FileGuid, 68,{ 0 }}; //write
-        callStackEvents[idx++] = { FileGuid, 70,{ 0 }}; //delete
-        callStackEvents[idx++] = { FileGuid, 72,{ 0 }}; //direnum
-        callStackEvents[idx++] = { FileGuid, 73,{ 0 }}; //flush
-        callStackEvents[idx++] = { FileGuid, 74,{ 0 }}; //Query
-        callStackEvents[idx++] = { FileGuid, 75,{ 0 }}; // control
-        callStackEvents[idx++] = { FileGuid, 71,{ 0 }}; //Rename
+        KELLECT_ADD_STACK(FileGuid, 32); //filecreate
+        KELLECT_ADD_STACK(FileGuid, 35); //filedelete
+        KELLECT_ADD_STACK(FileGuid, 64); //create
+        KELLECT_ADD_STACK(FileGuid, 67); //read
+        KELLECT_ADD_STACK(FileGuid, 68); //write
+        KELLECT_ADD_STACK(FileGuid, 70); //delete
+        KELLECT_ADD_STACK(FileGuid, 72); //direnum
+        KELLECT_ADD_STACK(FileGuid, 73); //flush
+        KELLECT_ADD_STACK(FileGuid, 74); //Query
+        KELLECT_ADD_STACK(FileGuid, 75); // control
+        KELLECT_ADD_STACK(FileGuid, 71); //Rename
     }
     if(Filter::listenedEventsProviders.count(DiskProvider)){
-        callStackEvents[idx++] = { DiskIoGuid, 11,{ 0 }}; //write
-        callStackEvents[idx++] = { DiskIoGuid, 10,{ 0 }}; //read
+        KELLECT_ADD_STACK(DiskIoGuid, 11); //write
+        KELLECT_ADD_STACK(DiskIoGuid, 10); //read
     }
     if(Filter::listenedEventsProviders.count(ThreadProvider)){
-        callStackEvents[idx++] = { ThreadGuid, 1,{ 0 }};    //  start
-        callStackEvents[idx++] = { ThreadGuid, 2,{ 0 }};    //  end
-        callStackEvents[idx++] = { ThreadGuid, 3,{ 0 }};    //  dcstart
-        callStackEvents[idx++] = { ThreadGuid, 4,{ 0 }};    //  dcend
+        KELLECT_ADD_STACK(ThreadGuid, 1);    //  start
+        KELLECT_ADD_STACK(ThreadGuid, 2);    //  end
+        KELLECT_ADD_STACK(ThreadGuid, 3);    //  dcstart
+        KELLECT_ADD_STACK(ThreadGuid, 4);    //  dcend
     }
     if(Filter::listenedEventsProviders.count(TcpIpProvider)){
-        callStackEvents[idx++] = { TcpIpGuid, 10,{ 0 }};    //TcpIpSendIPV4
-        callStackEvents[idx++] = { TcpIpGuid, 11,{ 0 }};    //TcpIpRecvIPV4
-        callStackEvents[idx++] = { TcpIpGuid, 12,{ 0 }};    //TcpIpConnectIPV4
-        callStackEvents[idx++] = { TcpIpGuid, 13,{ 0 }};    //TcpIpDisconnectIPV4
-        callStackEvents[idx++] = { TcpIpGuid, 14,{ 0 }};    //TcpIpRetransmitIPV4
-        callStackEvents[idx++] = { TcpIpGuid, 15,{ 0 }};    //TcpIpAcceptIPV4
-        callStackEvents[idx++] = { TcpIpGuid, 16,{ 0 }};    //TcpIpReconnectIPV4
-        callStackEvents[idx++] = { TcpIpGuid, 18,{ 0 }};    //TcpIpTCPCopyIPV4
+        KELLECT_ADD_STACK(TcpIpGuid, 10);    //TcpIpSendIPV4
+        KELLECT_ADD_STACK(TcpIpGuid, 11);    //TcpIpRecvIPV4
+        KELLECT_ADD_STACK(TcpIpGuid, 12);    //TcpIpConnectIPV4
+        KELLECT_ADD_STACK(TcpIpGuid, 13);    //TcpIpDisconnectIPV4
+        KELLECT_ADD_STACK(TcpIpGuid, 14);    //TcpIpRetransmitIPV4
+        KELLECT_ADD_STACK(TcpIpGuid, 15);    //TcpIpAcceptIPV4
+        KELLECT_ADD_STACK(TcpIpGuid, 16);    //TcpIpReconnectIPV4
+        KELLECT_ADD_STACK(TcpIpGuid, 18);    //TcpIpTCPCopyIPV4
 
-        callStackEvents[idx++] = { TcpIpGuid, 26,{ 0 }};    //TcpIpSendIPV6
-        callStackEvents[idx++] = { TcpIpGuid, 27,{ 0 }};    //TcpIpRecvIPV6
-        callStackEvents[idx++] = { TcpIpGuid, 28,{ 0 }};    //TcpIpConnectIPV6
-        callStackEvents[idx++] = { TcpIpGuid, 29,{ 0 }};    //TcpIpDisconnectIPV6
-        callStackEvents[idx++] = { TcpIpGuid, 30,{ 0 }};    //TcpIpRetransmitIPV6
-        callStackEvents[idx++] = { TcpIpGuid, 31,{ 0 }};    //TcpIpAcceptIPV6
-        callStackEvents[idx++] = { TcpIpGuid, 32,{ 0 }};    //TcpIpReconnectIPV6
-        callStackEvents[idx++] = { TcpIpGuid, 34,{ 0 }};    //TcpIpTCPCopyIPV6
+        KELLECT_ADD_STACK(TcpIpGuid, 26);    //TcpIpSendIPV6
+        KELLECT_ADD_STACK(TcpIpGuid, 27);    //TcpIpRecvIPV6
+        KELLECT_ADD_STACK(TcpIpGuid, 28);    //TcpIpConnectIPV6
+        KELLECT_ADD_STACK(TcpIpGuid, 29);    //TcpIpDisconnectIPV6
+        KELLECT_ADD_STACK(TcpIpGuid, 30);    //TcpIpRetransmitIPV6
+        KELLECT_ADD_STACK(TcpIpGuid, 31);    //TcpIpAcceptIPV6
+        KELLECT_ADD_STACK(TcpIpGuid, 32);    //TcpIpReconnectIPV6
+        KELLECT_ADD_STACK(TcpIpGuid, 34);    //TcpIpTCPCopyIPV6
 
     }
     if(Filter::listenedEventsProviders.count(ImageProvider)){
-        callStackEvents[idx++] = { ImageLoadGuid, 10,{ 0 }};    //imagheload
-        callStackEvents[idx++] = { ImageLoadGuid, 2,{ 0 }};    //imageunload
-        callStackEvents[idx++] = { ImageLoadGuid, 3,{ 0 }};    //imagedcstart
-        callStackEvents[idx++] = { ImageLoadGuid, 4,{ 0 }};    //imagedcend
+        KELLECT_ADD_STACK(ImageLoadGuid, 10);    //imagheload
+        KELLECT_ADD_STACK(ImageLoadGuid, 2);    //imageunload
+        KELLECT_ADD_STACK(ImageLoadGuid, 3);    //imagedcstart
+        KELLECT_ADD_STACK(ImageLoadGuid, 4);    //imagedcend
     }
     if(Filter::listenedEventsProviders.count(RegistryProvider)){
-        callStackEvents[idx++] = { RegistryGuid, 10,{ 0 }}; //RegistryCreate
-        callStackEvents[idx++] = { RegistryGuid, 11,{ 0 }}; //RegistryOpen
-        callStackEvents[idx++] = { RegistryGuid, 12,{ 0 }}; //RegistryDelete
-        callStackEvents[idx++] = { RegistryGuid, 13,{ 0 }}; //RegistryQuery
-        callStackEvents[idx++] = { RegistryGuid, 14,{ 0 }}; //RegistrySetValue
-        callStackEvents[idx++] = { RegistryGuid, 15,{ 0 }}; //RegistryDeleteValue
-        callStackEvents[idx++] = { RegistryGuid, 16,{ 0 }}; //RegistryQueryValue
-        callStackEvents[idx++] = { RegistryGuid, 17,{ 0 }}; //RegistryEnumerateKey
-        callStackEvents[idx++] = { RegistryGuid, 22,{ 0 }}; //RegistryKCBCreate
-        callStackEvents[idx++] = { RegistryGuid, 23,{ 0 }}; //RegistryKCBDelete
-        callStackEvents[idx++] = { RegistryGuid, 27,{ 0 }}; //RegistryClose
+        KELLECT_ADD_STACK(RegistryGuid, 10); //RegistryCreate
+        KELLECT_ADD_STACK(RegistryGuid, 11); //RegistryOpen
+        KELLECT_ADD_STACK(RegistryGuid, 12); //RegistryDelete
+        KELLECT_ADD_STACK(RegistryGuid, 13); //RegistryQuery
+        KELLECT_ADD_STACK(RegistryGuid, 14); //RegistrySetValue
+        KELLECT_ADD_STACK(RegistryGuid, 15); //RegistryDeleteValue
+        KELLECT_ADD_STACK(RegistryGuid, 16); //RegistryQueryValue
+        KELLECT_ADD_STACK(RegistryGuid, 17); //RegistryEnumerateKey
+        KELLECT_ADD_STACK(RegistryGuid, 22); //RegistryKCBCreate
+        KELLECT_ADD_STACK(RegistryGuid, 23); //RegistryKCBDelete
+        KELLECT_ADD_STACK(RegistryGuid, 27); //RegistryClose
     }
 
-	TraceSetInformation(SessionHandle, TraceStackTracingInfo, &callStackEvents, sizeof(callStackEvents));
+    if (!idx)
+        return ERROR_NOT_SUPPORTED;
+    return TraceSetInformation(SessionHandle, TraceStackTracingInfo, callStackEvents,
+                               idx * sizeof(callStackEvents[0]));
 }
 
-void  EventCallstack::parse() {
+void EventCallstack::parse() {
+    fillProcessInfo();
+    const auto process = EventImage::processID2Modules.find(getProcessID());
+    std::string calls;
+    char raw[64];
 
- 	int stackProcessID = getProcessID();
-  	std::string* callInfo = nullptr;
-	int callStackDepth = stackAddresses.size();
+    auto append = [&](const std::string& text) {
+        if (!calls.empty())
+            calls += ',';
+        calls += text;
+    };
 
-    fillProcessInfo(); //fill parentProcess and process Information
+    if (process != EventImage::processID2Modules.end()) {
+        const auto& modules = process->second;
+        for (auto address : stackAddresses) {
+            auto next = modules.upper_bound(address);
+            if (next == modules.begin()) {
+                snprintf(raw, sizeof(raw), "0x%llx",
+                         static_cast<unsigned long long>(address));
+                append(raw);
+                continue;
+            }
+            const Module& module = std::prev(next)->second;
+            if (address >= module.getAddressEnd()) {
+                snprintf(raw, sizeof(raw), "0x%llx",
+                         static_cast<unsigned long long>(address));
+                append(raw);
+                continue;
+            }
 
-	if (callStackDepth>0) {		
+            const auto moduleName = module.getModuleName();
+            const ULONG64 rva = address - module.getAddressBegin();
+            snprintf(raw, sizeof(raw), "+0x%llx",
+                     static_cast<unsigned long long>(rva));
 
-        CallStackIdentifier tempCallStackIdentifier(callStackDepth, stackAddresses);
-		auto rec = callStackRecord.find(tempCallStackIdentifier);
-		if (rec != callStackRecord.end()) {			//this callstack has been parsed before and stored in callStackRecord, just reused it
-			callInfo = rec->second;
-		}
-		else {
-			auto moduleSet = EventImage::processID2Modules.find(stackProcessID);		//pass value, thread safe
-			if (moduleSet != EventImage::processID2Modules.end() && moduleSet->second.size() != 0) {
-                ULONG64 currentStackAddress;
-                ULONG64 currentModuleBaseAddress;
-                ULONG64 rvaStackAddress;
-                std::string moduleName;
-                Module tempStackAddressModule;
-                MyAPI tempAPI;
-                //MyAPI* targetAPI;
-                std::set<MyAPI *, MyAPISortCriterion> apis;
-                int stackIdx = 0;    //stacks index
-                std::vector<std::string> calls;
+            // Behaviour scope = limited parsing: module + RVA only. No PE
+            // export walk, no PDB, and never drop the stack when a symbol is
+            // unavailable. diagnostic/full still resolves API names.
+            if (g_behaviorStackScope) {
+                append(moduleName + raw);
+                continue;
+            }
 
-                auto moduleSetEnd = moduleSet->second.end();
-                auto apisEnd = EventImage::modulesName2APIs.end();
-
-                //if (moduleSet->second.size() != 0){}
-                while (stackIdx < callStackDepth) {
-
-                    currentStackAddress = stackAddresses[stackIdx++];
-                    tempStackAddressModule = Module(currentStackAddress);
-
-                    //look up module in current process_moudle map, searched module must match the eauql: module.endAddr()>currentStackAddress>module.beginAddr
-                    //auto targetModule = std::find_if(EventImage::usedModuleSet.begin(), EventImage::usedModuleSet.end(), EventCallstack::find_by_address(currentStackAddress));
-                    //auto targetModule = std::find_if(moduleSet.begin(), moduleSet.end(), EventCallstack::find_by_address(currentStackAddress));
-
-                    //find the first module which baseAddress larger than currentStackAddress
-                    auto targetModuleIter = moduleSet->second.lower_bound(&tempStackAddressModule);
-                    /*
-                    get the target module.because the values of stackAdresses are all larger than the modules'set baseAddress,
-                    so --targetModuleIter is valid.
-                    */
-                    if (targetModuleIter == moduleSetEnd ||--targetModuleIter == moduleSetEnd) continue;
-
-                    moduleName = (*targetModuleIter)->getModuleName();      //get the target module name to fetch correlate apis.
-                    currentModuleBaseAddress = (*targetModuleIter)->getAddressBegin();
-                    //get apis
-                    auto apisTarget = EventImage::modulesName2APIs.find(moduleName);
-
-                    if (apisTarget != apisEnd && apisTarget->second.size() != 0) {
-                        rvaStackAddress = currentStackAddress - currentModuleBaseAddress;
-                        tempAPI = MyAPI(rvaStackAddress);
-
-                        auto targetAPIIter = apisTarget->second.lower_bound(&tempAPI);
-
-                        //in case targetAPIIter==apisTarget->second.begin(), so --targetAPIIter will be an end() and unreference it is invalid.
-                        if (targetAPIIter == apisTarget->second.end() ||--targetAPIIter == apisTarget->second.end()) {
-                            continue;
-                        }
-
-                        calls.push_back(moduleName + ":" + (*targetAPIIter)->getAPIName());
-                        //calls.push_back(moduleName + ":" + (*targetAPIIter)->getAPIName() + ":" + std::to_string(rvaStackAddress));
-
-                        //only parse top stack call
-                        //break;
-                    }
-                }
-
-				int i = 0;
-				callInfo = new std::string();	//init callInfo
-				for (auto c : calls) {
-					if (i++ != 0)	callInfo->append(",");
-					callInfo->append(c);
-				}
-
-				//record each callstackinfo which maybe reused later.
-                //use priority_queue to dequeue callstack with low frequency used?
-                if(callStackRecordNum.load()<2000){
-                    callStackRecord[tempCallStackIdentifier] =callInfo;
-                    callStackRecordNum.fetch_add(1);
-                }else{
-                    auto begin = callStackRecord.begin();
-                    delete begin->second;
-
-                    callStackRecord.erase(begin->first);
-                    callStackRecord[tempCallStackIdentifier] =callInfo;
-                    callStackRecordNum--;
-                }
-
-//                std::cout<<"addressSize:"<<stackAddresses.size()<<"callsSize:"<<calls.size() <<std::endl;
-//				std::cout << *callInfo << std::endl << std::endl;
-			}
+            std::unique_lock<std::mutex> lock(EventImage::modulesApiMutex);
+            const auto exports = EventImage::modulesName2APIs.find(moduleName);
+            if (exports == EventImage::modulesName2APIs.end()) {
+                lock.unlock();
+                if (g_adaptiveExports && Filter::parsedApiImage.size() < 4096 &&
+                    !Filter::parsedApiImage.count(moduleName) &&
+                    EventImage::enqueueModuleApis(moduleName))
+                    Filter::parsedApiImage.insert(moduleName);
+                append(moduleName + raw);
+                continue;
+            }
+            const auto& apis = exports->second;
+            MyAPI rvaKey(rva);
+            auto after = apis.upper_bound(&rvaKey);
+            if (after == apis.begin()) {
+                append(moduleName + raw);
+                continue;
+            }
+            append(moduleName + ":" + (*std::prev(after))->getAPIName());
         }
+    }
 
-        if(callInfo == nullptr || callInfo->empty())   //TODO ,need to fix the problem, callstack maybe empty?
-            setValueableEvent(false);
-        else
-            setProperty("stackInfo", new dataType(callInfo==nullptr?"NoInfo":*callInfo));
-
-    }else
-        setValueableEvent(false);
-
-//    delete callInfo;
+    if (calls.empty()) {
+        // Keep the event even if no frame resolved; raw addresses are evidence.
+        for (auto address : stackAddresses) {
+            snprintf(raw, sizeof(raw), "0x%llx",
+                     static_cast<unsigned long long>(address));
+            append(raw);
+        }
+    }
+    if (!calls.empty())
+        setProperty("stackInfo", new dataType(calls));
 }
 
 void  EventUnImportant::parse() {
@@ -689,7 +686,10 @@ void  EventUnImportant::parse() {
 
 void  EventProcess::parse() {
 
-	ULONG64 pid = getProperty(ProcessId)->getULONG64();
+	dataType* pidProp = getProperty(ProcessId);
+	if (!pidProp)
+		return;
+	ULONG64 pid = pidProp->getULONG64();
 	setProcessID(pid);
 
 	switch (getEventIdentifier()->getOpCode())
@@ -705,7 +705,10 @@ void  EventProcess::parse() {
 		//blacklist its PID so its later file/registry/... events die at firstFilter,
 		//and drop this ProcessStart event itself
 		if (Filter::isKellectFamilyImage(processID2Name[pid].c_str())) {
-			Filter::filteredProcessID.insert(static_cast<int>(pid));
+            {
+                std::lock_guard<std::mutex> lock(Filter::processIdMutex);
+                Filter::filteredProcessID.insert(static_cast<int>(pid));
+            }
 			setValueableEvent(false);
 			break;
 		}
@@ -715,18 +718,12 @@ void  EventProcess::parse() {
 		// Guard: permanent entries {0,4,128,self} are never released.
 		if (pid != 0 && pid != 4 && pid != 128 &&
             pid != (ULONG64)GetCurrentProcessId()) {
+            std::lock_guard<std::mutex> lock(Filter::processIdMutex);
             Filter::filteredProcessID.erase(static_cast<int>(pid));
         }
 
-		if (EventImage::processID2Modules.count(pid) == 0)  {
-
-            //for readwritemap
-			EventImage::processID2Modules.insert(pid, std::set<Module*, ModuleSortCriterion>());
-
-			//record min and max module begin address to filter callstack addresses
-            //for readwritemap
-            EventProcess::processID2ModuleAddressPair.insert(pid, std::make_pair(initMinAddress, initMaxAddress));
-		}
+        if (getEventIdentifier()->getOpCode() == PROCESSSTART)
+            EventImage::processID2Modules.erase(static_cast<int>(pid));
 
 		break;
 	}
@@ -737,14 +734,15 @@ void  EventProcess::parse() {
 		//processID2Name.erase(processID);
 
 		//process end ,clear correlate modules set
-		EventImage::processID2Modules.erase(pid);
-		processID2ModuleAddressPair.erase(pid);
+        if (getEventIdentifier()->getOpCode() == PROCESSEND)
+            EventImage::processID2Modules.erase(static_cast<int>(pid));
 
 		// PID reuse cleanup (plan A): release this PID from the dynamic filter
 		// blacklist so a future process reusing the PID isn't silently dropped.
 		// Guard: permanent entries {0,4,128,self} are never released.
 		if (pid != 0 && pid != 4 && pid != 128 &&
             pid != (ULONG64)GetCurrentProcessId()) {
+            std::lock_guard<std::mutex> lock(Filter::processIdMutex);
             Filter::filteredProcessID.erase(static_cast<int>(pid));
         }
 
@@ -764,7 +762,8 @@ void  EventProcess::parse() {
         replaceCharacterFromProperty(CommandLine,'\n'," ");
 
         //insert the mapping of pid and ppid
-		ULONG64 ppid = getProperty(ParentId)->getULONG64();
+		dataType* parentProp = getProperty(ParentId);
+		ULONG64 ppid = parentProp ? parentProp->getULONG64() : 0;
         EventProcess::processID2ParentProcessID[pid] = ppid;    //set ppid to each pid
         setParentProcessID(ppid);
 
@@ -791,18 +790,23 @@ void  EventRegistry::parse() {
         case REG_KCBCREATE:{
 
             removeQuotesFromProperty(KeyName);
-            std::string keyName = getProperty(KeyName)->getString();
-            ULONG64 keyHandle = getProperty(KeyHandle)->getULONG64();
+            dataType* nameProp = getProperty(KeyName);
+            dataType* handleProp = getProperty(KeyHandle);
+            if (!nameProp || !handleProp)
+                break;
+            std::string keyName = nameProp->getString();
+            ULONG64 keyHandle = handleProp->getULONG64();
             keyHandle2KeyName.insertOverwirte(keyHandle,keyName);
             break;
         }
         case REG_KCBRUNDOWNBEGIN:{
-            // Session-start registry-state dump (same suppression rationale as
-            // EventFile's RUNDOWN): feeds the keyHandle->name map only.
+            // Session-start registry-state dump: feeds the keyHandle->name map.
             removeQuotesFromProperty(KeyName);
-            std::string keyName = getProperty(KeyName)->getString();
-            ULONG64 keyHandle = getProperty(KeyHandle)->getULONG64();
-            keyHandle2KeyName.insertOverwirte(keyHandle,keyName);
+            dataType* nameProp = getProperty(KeyName);
+            dataType* handleProp = getProperty(KeyHandle);
+            if (nameProp && handleProp)
+                keyHandle2KeyName.insertOverwirte(handleProp->getULONG64(),
+                                                  nameProp->getString());
             setValueableEvent(false);
             break;
         }
@@ -874,8 +878,10 @@ void  EventPerfInfo::parse() {
     fillProcessInfo(); //fill parentProcess and process Information
 	//std::cout << Tools::DecInt2HexStr(getProperty(BaseEvent::SysCallAddress).getULONG64());
 	if (ei->getOpCode() == 51) {
-
-		ULONG64 sysCallAddress = getProperty(SysCallAddress)->getULONG64();
+		dataType* sysProp = getProperty(SysCallAddress);
+		if (!sysProp)
+			return;
+		ULONG64 sysCallAddress = sysProp->getULONG64();
 		std::string* sysCallName = nullptr;
 		std::map<ULONG64, std::string*>::iterator it = systemCallMapUsed.find(sysCallAddress);
 
@@ -932,7 +938,12 @@ void  EventTCPIP::parse() {
             }
         }
         default:
-            pid = getProperty(PID)->getULONG64();
+            {
+                dataType* pidProp = getProperty(PID);
+                if (!pidProp)
+                    break;
+                pid = pidProp->getULONG64();
+            }
             setProcessID(pid);
             break;
     }
@@ -1111,51 +1122,75 @@ entityObject["@type"]="com.tags.Event";*/
 return entityObject;
 }
 STATUS getCommonJsonNoLib(BaseEvent* event, std::string* sJson) {
-if (!event) return STATUS_FAIL;
-std::string eventName = event->getEventIdentifier()->getEventName().c_str();
-ULONG64 ProviderID = event->getEventIdentifier()->getProviderID();
-int OpCode = event->getEventIdentifier()->getOpCode();
-bool flag = false;
-sJson->append(
-        "{\"Event\":\"" + Tools::jsonEscape(eventName) +
-        "\",\"PID\":" + std::to_string(event->getProcessID()) +
-        ",\"PName\":\"" + Tools::jsonEscape(event->getProcessName()) +
-        "\",\"PPID\":" + std::to_string(event->getParentProcessID()) +
-        ",\"PPName\":\"" + Tools::jsonEscape(event->getParentProcessName()) +
-        "\",\"TID\":" + std::to_string(event->getThreadID()) +
-        ",\"TimeStamp\":" + std::to_string(event->getTimeStamp()) +
-        ",\"Host-UUID\":\"" + Initializer::getUUID() + "\"" +
-        ",\"args\":{");
+    if (!event || sJson == nullptr) return STATUS_FAIL;
 
-//event->getProperty
-for (auto pty : event->getProperties()) {
+    // Append-only serialisation: no temporary std::string per field
+    // (std::to_string / jsonEscape used to allocate several times per event).
+    sJson->reserve(sJson->size() + 256);
 
-    if (pty.second) {
+    sJson->append("{\"Event\":\"");
+    Tools::appendJsonEscaped(*sJson, event->getEventIdentifier()->getEventName());
 
-        if (flag) {
-            sJson->append(",");
-        }
+    sJson->append("\",\"PID\":");
+    Tools::appendInt(*sJson, event->getProcessID());
 
-        flag = true;
+    sJson->append(",\"PName\":\"");
+    Tools::appendJsonEscaped(*sJson, event->getProcessName());
+
+    sJson->append("\",\"PPID\":");
+    Tools::appendInt(*sJson, event->getParentProcessID());
+
+    sJson->append(",\"PPName\":\"");
+    Tools::appendJsonEscaped(*sJson, event->getParentProcessName());
+
+    sJson->append("\",\"TID\":");
+    Tools::appendInt(*sJson, event->getThreadID());
+
+    sJson->append(",\"TimeStamp\":");
+    Tools::appendUnsigned(*sJson, static_cast<unsigned long long>(event->getTimeStamp()));
+
+    sJson->append(",\"Host-UUID\":\"");
+    Tools::appendJsonEscaped(*sJson, Initializer::getUUID());
+
+    sJson->push_back('"');
+    if (event->getRawSequence()) {
+        sJson->append(",\"raw_ref\":{\"run_id\":\"");
+        sJson->append(kellect::evidence::RunId());
+        sJson->append("\",\"source\":\"kernel_etw\",\"raw_seq\":");
+        Tools::appendUnsigned(*sJson, event->getRawSequence());
+        sJson->push_back('}');
+    }
+    sJson->append(",\"args\":{");
+
+    bool first = true;
+    for (auto& pty : event->getProperties()) {
+        if (pty.second == nullptr) continue;
+
+        if (!first) sJson->push_back(',');
+        first = false;
+
+        sJson->push_back('"');
+        sJson->append(pty.first);
+        sJson->append("\":");
+
         if (pty.second->getIsString()) {
-            std::string argValue = pty.second->getString();
-            sJson->append("\"" + pty.first + "\":\"" +
-                          Tools::jsonEscape(argValue) + "\"");
+            sJson->push_back('"');
+            Tools::appendJsonEscaped(*sJson, pty.second->getString());
+            sJson->push_back('"');
         }
         else {
-            sJson->append("\"" + pty.first + "\":" +
-                          std::to_string(pty.second->getULONG64()));
+            Tools::appendUnsigned(*sJson,
+                                  static_cast<unsigned long long>(pty.second->getULONG64()));
         }
+
+        delete pty.second;   // the event owns its property values
     }
 
-    delete pty.second;		//delete properies
+    sJson->append("}}");
+    event->setPropertiesDeleted(true);   // values freed above
+    return STATUS_SUCCESS;
 }
 
-sJson->append("}}");
-event->setPropertiesDeleted(true);	//set properies deleted true
-
-return STATUS_SUCCESS;
-}
 STATUS TranstoWdm(BaseEvent* event, std::string* sJson){
 if (!event||!sJson){
     return STATUS_FAIL;

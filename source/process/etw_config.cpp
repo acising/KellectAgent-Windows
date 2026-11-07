@@ -1,470 +1,413 @@
 #include <windows.h>
 #include <initguid.h>
-#include <wbemidl.h>
-#include <wmistr.h>
-#include <time.h>
-#include <tdh.h> //PROCESS_TRACE_MODE_REAL_TIME | PROCESS_TRACE_MODE_EVENT_RECORD
-#include <strsafe.h>
-#include <fstream>
-#include <iostream>
-#include <chrono>
-#include <thread>
 #include <evntrace.h>
-#include <cstdlib>
 #include "process/etw_config.h"
 #include "process/event_parse.h"
-#include "process/multithread_configuration.h"
-#define MAXIMUM_SESSION_NAME 1024
-extern VOID WINAPI GetPropertiesByTdh(PEVENT_RECORD pEvent);
+
+#include <array>
+#include <atomic>
+#include <algorithm>
+#include <iostream>
+#include <mutex>
+#include <thread>
+
+#include "runtime/collector.h"
+#include "runtime/evidence.h"
+#include "tools/stats.h"
 
 namespace {
-// Stop a session by logger name with a self-contained properties buffer
-// (ControlTrace accepts sessionHandle=0 when the logger name is given).
-void stopSessionByName(const char* loggerName) {
-    const size_t size = sizeof(EVENT_TRACE_PROPERTIES) + sizeof(WCHAR);
-    EVENT_TRACE_PROPERTIES* props = (EVENT_TRACE_PROPERTIES*)calloc(size, 1);
-    if (!props) return;
-    props->Wnode.BufferSize = (ULONG)size;
-    props->LoggerNameOffset = sizeof(EVENT_TRACE_PROPERTIES);
-    ControlTraceA((TRACEHANDLE)0, loggerName, props, EVENT_TRACE_CONTROL_STOP);
-    free(props);
+
+using kellect::evidence::Source;
+
+struct TraceProperties {
+    EVENT_TRACE_PROPERTIES value{};
+    wchar_t loggerName[1024]{};
+    wchar_t logfileName[MAX_PATH]{};
+};
+
+struct Session {
+    TRACEHANDLE handle = 0;
+    TraceProperties properties;
+};
+
+std::mutex sessionMutex;
+std::atomic<bool> g_consumerOpened{ false };
+std::array<Session, 2> sessions;
+
+const wchar_t* LoggerName(Source source) {
+    return source == Source::Kernel ? KERNEL_LOGGER_NAMEW : L"MyTrace";
 }
 
-// Console Ctrl+C/Break handler (registered for GUI-hosted runs): stopping the
-// session unblocks ProcessTrace, so the normal cleanup path (ControlTrace stop
-// + properties free in mainSessionConfig/subSessionConfig) runs and the
-// process exits naturally. Without this, killing the process leaves the NT
-// Kernel Logger active and the next start fights over it (StartTrace 183).
-BOOL WINAPI consoleCtrlHandler(DWORD ctrlType) {
-    switch (ctrlType) {
+Session& SessionFor(Source source) {
+    return sessions[static_cast<size_t>(source)];
+}
+
+ULONG StopSessionLocked(Source source) {
+    auto& session = SessionFor(source);
+    if (!session.handle)
+        return ERROR_SUCCESS;
+    auto& result = kellect::evidence::Status(source);
+    auto& props = session.properties.value;
+    result.stop = ControlTraceW(session.handle, nullptr, &props, EVENT_TRACE_CONTROL_STOP);
+    if (result.stop == ERROR_SUCCESS) {
+        result.lossAvailable = true;
+        result.eventsLost = props.EventsLost;
+        result.logBuffersLost = props.LogBuffersLost;
+        result.realTimeBuffersLost = props.RealTimeBuffersLost;
+    }
+    if (result.stop == ERROR_SUCCESS || result.stop == ERROR_WMI_INSTANCE_NOT_FOUND ||
+        result.stop == ERROR_WMI_GUID_NOT_FOUND)
+        session.handle = 0;
+    else
+        std::cerr << "ControlTrace(stop) failed with " << result.stop << '\n';
+    return result.stop;
+}
+
+BOOL WINAPI ConsoleCtrlHandler(DWORD type) {
+    switch (type) {
         case CTRL_C_EVENT:
         case CTRL_BREAK_EVENT:
         case CTRL_CLOSE_EVENT:
         case CTRL_LOGOFF_EVENT:
         case CTRL_SHUTDOWN_EVENT:
-            stopSessionByName(KERNEL_LOGGER_NAME);
-            stopSessionByName("MyTrace");
-            return TRUE;    // handled: let the consumer thread unwind and exit
+            kellect::RequestStop();
+            return TRUE;
         default:
             return FALSE;
     }
 }
+
+void WINAPI ConsumeUser(PEVENT_RECORD event) {
+    EventParser::ConsumeUserEvent(event);
+}
+
+ULONG Consume(Source source) {
+    EVENT_TRACE_LOGFILEW logfile{};
+    logfile.LoggerName = const_cast<LPWSTR>(LoggerName(source));
+    logfile.EventRecordCallback = source == Source::Kernel ? EventParser::ConsumeEventMain : ConsumeUser;
+    logfile.ProcessTraceMode = PROCESS_TRACE_MODE_EVENT_RECORD | PROCESS_TRACE_MODE_REAL_TIME;
+    if (kellect::evidence::Active())
+        logfile.ProcessTraceMode |= PROCESS_TRACE_MODE_RAW_TIMESTAMP;
+
+    TRACEHANDLE consumer;
+    {
+        std::lock_guard<std::mutex> lock(sessionMutex);
+        if (!SessionFor(source).handle || kellect::IsStopRequested())
+            return ERROR_CANCELLED;
+        consumer = OpenTraceW(&logfile);
+        if (consumer == INVALID_PROCESSTRACE_HANDLE)
+            return GetLastError();
+    }
+    g_consumerOpened.store(true);
+    kellect::evidence::Status(source).pointerBytes = logfile.LogfileHeader.PointerSize;
+    std::cout << (source == Source::Kernel ? "Kernel" : "User")
+              << " ETW consumer ready." << std::endl;
+    const ULONG status = ProcessTrace(&consumer, 1, nullptr, nullptr);
+    CloseTrace(consumer);
+    g_consumerOpened.store(false);
+    return status;
+}
+
+ULONG RunSession(Source source, ULONG flags, const GUID& provider, ULONG keywords) {
+    const bool kernel = source == Source::Kernel;
+    auto& result = kellect::evidence::Status(source);
+    ULONG status = ERROR_SUCCESS;
+    TRACEHANDLE handle = 0;
+    ULONG deferredFlags = 0;
+    {
+        std::lock_guard<std::mutex> lock(sessionMutex);
+        if (kellect::IsStopRequested())
+            return ERROR_CANCELLED;
+        auto& session = SessionFor(source);
+        session.properties = {};
+        auto& props = session.properties.value;
+        props.Wnode.BufferSize = sizeof(TraceProperties);
+        props.Wnode.Flags = WNODE_FLAG_TRACED_GUID;
+        // Keep the kernel clock compatible with existing normalized output.
+        // Evidence-enabled user traces use system time for the same reason.
+        props.Wnode.ClientContext = kernel || kellect::evidence::Active() ? 2 : 1;
+        props.LoggerNameOffset = offsetof(TraceProperties, loggerName);
+        props.LogFileMode = EVENT_TRACE_REAL_TIME_MODE;
+        props.MinimumBuffers = 128;
+        props.MaximumBuffers = 512;   // adaptive controller can grow up to 2048
+        props.BufferSize = kernel ? 1024 : 5120;
+        props.FlushTimer = 1;
+        if (kernel) {
+            props.Wnode.Guid = SystemTraceControlGuid;
+            // Phase 1: only process/thread/TCPIP. The big DCStart/rundown
+            // providers (Image/Registry/File) are added after the consumer is
+            // attached, so their enumeration cannot overflow an unconsumed
+            // buffer at StartTrace time.
+            // Only Image rundown is deferred. File/Registry/TCP are enabled in
+            // phase 1 so no behaviour event class has an observation gap.
+            const ULONG kDeferred = EVENT_TRACE_FLAG_IMAGE_LOAD;
+            deferredFlags = flags & kDeferred;
+            const ULONG initialFlags = flags & ~kDeferred;
+            props.EnableFlags = initialFlags;
+            props.LogFileMode |= EVENT_TRACE_SYSTEM_LOGGER_MODE;
+            const auto& etl = kellect::evidence::KernelEtlPath();
+            if (!etl.empty()) {
+                props.LogFileNameOffset = offsetof(TraceProperties, logfileName);
+                std::copy(etl.begin(), etl.end(), session.properties.logfileName);
+                props.LogFileMode |= EVENT_TRACE_FILE_MODE_SEQUENTIAL;
+            }
+        }
+
+        // A previous collector/tool may still hold the singleton NT Kernel
+        // Logger. Stop it automatically once, then retry; a stale session from
+        // a crashed kellect is the common case.
+        for (int attempt = 0; attempt < 4; ++attempt) {
+            status = StartTraceW(&handle, LoggerName(source), &props);
+            if (status != ERROR_ALREADY_EXISTS)
+                break;
+            if (attempt == 0) {
+                TraceProperties stale{};
+                stale.value.Wnode.BufferSize = sizeof(TraceProperties);
+                stale.value.Wnode.Flags = WNODE_FLAG_TRACED_GUID;
+                stale.value.Wnode.Guid = SystemTraceControlGuid;
+                stale.value.LoggerNameOffset = offsetof(TraceProperties, loggerName);
+                std::copy(LoggerName(source), LoggerName(source) + wcslen(LoggerName(source)) + 1,
+                          stale.loggerName);
+                const ULONG stopped = ControlTraceW(0, LoggerName(source), &stale.value,
+                                                    EVENT_TRACE_CONTROL_STOP);
+                std::cout << "Stale NT Kernel Logger detected; auto-stop returned "
+                          << stopped << ", retrying StartTrace..." << std::endl;
+            }
+            if (attempt < 3)
+                Sleep(250);
+        }
+        result.start = status;
+        if (status != ERROR_SUCCESS) {
+            std::cerr << (kernel ? "Kernel" : "User") << " StartTrace failed with " << status;
+            if (status == ERROR_ALREADY_EXISTS)
+                std::cerr << ": NT Kernel Logger is already in use. Stop the other "
+                             "kellect/WPR/xperf/Defender kernel trace and retry "
+                             "(check: logman query -ets)";
+            std::cerr << '\n';
+            return status;
+        }
+        session.handle = handle;
+        result.clock = props.Wnode.ClientContext;
+        result.enabledFlags = props.EnableFlags;
+        result.bufferSizeKb = props.BufferSize;
+        result.minimumBuffers = props.MinimumBuffers;
+        result.maximumBuffers = props.MaximumBuffers;
+        result.flushSeconds = props.FlushTimer;
+        result.enable = ERROR_SUCCESS;
+
+        // ETW may silently lower the buffer size/count when the non-paged pool
+        // limit is hit. Query what was actually granted; a request that was not
+        // honoured is a common reason for large EventsLost.
+        TraceProperties actual{};
+        actual.value.Wnode.BufferSize = sizeof(TraceProperties);
+        actual.value.Wnode.Flags = WNODE_FLAG_TRACED_GUID;
+        actual.value.Wnode.Guid = SystemTraceControlGuid;
+        actual.value.LoggerNameOffset = offsetof(TraceProperties, loggerName);
+        std::copy(LoggerName(source), LoggerName(source) + wcslen(LoggerName(source)) + 1,
+                  actual.loggerName);
+        ULONG query = ControlTraceW(handle, LoggerName(source), &actual.value,
+                                    EVENT_TRACE_CONTROL_QUERY);
+        if (query != ERROR_SUCCESS) {
+            actual = TraceProperties{};
+            actual.value.Wnode.BufferSize = sizeof(TraceProperties);
+            actual.value.Wnode.Flags = WNODE_FLAG_TRACED_GUID;
+            actual.value.Wnode.Guid = SystemTraceControlGuid;
+            actual.value.LoggerNameOffset = offsetof(TraceProperties, loggerName);
+            std::copy(LoggerName(source), LoggerName(source) + wcslen(LoggerName(source)) + 1,
+                      actual.loggerName);
+            query = ControlTraceW(0, LoggerName(source), &actual.value,
+                                  EVENT_TRACE_CONTROL_QUERY);
+        }
+        if (query == ERROR_SUCCESS) {
+            std::cout << (kernel ? "ETW kernel" : "ETW user")
+                      << " session: flags=0x" << std::hex << actual.value.EnableFlags << std::dec
+                      << " buffer=" << actual.value.BufferSize << "KB"
+                      << " min=" << actual.value.MinimumBuffers
+                      << " max=" << actual.value.MaximumBuffers
+                      << " allocated=" << actual.value.NumberOfBuffers
+                      << " free=" << actual.value.FreeBuffers
+                      << " flush=" << actual.value.FlushTimer << "s" << std::endl;
+        } else {
+            std::cerr << "Warning: cannot query ETW session properties (" << query << ')\n';
+        }
+
+        if (kernel && Initializer::getListenCallStack()) {
+            result.stack = EventCallstack::initCallStackTracing(handle);
+            if (result.stack != ERROR_SUCCESS)
+                std::cerr << "TraceStackTracingInfo failed with " << result.stack << '\n';
+            else
+                std::cout << "callstack tracing: armed" << std::endl;
+        }
+        if (!kernel) {
+            ENABLE_TRACE_PARAMETERS options{};
+            options.Version = ENABLE_TRACE_PARAMETERS_VERSION_2;
+            if (Initializer::getListenCallStack() && kellect::evidence::Active())
+                options.EnableProperty = EVENT_ENABLE_PROPERTY_STACK_TRACE;
+            result.enable = EnableTraceEx2(handle, &provider, EVENT_CONTROL_CODE_ENABLE_PROVIDER,
+                                           TRACE_LEVEL_INFORMATION, keywords, 0, 0, &options);
+            if (options.EnableProperty != 0)
+                result.stack = result.enable;
+            status = result.enable;
+        }
+    }
+
+    ULONG consumeStatus = ERROR_SUCCESS;
+    std::thread consumerThread;
+    const bool twoPhase = kernel && deferredFlags != 0;
+    if (status == ERROR_SUCCESS && !kellect::IsStopRequested()) {
+        if (twoPhase) {
+            g_consumerOpened.store(false);
+            consumerThread = std::thread([&] { consumeStatus = Consume(source); });
+            for (int i = 0; i < 3000 && !g_consumerOpened.load() &&
+                            !kellect::IsStopRequested(); ++i)
+                Sleep(1);
+            if (!g_consumerOpened.load())
+                std::cerr << "Warning: ETW consumer was not ready before phase 2; "
+                             "flags update may still drop the first rundown\n";
+
+            // UPDATE requires a full properties buffer and, when Wnode.Guid is
+            // SystemTraceControlGuid, InstanceName must be KERNEL_LOGGER_NAME.
+            TraceProperties update{};
+            update.value.Wnode.BufferSize = sizeof(TraceProperties);
+            update.value.Wnode.Flags = WNODE_FLAG_TRACED_GUID;
+            update.value.Wnode.Guid = SystemTraceControlGuid;
+            update.value.LoggerNameOffset = offsetof(TraceProperties, loggerName);
+            update.value.LogFileMode = EVENT_TRACE_REAL_TIME_MODE;
+            update.value.EnableFlags = flags;
+            std::copy(LoggerName(source), LoggerName(source) + wcslen(LoggerName(source)) + 1,
+                      update.loggerName);
+            const ULONG updated = ControlTraceW(handle, LoggerName(source), &update.value,
+                                                EVENT_TRACE_CONTROL_UPDATE);
+            if (updated == ERROR_SUCCESS) {
+                result.enabledFlags = flags;
+                SessionFor(Source::Kernel).properties.value.EnableFlags = flags;
+                std::cout << "ETW phase 2: flags updated to 0x" << std::hex << flags
+                          << std::dec << " after consumer attach" << std::endl;
+            } else {
+                std::cerr << "Error: two-phase ETW flag update failed with " << updated
+                          << "; continuing with process/thread/tcpip only" << std::endl;
+            }
+
+            // Stay in the real-time collection loop until the user stops the
+            // collector or the consumer dies. Without this the function fell
+            // straight through to StopSession and the run lasted ~200 ms.
+            while (!kellect::IsStopRequested() && g_consumerOpened.load())
+                Sleep(20);
+        } else {
+            result.consume = Consume(source);
+            if (!kellect::IsStopRequested() || (result.consume != ERROR_WMI_INSTANCE_NOT_FOUND &&
+                    result.consume != ERROR_WMI_GUID_NOT_FOUND && result.consume != ERROR_CANCELLED))
+                status = result.consume;
+        }
+    }
+    {
+        std::lock_guard<std::mutex> lock(sessionMutex);
+        const ULONG stop = StopSessionLocked(source);
+        if (status == ERROR_SUCCESS)
+            status = stop;
+    }
+    if (consumerThread.joinable())
+        consumerThread.join();
+    if (twoPhase) {
+        result.consume = consumeStatus;
+        if (!kellect::IsStopRequested() || (consumeStatus != ERROR_WMI_INSTANCE_NOT_FOUND &&
+                consumeStatus != ERROR_WMI_GUID_NOT_FOUND && consumeStatus != ERROR_CANCELLED))
+            status = consumeStatus;
+    }
+    if (status != ERROR_SUCCESS)
+        std::cerr << (kernel ? "Kernel" : "User") << " ETW session failed with " << status << '\n';
+    return status;
+}
+
 } // namespace
 
-ETWConfiguration& ETWConfiguration::operator=(const ETWConfiguration& config) {
-
-    if (this == &config)
-    {
-        return *this;
-    }
-    enable_flag = config.enable_flag;
-    logfile_path = config.logfile_path;
-
-    return *this;
+void ETWConfiguration::StopSessions() {
+    std::lock_guard<std::mutex> lock(sessionMutex);
+    StopSessionLocked(Source::Kernel);
+    StopSessionLocked(Source::User);
 }
 
-PEVENT_TRACE_PROPERTIES ETWConfiguration::allocateTraceProperties(
-    _In_opt_ PWSTR LoggerName,
-    _In_opt_ PWSTR LogFileName,
-    _In_opt_ BOOLEAN isSysLogger,
-    _In_opt_ BOOLEAN isRealTimeSession){
+bool ETWConfiguration::QueryKernel(KernelBufferStats& stats) {
+    std::lock_guard<std::mutex> lock(sessionMutex);
+    auto& session = SessionFor(Source::Kernel);
+    if (!session.handle)
+        return false;
 
-    PEVENT_TRACE_PROPERTIES TraceProperties = nullptr;
-    ULONG BufferSize;
+    TraceProperties query{};
+    query.value.Wnode.BufferSize = sizeof(TraceProperties);
+    query.value.Wnode.Flags = WNODE_FLAG_TRACED_GUID;
+    query.value.Wnode.Guid = SystemTraceControlGuid;
+    query.value.LoggerNameOffset = offsetof(TraceProperties, loggerName);
+    const wchar_t* name = LoggerName(Source::Kernel);
+    std::copy(name, name + wcslen(name) + 1, query.loggerName);
 
-    // Allocate memory for the session properties. The memory must
-    // be large enough to include the log file name and session name,
-    // which get appended to the end of the session properties structure.
-    BufferSize = sizeof(EVENT_TRACE_PROPERTIES) +
-        (MAXIMUM_SESSION_NAME + MAX_PATH) * sizeof(WCHAR);
+    const ULONG status = ControlTraceW(session.handle, name, &query.value,
+                                       EVENT_TRACE_CONTROL_QUERY);
+    if (status != ERROR_SUCCESS)
+        return false;
 
-    TraceProperties = (PEVENT_TRACE_PROPERTIES)malloc(BufferSize);
-    if (TraceProperties == nullptr) {
-        wprintf(L"Unable to allocate %d bytes for properties structure.\n", BufferSize);
-        goto Exit;
-    }
-
-    //
-    // Set the session properties.
-    //
-
-    ZeroMemory(TraceProperties, BufferSize);
-    TraceProperties->Wnode.BufferSize = BufferSize;
-    TraceProperties->Wnode.ClientContext = 2; // //QPC clock resolution=1; systemtime=2 low accuracy,but can been translate to standard time 
-    TraceProperties->Wnode.Flags = WNODE_FLAG_TRACED_GUID;  //indicate that the structure contains event tracing information.
-
-    /*
-    EnableFlags is only valid for system loggers;the identifier of the system loggers are as follow
-    trace sessions that are started using the EVENT_TRACE_SYSTEM_LOGGER_MODE logger mode flag,
-    the KERNEL_LOGGER_NAME session name, the SystemTraceControlGuid session GUID, or the GlobalLoggerGuid session GUID.
-    */
-    if (isSysLogger) {
-        TraceProperties->Wnode.Guid = SystemTraceControlGuid;
-        TraceProperties->EnableFlags = this->enable_flag;
-    }
-
-    TraceProperties->LoggerNameOffset = sizeof(EVENT_TRACE_PROPERTIES);
-    TraceProperties->LogFileNameOffset = sizeof(EVENT_TRACE_PROPERTIES) + (MAXIMUM_SESSION_NAME * sizeof(WCHAR));
-
-    // Set the session properties. You only append the log file name
-    // to the properties structure; the StartTrace function appends the session name for you.
-
-    if (isRealTimeSession) {
-        TraceProperties->LogFileMode = EVENT_TRACE_REAL_TIME_MODE | EVENT_TRACE_SYSTEM_LOGGER_MODE;
-    }
-    else {
-        TraceProperties->LogFileMode = EVENT_TRACE_FILE_MODE_SEQUENTIAL | EVENT_TRACE_SYSTEM_LOGGER_MODE;
-        //StringCbCopy((LPWSTR)((char*)TraceProperties + TraceProperties->LogFileNameOffset), (logfile_path.length() + 1) * 2, logfile_path.c_str());
-    }
-
-    TraceProperties->MinimumBuffers = 100;   // 预留 100 个缓冲(内存下限)
-    TraceProperties->BufferSize = 1024;      // 每缓冲 1MB
-    TraceProperties->MaximumBuffers = 1024;  // 缓冲数上限
-    TraceProperties->FlushTimer = 1;         // 最长 1 秒强制刷给实时消费者(与系统默认一致,显式自文档)
-
-    if (LoggerName != nullptr) {
-        StringCchCopyW((LPWSTR)((PCHAR)TraceProperties + TraceProperties->LoggerNameOffset),
-            MAXIMUM_SESSION_NAME,
-            LoggerName);
-    }
-
-    if (LogFileName != nullptr) {
-        StringCchCopyW((LPWSTR)((PCHAR)TraceProperties + TraceProperties->LogFileNameOffset),
-            MAX_PATH,
-            LogFileName);
-    }
-
-Exit:
-    return TraceProperties;
+    stats.allocated = query.value.NumberOfBuffers;
+    stats.freeBuffers = query.value.FreeBuffers;
+    stats.maxBuffers = query.value.MaximumBuffers;
+    stats.eventsLost = query.value.EventsLost;
+    return true;
 }
 
-int ETWConfiguration::mainSessionConfig(bool real_time_switch) {
-start:
-    ULONG status = ERROR_SUCCESS;
-    TRACEHANDLE SessionHandle = 0;
-    EVENT_TRACE_PROPERTIES* mainSessionProperties = nullptr;
-    //PWSTR LoggerName = (PWSTR)L"MyTrace";
+bool ETWConfiguration::SetKernelMaximumBuffers(ULONG maximumBuffers) {
+    std::lock_guard<std::mutex> lock(sessionMutex);
+    auto& session = SessionFor(Source::Kernel);
+    if (!session.handle)
+        return false;
 
-    std::cout << "Step 1: Allocating trace properties..." << std::endl;
-    mainSessionProperties = allocateTraceProperties(NULL, NULL,true);
-    if (mainSessionProperties == nullptr) {
-        std::cerr << "Failed to allocate trace properties" << std::endl;
-        return 1;
+    TraceProperties update{};
+    update.value.Wnode.BufferSize = sizeof(TraceProperties);
+    update.value.Wnode.Flags = WNODE_FLAG_TRACED_GUID;
+    update.value.Wnode.Guid = SystemTraceControlGuid;
+    update.value.LoggerNameOffset = offsetof(TraceProperties, loggerName);
+    update.value.LogFileMode = EVENT_TRACE_REAL_TIME_MODE;
+    update.value.EnableFlags = session.properties.value.EnableFlags;
+    update.value.MaximumBuffers = maximumBuffers;
+    const wchar_t* name = LoggerName(Source::Kernel);
+    std::copy(name, name + wcslen(name) + 1, update.loggerName);
+
+    const ULONG status = ControlTraceW(session.handle, name, &update.value,
+                                       EVENT_TRACE_CONTROL_UPDATE);
+    if (status == ERROR_SUCCESS) {
+        session.properties.value.MaximumBuffers = maximumBuffers;
+        return true;
     }
-
-    std::cout << "Step 2: Starting trace session..." << std::endl;
-    // Create the trace session.
-    status = StartTrace(&SessionHandle, KERNEL_LOGGER_NAME, mainSessionProperties);
-
-    if (ERROR_SUCCESS != status)
-    {
-        std::cerr << "StartTrace failed with error: " << status << std::endl;
-        if (ERROR_ALREADY_EXISTS == status)
-        {
-            std::cout << "Kernel session already exists, stopping it..." << std::endl;
-            status = ControlTrace(SessionHandle, KERNEL_LOGGER_NAME, mainSessionProperties, EVENT_TRACE_CONTROL_STOP);
-            std::cout << "Restarting the NT Kernel Logger..." << std::endl;
-            goto start;
-        }
-
-        std::cerr << "StartTrace failed with %lu" << status << std::endl;
-        goto cleanup;
-    }
-
-    std::cout << "Step 3: Trace session started successfully!" << std::endl;
-    std::cout << "Press any key to end trace session..\n\n " << std::endl;
-    if (real_time_switch) {
-        //enable callstack trace
-        if (Initializer::getListenCallStack()) {
-            std::cout << "Step 4: Initializing callstack tracing..." << std::endl;
-            EventCallstack::initCallStackTracing(SessionHandle);
-        }
-
-        std::cout << "Step 5: Setting up event consumer..." << std::endl;
-        SetupEventConsumer((LPWSTR)KERNEL_LOGGER_NAME,TRUE);
-
-    }else {
-        std::cout << "Step 4: Waiting for user input..." << std::endl;
-        getchar();
-    }
-
-cleanup:
-
-    std::cout << "Step 6: Cleaning up resources..." << std::endl;
-    if (SessionHandle)
-    {
-        status = ControlTrace(SessionHandle, KERNEL_LOGGER_NAME, mainSessionProperties, EVENT_TRACE_CONTROL_STOP);
-
-        // 4201(ERROR_WMI_INSTANCE_NOT_FOUND)/4200(ERROR_WMI_GUID_NOT_FOUND):
-        // 会话已被控制台处理器先行停掉(优雅停止的正常双停),不算失败。
-        // 两码别记反:4201 是 INSTANCE、4200 是 GUID(SDK winerror.h 实测)
-        if (ERROR_SUCCESS != status &&
-            status != ERROR_WMI_INSTANCE_NOT_FOUND &&
-            status != ERROR_WMI_GUID_NOT_FOUND)
-        {
-            std::cerr << "ControlTrace(stop) failed with " << status << std::endl;
-        }
-    }
-
-    if (mainSessionProperties) {
-        free(mainSessionProperties);
-        std::cout << "Step 7: Trace properties freed" << std::endl;
-    }
-
-    // 通知输出线程做 final flush 后退出(ETW 已停,管道内事件已全部解析完入队)
-    EventParser::requestOutputStop();
-    // 给输出线程最多 1 秒完成 final flush(detach 线程无法 join,
-    // 短暂等待让 flush 大概率完成后再返回)
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-
-    std::cout << "mainSessionConfig completed" << std::endl;
-    return 0;
-
-}
-PEVENT_TRACE_PROPERTIES AllocateTraceProperties(
-        _In_opt_ PSTR LoggerName,
-        _In_opt_ PSTR LogFileName
-){
-    PEVENT_TRACE_PROPERTIES TraceProperties = NULL;
-    ULONG BufferSize;
-    BufferSize = sizeof(EVENT_TRACE_PROPERTIES) +
-                 (MAXIMUM_SESSION_NAME + MAX_PATH) * sizeof(WCHAR);
-    TraceProperties = (PEVENT_TRACE_PROPERTIES)malloc(BufferSize);
-    if (TraceProperties == NULL) {
-        wprintf(L"Unable to allocate %d bytes for properties structure.\n", BufferSize);
-        goto Exit;
-    }
-    ZeroMemory(TraceProperties, BufferSize);
-
-    TraceProperties->Wnode.BufferSize = BufferSize;
-    TraceProperties->Wnode.ClientContext = 1; // Use QueryPerformanceCounter for time stamps
-    TraceProperties->Wnode.Flags = WNODE_FLAG_TRACED_GUID;
-    TraceProperties->FlushTimer = 1;          // 最长 1 秒强制刷
-    TraceProperties->LoggerNameOffset = sizeof(EVENT_TRACE_PROPERTIES);
-    TraceProperties->LogFileNameOffset = sizeof(EVENT_TRACE_PROPERTIES) +
-                                         (MAXIMUM_SESSION_NAME * sizeof(WCHAR));
-    TraceProperties->LogFileMode = EVENT_TRACE_REAL_TIME_MODE;
-    TraceProperties->MaximumFileSize = 1; // 单文件上限 1MB(仅文件模式生效)
-    TraceProperties->BufferSize = 5120; // 每缓冲 5MB
-    TraceProperties->MinimumBuffers = 128; // 预留 128 个缓冲
-    TraceProperties->MaximumBuffers = 512;
-    if (LoggerName != NULL) {
-        StringCchCopy((LPSTR)((PCHAR)TraceProperties + TraceProperties->LoggerNameOffset),
-                      MAXIMUM_SESSION_NAME,
-                      LoggerName);
-    }
-
-    if (LogFileName != NULL) {
-        StringCchCopy((LPSTR)((PCHAR)TraceProperties + TraceProperties->LogFileNameOffset),
-                      MAX_PATH,
-                      LogFileName);
-    }
-
-    Exit:
-    return TraceProperties;
-}
-int __CLRCALL_PURE_OR_STDCALL ETWConfiguration::ConsumeUserEventMain(PEVENT_RECORD pEvent) {
-    eventParser.ConsumeUserEvent(pEvent);
-    auto nOpCode = pEvent->EventHeader.EventDescriptor.Opcode;
-    if (nOpCode != 32) return 0;
-
-    if (pEvent->ExtendedData && pEvent->ExtendedDataCount) {
-        //never touch here
-        std::cout << "maybe I got stack info in CSwitch Event" << std::endl;
-    }
-    return 0;
-}
-int ETWConfiguration:: SetupUserEventConsumer( PSTR LoggerName) {
-
-    EVENT_TRACE_LOGFILE event_logfile;
-    TRACEHANDLE event_logfile_handle;
-    BOOL event_usermode = FALSE;
-    DOUBLE timeStampScale;
-    TRACE_LOGFILE_HEADER* event_logfile_header;
-    event_logfile_header = &event_logfile.LogfileHeader;
-    ZeroMemory(&event_logfile, sizeof(EVENT_TRACE_LOGFILE));
-    event_logfile.LoggerName = LoggerName; //指定消费事件的来源——自定义会话
-    ETWConfiguration etwConfiguration ;
-    event_logfile.EventRecordCallback =(PEVENT_RECORD_CALLBACK)ConsumeUserEventMain;
-    event_logfile.ProcessTraceMode = PROCESS_TRACE_MODE_EVENT_RECORD| PROCESS_TRACE_MODE_REAL_TIME;
-    event_logfile_handle = OpenTrace(&event_logfile);
-    if (INVALID_PROCESSTRACE_HANDLE == event_logfile_handle) {
-        wprintf(L"OpenTrace failed with %lu\n", GetLastError());
-    }
-    event_usermode = event_logfile_header->LogFileMode & EVENT_TRACE_PRIVATE_LOGGER_MODE;
-    if (event_logfile_header->PointerSize != sizeof(PVOID)) {
-        event_logfile_header = (PTRACE_LOGFILE_HEADER)((PUCHAR)event_logfile_header +
-                                                       2 * (event_logfile_header->PointerSize - sizeof(PVOID)));
-    }
-
-    TDHSTATUS temp_status = ProcessTrace(&event_logfile_handle, 1, 0, 0);
-    if (temp_status != ERROR_SUCCESS && temp_status != ERROR_CANCELLED) {
-        wprintf(L"ProcessTrace failed with %lu\n", temp_status);
-        goto cleanup;
-    }
-    cleanup:
-    if (INVALID_PROCESSTRACE_HANDLE != event_logfile_handle) {
-        temp_status = CloseTrace(event_logfile_handle);
-    }
-    return 0;
-}
-int ETWConfiguration::subSessionConfig(bool real_time_switch,GUID providerGUID,ULONG matchAnyKeywords, PWSTR privateLoggerName) {
-
-start:
-    PSTR LoggerName = (PSTR)"MyTrace";
-    PSTR LogsPath = (PSTR)"ASDW.etl";
-    ULONG status = ERROR_SUCCESS;
-    TRACEHANDLE SessionHandle = 0;
-    EVENT_TRACE_PROPERTIES* subSessionProperties = nullptr;
-    ULONG BufferSize = 0;
-    //PWSTR LoggerName = (PWSTR)L"subSession";
-    subSessionProperties = AllocateTraceProperties(LoggerName, LogsPath);
-    HeapSetInformation(NULL, HeapEnableTerminationOnCorruption, NULL, 0);
-    // Create the trace session.
-    status = StartTrace(&SessionHandle, LoggerName, subSessionProperties);
-
-
-    if (ERROR_SUCCESS != status)
-    {
-        wprintf(L"GetProcAddress failed with %lu.\n", status = GetLastError());
-
-        if (ERROR_ALREADY_EXISTS == status)
-        {
-
-            status = ControlTrace(SessionHandle, LoggerName, subSessionProperties, EVENT_TRACE_CONTROL_STOP);
-            wprintf(L"The Logger session is already in use and will be finished.\n");
-            wprintf(L"restart the Logger automaticly... .\n");
-
-            goto start;
-        }
-        else
-        {
-            wprintf(L"EnableTrace() failed with %lu\n", status);
-            goto cleanup;
-        }
-    }
-
-
-    status = EnableTraceEx2(SessionHandle, &providerGUID, EVENT_CONTROL_CODE_ENABLE_PROVIDER, TRACE_LEVEL_INFORMATION, 0, 0, 0, nullptr);
-    wprintf(L"status is %lu\n", status );
-    if (real_time_switch) {
-        SetupUserEventConsumer(LoggerName);
-        goto cleanup;
-    }
-    else {
-        getchar();
-    }
-
-cleanup:
-
-    if (SessionHandle)
-    {
-        status = ControlTrace(SessionHandle, NULL, subSessionProperties, EVENT_TRACE_CONTROL_STOP);
-
-        // 会话已被控制台处理器停掉,属正常双停(4201=INSTANCE/4200=GUID)
-        if (ERROR_SUCCESS != status &&
-            status != ERROR_WMI_INSTANCE_NOT_FOUND &&
-            status != ERROR_WMI_GUID_NOT_FOUND)
-        {
-            wprintf(L"ControlTrace(stop) failed with %lu\n", status);
-            wprintf(L"cleanup SubSession Config failed with %lu.\n", status = GetLastError());
-
-        }
-    }
-
-    if (subSessionProperties)
-        free(subSessionProperties);
-
-    return 0;
+    return false;
 }
 
-
-void ETWConfiguration::allocateTraceLogFile(
-    _In_opt_ PWSTR LoggerName,
-    EVENT_TRACE_LOGFILE& event_logfile,
-    BOOLEAN mainConsumer,
-    _In_opt_ BOOLEAN isRealTimeSession) {
-    
-    //event_logfile = (PEVENT_TRACE_LOGFILE)malloc(sizeof(EVENT_TRACE_LOGFILE));
-    ZeroMemory(&event_logfile, sizeof(EVENT_TRACE_LOGFILE));
-//    event_logfile.LoggerName =  (char*)Tools::WString2String(LoggerName).c_str();
-    event_logfile.LoggerName = reinterpret_cast<LPSTR>((LPWSTR) LoggerName);
-    event_logfile.ProcessTraceMode = PROCESS_TRACE_MODE_EVENT_RECORD;
-
-    if(isRealTimeSession)
-        event_logfile.ProcessTraceMode |= PROCESS_TRACE_MODE_REAL_TIME;
-
-    // ConsumeEventMain&ConsumeEventSub is the callback function. should be specified here.
-    if(mainConsumer)
-        event_logfile.EventRecordCallback = (PEVENT_RECORD_CALLBACK)(eventParser.ConsumeEventMain);
-//        std::cout<<"123123"<<std::endl;
-    else
-        event_logfile.EventRecordCallback = (PEVENT_RECORD_CALLBACK)(eventParser.ConsumeEventSub);
-}
-
-void ETWConfiguration::SetupEventConsumer(LPWSTR loggerName,BOOLEAN isMainSession) {
-
-    EVENT_TRACE_LOGFILE event_logfile;
-    TRACEHANDLE event_logfile_handle;
-    BOOL event_usermode = FALSE;
-    DOUBLE timeStampScale;
-    TRACE_LOGFILE_HEADER* event_logfile_header;
-    ULONG status = ERROR_SUCCESS;
-    TDHSTATUS temp_status;
-
-    event_logfile_header = &(event_logfile.LogfileHeader);
-    allocateTraceLogFile(loggerName, event_logfile,isMainSession);
-
-    event_logfile_handle = OpenTrace(&event_logfile);
-
-    if (INVALID_PROCESSTRACE_HANDLE == event_logfile_handle) {
-        wprintf(L"OpenTrace failed with %lu\n", GetLastError());
-        goto cleanup;
+int ETWConfiguration::Run() {
+    SetConsoleCtrlHandler(ConsoleCtrlHandler, TRUE);
+    int kernelStatus = ERROR_SUCCESS;
+    int userStatus = ERROR_SUCCESS;
+    std::thread kernel;
+    if (kernelFlags_ != 0) {
+        kernel = std::thread([&] {
+            kernelStatus = RunSession(Source::Kernel, kernelFlags_, GUID{}, 0);
+            if (kernelStatus != ERROR_SUCCESS && kernelStatus != ERROR_CANCELLED)
+                kellect::RequestStop();
+        });
     }
-    
-    event_usermode = event_logfile_header->LogFileMode & EVENT_TRACE_PRIVATE_LOGGER_MODE;
-
-    if (event_logfile_header->PointerSize != sizeof(PVOID)) {
-        event_logfile_header = (PTRACE_LOGFILE_HEADER)((PUCHAR)event_logfile_header +
-            2 * (event_logfile_header->PointerSize - sizeof(PVOID)));
+    if (!IsEqualGUID(userProvider_, GUID{})) {
+        userStatus = RunSession(Source::User, 0, userProvider_, 0);
+        if (userStatus != ERROR_SUCCESS && userStatus != ERROR_CANCELLED)
+            kellect::RequestStop();
     }
+    if (kernel.joinable())
+        kernel.join();
+    SetConsoleCtrlHandler(ConsoleCtrlHandler, FALSE);
 
-    // If everything go well, the program will be block here.
-    // to perform the callback function defined in EventRecordCallback property
-    temp_status = ProcessTrace(&event_logfile_handle, 1, 0, 0);  
-
-    if (temp_status != ERROR_SUCCESS && temp_status != ERROR_CANCELLED) {
-        wprintf(L"ProcessTrace failed with %lu\n", temp_status);
-        goto cleanup;
+    const auto& status = kellect::evidence::Status(Source::Kernel);
+    if (status.lossAvailable) {
+        kellect::stats::etwEventsLost.store(status.eventsLost);
+        kellect::stats::etwBuffersLost.store(status.realTimeBuffersLost);
+    } else if (status.start == ERROR_SUCCESS) {
+        std::cerr << "Kernel ETW loss counters unavailable.\n";
     }
-
-cleanup:
-    if (INVALID_PROCESSTRACE_HANDLE != event_logfile_handle) {
-        temp_status = CloseTrace(event_logfile_handle);
-    }
-}
-
-
-int ETWConfiguration::ETWSessionConfig(bool real_time_switch)
-{
-    SetConsoleCtrlHandler(consoleCtrlHandler, TRUE);
-
-    GUID guid={} ;
-    PWSTR LoggerName = L"MyTrace";
-    ULONG matchAnyKeywords=0;
-     if(enable_flag!=0 ) {
-        std::cout << "kernel session start, mask = 0x" << std::hex << enable_flag << std::dec << std::endl;
-        MainSessionConfigThread t1(*this, real_time_switch);
-        t1.startThread();
-        t1.wait();
-    }
-     else  if(ProviderId != guid) {
-         std::cout<<"user start"<<enable_flag <<std::endl;
-        SubSessionConfigThread t2(*this, real_time_switch, LoggerName, ProviderId, matchAnyKeywords);
-        t2.startThread();
-        t2.wait();
-    }
-
-
-    return 1;
+    if (kernelStatus != ERROR_SUCCESS && kernelStatus != ERROR_CANCELLED)
+        return kernelStatus;
+    return userStatus == ERROR_CANCELLED ? ERROR_SUCCESS : userStatus;
 }

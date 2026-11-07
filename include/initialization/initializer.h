@@ -1,109 +1,10 @@
 #pragma once
 #define _CRT_SECURE_NO_WARNINGS
-#pragma comment(lib , "DbgHelp.lib")
-//#pragma comment(lib, "diaguids.lib")
 #include <windows.h>
 #include <iostream>
 #include <fstream>
 #include <set>
 #include <string>
-#include "DbgHelp.h"
-
-/*defined status code*/
-#define STATUS_INFO_LENGTH_MISMATCH      ((NTSTATUS)0xC0000004L)
-#define STATUS_UNSUCCESSFUL (0xC0000001L)
-
-typedef BOOL(__stdcall* IMAGEUNLOAD)(
-    __in  PLOADED_IMAGE LoadedImage
-    );
-typedef PLOADED_IMAGE(__stdcall* IMAGELOAD)(
-    __in  PSTR DllName,
-    __in  PSTR DllPath
-    );
-
-typedef struct _KERNELFUNC_ADDRESS_INFORMATION {
-    ULONG ulAddress;
-    CHAR FuncName[50];
-}KERNELFUNC_ADDRESS_INFORMATION, * PKERNELFUNC_ADDRESS_INFORMATION;
-
-typedef struct _WIN32KFUNCINFO {          //PNTOSFUNCINFO
-    ULONG ulCount;
-    KERNELFUNC_ADDRESS_INFORMATION Win32KFuncInfo[1];
-} WIN32KFUNCINFO, * PWIN32KFUNCINFO;
-
-typedef BOOL(__stdcall* SYMGETSYMBOLFILE)(
-    __in_opt HANDLE hProcess,
-    __in_opt PCSTR SymPath,
-    __in PCSTR ImageFile,
-    __in DWORD Type,
-    __out_ecount(cSymbolFile) PSTR SymbolFile,
-    __in size_t cSymbolFile,
-    __out_ecount(cDbgFile) PSTR DbgFile,
-    __in size_t cDbgFile
-    );
-
-typedef struct _SYSTEM_MODULE_INFORMATION
-{
-    ULONG  Reserved[2];
-    ULONG  Base;
-    ULONG  Size;
-    ULONG  Flags;
-    USHORT Index;
-    USHORT Unknown;
-    USHORT LoadCount;
-    USHORT ModuleNameOffset;
-    CHAR   ImageName[256];
-} SYSTEM_MODULE_INFORMATION, * PSYSTEM_MODULE_INFORMATION;
-//extern std::map<std::string, LL> moduleName2BaseAddr;
-//extern LL moduleBaseAddr[2];
-typedef struct _tagSysModuleList {
-    ULONG ulCount;
-    SYSTEM_MODULE_INFORMATION smi[2];
-} MODULES, * PMODULES;
-
-typedef LONG  NTSTATUS;
-typedef ULONG64 LL;
-typedef DWORD SYSTEM_INFORMATION_CLASS;
-
-//extern std::map<LL, std::string> addr2FuncName;
-//extern std::map<LL, std::string> addr2FuncNameUsed;
-
-typedef NTSTATUS(__stdcall* NTQUERYSYSTEMINFORMATION)
-(IN     SYSTEM_INFORMATION_CLASS,
-    IN OUT PVOID,
-    INT    ULONG,
-    OUT    PULONG OPTION);
-
-typedef enum _SYSTEM_MODULE_INFORMATION_CLASS
-{
-    SystemModuleInformation = 11,
-} SYSTEM_MODULE_INFORMATION_CLASS;
-
-typedef struct _RTL_PROCESS_MODULE_INFORMATION
-{
-    //ULONG Reserved[2];
-    //PBYTE  ImageBase;
-    HANDLE Section;                 // Not filled in
-    PVOID MappedBase;
-    PVOID  ImageBase;
-    //PBYTE  ImageBase;
-
-    ULONG ImageSize;
-    ULONG Flags;
-    USHORT LoadOrderIndex;
-    USHORT InitOrderIndex;
-    USHORT LoadCount;
-    USHORT OffsetToFileName;
-    CHAR  FullPathName[256];
-} RTL_PROCESS_MODULE_INFORMATION, * PRTL_PROCESS_MODULE_INFORMATION;
-
-typedef struct _RTL_PROCESS_MODULES
-{
-    ULONG NumberOfModules;
-    RTL_PROCESS_MODULE_INFORMATION Modules[1];
-} RTL_PROCESS_MODULES, * PRTL_PROCESS_MODULES;
-
-//VOID initSysNameMap();
 #define PROCESSEVENT		0x1
 #define THREADEVENT			0x2
 #define IMAGEEVENT			0x4
@@ -125,7 +26,6 @@ typedef struct _RTL_PROCESS_MODULES
 #define STATUS_FORMAT_ERROR        0x8
 #define STATUS_SHOW_MANUAL         0x2
 #define STATUS_FILE_OPEN_FAILED	   0x3
-#define STATUS_KAFKA_FORMAT_ERROR  0x10
 #define STATUS_SOCKET_FORMAT_ERROR  0x11
 #define STATUS_SOCKET_CONNECT_ERROR 0x12
 #define STATUS_DUPLICATE_OUTPUT	   0x4
@@ -141,12 +41,10 @@ public:
 //        listenCallStack = false;
     }
 
+	// NOTE: argV is the process argv owned by the CRT - it must never be
+	// deleted here (the old destructor called delete on it, which is undefined
+	// behaviour), and nothing in this class takes ownership of it.
 	~Initializer() {
-		char* temp;
-		for (int i = 0; i < argc; i++) {
-			temp = argV[i];
-			delete argV[i];
-		}
 	}
 
     ULONG64 init(GUID &p);
@@ -160,19 +58,18 @@ public:
 
     inline STATUS initThreadProcessMap();
     STATUS initEnabledEvent(ULONG64 eventType);
-    static STATUS initProcessID2ModulesMap();
-    static STATUS initImages(std::string confFile = "config/initImages.txt");
+    void initImages(bool background);
     //void initFilter();
     void initOutputThread();
     void initNeededStruct();
-    void initSysNameMap();
-    void showCommandList();
+    void showCommandList(bool full = false);
     void initEventPropertiesMap(std::string confFile = "config/eventStruct_win10.xml");
-    void initThreadParseProviders();
     void initProcessor2ThreadAndThread2Process();
     static bool getListenCallStack(){
         return listenCallStack;
     }
+    static int getStatsInterval() { return statsInterval; }
+    static bool getAdaptive() { return adaptiveEnabled; }
     static void setListenCallStack(bool flag){
         listenCallStack = flag;
     }
@@ -183,6 +80,14 @@ public:
     static std::string getUUID(){
         return uuid;
     }
+
+    // Internal: the supervisor passes a per-child named event; the collector
+    // waits on it and calls RequestStop() for a graceful shutdown (the service
+    // process has no console, so CTRL_BREAK is not available).
+    const std::string& getStopEventName() const { return stopEventName; }
+    const std::string& getEvidenceDirectory() const { return evidenceDirectory; }
+    const std::string& getProfile() const { return profile; }
+    bool getKernelEtl() const { return kernelEtl; }
     //void initOutPut();
 	//STATUS initConsoleOutPut();
 	//STATUS initFileOutPut(std::string fileName);
@@ -198,23 +103,69 @@ private:
     ULONG64 enabledFlags = 0;
     bool enbaleFlagsInited = false;
     static bool listenCallStack;
+    static int statsInterval;
     static std::set<std::string> userDroppedEventNames;   // "-x" 或 filter.txt 指定的丢弃事件名
 
     static std::string uuid;
     const char* filterFileName = "config/filter.txt";
     const char* imagesFile = "config/initImages.txt";
     ULONG64 opThreashold = 20;
+    std::string schemaProbeFile;    // --schema-probe <file>
+    bool schemaStrict = false;      // --schema-strict
+    ULONG64 maxFileMB = 0;          // --max-file-mb <n>, 0 = no rotation
+    bool appendMode = false;        // --append (keep appending to the -f file)
+
+    // Probe channel (--probe): WebSocket + MessagePack to the Kellect backend.
+    // Configuration comes from config/probe.ini, with per-flag overrides.
+    bool probeRequested = false;
+    std::string probeConfigFile = "config/probe.ini";
+    std::string probeUrl;
+    std::string probeId;
+    std::string probeToken;
+    size_t probeQueue = 0;
+    size_t probeBatch = 0;
+    int probeRate = -1;
+
+    // --serialize-threads N: JSON serialisation off the ETW callback.
+    // 1 (default) preserves output order; >1 trades ordering for throughput.
+    size_t serializeThreads = 1;
+
+    // --mqtt: additive SecArgus output. Does not consume the single-primary
+    // slot: with -f/--probe it wraps the primary in a TeeOutput.
+    // --callstack: enable API stack collection/parsing. OFF by default: the
+    // collector emits kernel events only (stacks add a second event stream and
+    // significant CPU).
+    bool callstackRequested = false;
+    std::string prewarmMode = "adaptive";
+    std::string initImagesFile = "config/initImages.txt";
+    bool mqttRequested = false;
+    std::string mqttConfigFile = "config\\secargus.ini";
+    bool mqttConfigExplicit = false;
+    // --mqtt-host / --mqtt-port: override secargus.ini without editing it.
+    std::string mqttHostOverride;
+    int mqttPortOverride = 0;
+
+    // --stop-event <name>: named event the supervisor sets to stop the child.
+    std::string stopEventName;
+    bool helpAll = false;
+    bool threadEventsEnabled = false;
+    static bool adaptiveEnabled;
+    bool imageEventsEnabled = false;
+    std::string profile;
+    std::string evidenceDirectory;
+    // "behavior" (key events only) or "full" (every supported event).
+    std::string stackScope = "behavior";
+    bool kernelEtl = false;
+    ULONG extraKernelFlags = 0;
 
     //user specify in the argument of option "-e"
     ULONG64 userEnabledFlags;
     ULONG64 userProvider=0;
     void initFilter();
+    // Applies config\remote\desired.json written by the remote command channel.
+    // Read at startup only: the collector cannot hot-reload its event mask.
+    void applyDesiredConfig();
     void initPrasePool();
     int initOutputThreashold(ULONG64 flags);
     void initUserGuid(ULONG64 userProvider,GUID &ProviderId);
-    BOOLEAN InitSymHandler();
-    ULONG GetKernelInfo(char* lpKernelName, ULONG* ulBase, ULONG* ulSize);
-    BOOLEAN LoadSymModule(char* ImageName, DWORD ModuleBase);
-    BOOLEAN EnumSyms(char* ImageName, DWORD ModuleBase, PSYM_ENUMERATESYMBOLS_CALLBACK EnumRoutine, PVOID Context);
-    static BOOLEAN CALLBACK EnumSymRoutine(PSYMBOL_INFO psi, ULONG SymSize, PVOID Context);
 };

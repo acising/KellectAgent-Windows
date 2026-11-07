@@ -7,6 +7,7 @@ private slots:
     void missingFileReturnsDefaults();
     void roundTrip();
     void corruptedFileReturnsDefaults();
+    void removedOutputModeFallsBackToConsole();
 };
 
 void TestSettings::missingFileReturnsDefaults() {
@@ -27,12 +28,10 @@ void TestSettings::roundTrip() {
     in.lastMask = 0x1F;
     in.autoScroll = false;
     in.filterKeyword = "FileIO";
-    in.outputMode  = 3;
+    in.outputMode  = 2;
     in.outputFile  = "C:/out.log";
     in.socketHost  = "127.0.0.1";
     in.socketPort  = 6500;
-    in.kafkaBroker = "10.0.0.1:9092";
-    in.kafkaTopic  = "kellect";
     s.save(in);
     auto out = s.load();
     QCOMPARE(out.kellectExePath, in.kellectExePath);
@@ -43,8 +42,6 @@ void TestSettings::roundTrip() {
     QCOMPARE(out.outputFile, in.outputFile);
     QCOMPARE(out.socketHost, in.socketHost);
     QCOMPARE(out.socketPort, in.socketPort);
-    QCOMPARE(out.kafkaBroker, in.kafkaBroker);
-    QCOMPARE(out.kafkaTopic, in.kafkaTopic);
 }
 void TestSettings::corruptedFileReturnsDefaults() {
     QString path = QDir::tempPath() + "/kellect_bad.json";
@@ -52,6 +49,15 @@ void TestSettings::corruptedFileReturnsDefaults() {
     SettingsStore s(path);
     auto d = s.load();
     QCOMPARE(d.autoScroll, true); // 默认,不崩
+}
+
+void TestSettings::removedOutputModeFallsBackToConsole() {
+    QTemporaryFile file;
+    QVERIFY(file.open());
+    QCOMPARE(file.write("{\"outputMode\":3}"), qint64(16));
+    QVERIFY(file.flush());
+    SettingsStore store(file.fileName());
+    QCOMPARE(store.load().outputMode, 0);
 }
 
 QTEST_GUILESS_MAIN(TestSettings)

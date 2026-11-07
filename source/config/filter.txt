@@ -1,10 +1,18 @@
-# config/filter.txt — runtime filter configuration (read by initFilter() at startup)
-# Format: section name on one line, then one entry per line; # lines are comments.
+# config/filter.txt - runtime filter configuration (read by initFilter() at startup)
+#
+# Format: a section name on its own line, then one entry per line.
+# Lines starting with '#' are comments. Unknown sections are ignored, so a
+# filter.txt from an older release keeps working (see the note at the bottom).
 #
 # filteredProcessID:  PIDs whose events are dropped (blacklist).
-# droppedEventName:   event names (from eventStruct xml) dropped at firstFilter.
-#                     Same effect as CLI -x; -x entries are additive.
-# filteredImageFile:  image paths whose events are dropped (blacklist).
+#                     One PID per line, or several on one line ("0 4 128").
+#                     Built-in {0, 4, 128, self, kellect.exe/KellectConsole.exe}
+#                     always apply; entries here are additive.
+# droppedEventName:   event names (from eventStruct_*.xml) dropped at firstFilter,
+#                     before parsing. Same effect as CLI -x; -x entries are
+#                     additive. Use it for high-volume low-value noise.
+# filteredImageFile:  image paths whose Image-Load events (and their callstacks)
+#                     are dropped.
 
 filteredProcessID
 0
@@ -12,6 +20,15 @@ filteredProcessID
 128
 
 droppedEventName
+#FileIODirNotify
+#FileIODirEnum
 
 filteredImageFile
 C:\Windows\SysWOW64\ntdll.dll
+
+# ---------------------------------------------------------------------------
+# Deprecated: the v1 release shipped a "filteredEventIdentifier" section (an
+# 80-pair provider/opcode whitelist). The current pipeline no longer uses it;
+# the section is detected and ignored with a warning instead of being parsed
+# as PIDs (which used to abort startup with std::out_of_range).
+# ---------------------------------------------------------------------------

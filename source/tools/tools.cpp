@@ -133,12 +133,44 @@ ULONG64 Tools::String2ULONG64(const std::string& s) {
     return res;
 }
 
-void Tools::convertFileNameInDiskFormat(std::string &fileName) {
+// Create every missing component of the directory that holds `filePath`.
+// FileOutPut uses this so `-f %ProgramData%\Kellect\events\x.jsonl` succeeds on
+// a machine where nothing was ever written by Kellect (the service writes there
+// by default, and a failed open used to abort the whole collector).
+bool Tools::ensureParentDirectory(const std::string& filePath) {
+    const size_t slash = filePath.find_last_of("\\/");
+    if (slash == std::string::npos) return true;
 
-    if (fileName.empty()) {
-        MyLogger::writeLog("fileName is empty, skip it");
-        return;
+    std::string dir = filePath.substr(0, slash);
+    if (dir.empty()) return true;
+
+    std::string current;
+    size_t i = 0;
+    if (dir.size() >= 2 && dir[1] == ':') {
+        current = dir.substr(0, 2);   // "C:"
+        i = 2;
     }
+    for (; i <= dir.size(); ++i) {
+        if (i == dir.size() || dir[i] == '\\' || dir[i] == '/') {
+            if (!current.empty() && current.back() != ':') {
+                if (!CreateDirectoryA(current.c_str(), nullptr)) {
+                    const DWORD err = GetLastError();
+                    // ERROR_ALREADY_EXISTS is the normal case after the first
+                    // event; ERROR_ACCESS_DENIED must not stop the caller.
+                    if (err != ERROR_ALREADY_EXISTS && err != ERROR_ACCESS_DENIED) {
+                        MyLogger::writeLog("create directory failed: " + current);
+                    }
+                }
+            }
+        }
+        if (i < dir.size()) current.push_back(dir[i]);
+    }
+    return true;
+}
+
+void Tools::convertFileNameInDiskFormat(std::string &fileName) {
+    if (fileName.empty())
+        return;   // common for FileIo_Name-less records; never log per event
 
     if (strcmp(fileName.substr(0,7).c_str(), "\\Device") == 0) {
 
@@ -282,12 +314,46 @@ std::string Tools::convertTimestamp(ULONG64 timestamp){
     return s;
 }
 
-// JSON string escape per RFC 8259: ", \, control chars; other chars (<0x20)
-// as u00xx. Leaves multi-byte UTF-8 bytes untouched.
-std::string Tools::jsonEscape(const std::string& s) {
-    std::string out;
-    out.reserve(s.size() + 8);
-    for (unsigned char c : s) {
+void Tools::appendUnsigned(std::string& out, unsigned long long v) {
+    char buffer[24];
+    int n = 0;
+    do {
+        buffer[n++] = static_cast<char>('0' + static_cast<int>(v % 10));
+        v /= 10;
+    } while (v != 0);
+    while (n > 0)
+        out.push_back(buffer[--n]);
+}
+
+void Tools::appendInt(std::string& out, long long v) {
+    if (v < 0) {
+        out.push_back('-');
+        // Negate without overflow on LLONG_MIN.
+        appendUnsigned(out, static_cast<unsigned long long>(-(v + 1)) + 1ull);
+    } else {
+        appendUnsigned(out, static_cast<unsigned long long>(v));
+    }
+}
+
+// Appends `s` escaped per RFC 8259. Copies runs of plain bytes in bulk (most
+// paths/command lines need no escaping at all) instead of pushing char by char.
+void Tools::appendJsonEscaped(std::string& out, const std::string& s) {
+    const size_t n = s.size();
+    size_t i = 0;
+    while (i < n) {
+        const size_t runStart = i;
+        while (i < n) {
+            const unsigned char c = static_cast<unsigned char>(s[i]);
+            if (c < 0x20 || c == '"' || c == '\\')
+                break;
+            ++i;
+        }
+        if (i > runStart)
+            out.append(s, runStart, i - runStart);
+        if (i >= n)
+            break;
+
+        const unsigned char c = static_cast<unsigned char>(s[i]);
         switch (c) {
             case '"':  out += "\\\""; break;
             case '\\': out += "\\\\"; break;
@@ -296,15 +362,21 @@ std::string Tools::jsonEscape(const std::string& s) {
             case '\n': out += "\\n";  break;
             case '\r': out += "\\r";  break;
             case '\t': out += "\\t";  break;
-            default:
-                if (c < 0x20) {
-                    char buf[8];
-                    snprintf(buf, sizeof(buf), "\\u%04x", (unsigned)c);
-                    out += buf;
-                } else {
-                    out += (char)c;
-                }
+            default: {
+                char buf[8];
+                snprintf(buf, sizeof(buf), "\\u%04x", static_cast<unsigned>(c));
+                out += buf;
+            }
         }
+        ++i;
     }
+}
+
+// JSON string escape per RFC 8259: ", \, control chars; other chars (<0x20)
+// as u00xx. Leaves multi-byte UTF-8 bytes untouched.
+std::string Tools::jsonEscape(const std::string& s) {
+    std::string out;
+    out.reserve(s.size() + 8);
+    appendJsonEscaped(out, s);
     return out;
 }

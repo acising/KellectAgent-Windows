@@ -1,95 +1,50 @@
 #pragma once
-#include "tools/filter.h"
+
 #include "output/output.h"
+#include "process/sub_event.h"
+#include "tools/filter.h"
 #include "tools/threadpool.h"
-#include "sub_event.h"
-#include "tools/json.hpp"
 #include <tdh.h>
-using json = nlohmann::json;
 
 class EventParser {
-
 public:
-    static void eventParseThreadFunc(BaseEvent* event);
-    void eventParseFunc(BaseEvent* event, PEVENT_RECORD pEvent);
-    //static void eventParseThreadFunc(PEVENT_RECORD pEvent);
-    static VOID WINAPI ConsumeEventSub(PEVENT_RECORD p_event);
-    static VOID WINAPI ConsumeEventMain(PEVENT_RECORD p_event);
-    static VOID WINAPI ConsumeUserEvent(PEVENT_RECORD p_event);
-    VOID WINAPI GetFormattedPropertiesByTdh(PEVENT_RECORD pEvent);
-    BaseEvent* WINAPI getEventWithIdentifier(PEVENT_RECORD pEvent);
-
-     BaseEvent* WINAPI getUserEventWithIdentifier(PEVENT_RECORD pEvent) ;
-    BaseEvent*  getPropertiesByParsingOffset(BaseEvent* event, int userDataLen, void* userDataBeginAddress);
-    //BaseEvent*  getPropertiesByParsingOffset(BaseEvent* event, PEVENT_RECORD pEvent);
-    DWORD PrintProperties4GetProperties(BaseEvent* event,PEVENT_RECORD pEvent, PTRACE_EVENT_INFO pInfo, USHORT i, LPWSTR pStructureName, USHORT StructIndex);
-    BaseEvent* WINAPI GetPropertiesByTdh(PEVENT_RECORD pEvent);
-    BaseEvent*  getRawEvent(PEVENT_RECORD pEvent);
-    DWORD FormatAndPrintData(BaseEvent* event,PEVENT_RECORD pEvent, USHORT InType, USHORT OutType, PBYTE pData, DWORD DataSize, PEVENT_MAP_INFO pMapInfo);
-    void PrintMapString(PEVENT_MAP_INFO pMapInfo, PBYTE pData);
-    DWORD GetArraySize4GetProperties(PEVENT_RECORD pEvent, PTRACE_EVENT_INFO pInfo, USHORT i, PUSHORT ArraySize);
-    DWORD GetMapInfo4GetProperties(PEVENT_RECORD pEvent, LPWSTR pMapName, DWORD DecodingSource, PEVENT_MAP_INFO& pMapInfo);
-    void RemoveTrailingSpace4GetProperties(PEVENT_MAP_INFO pMapInfo);
-    DWORD GetEventInformation4GetProperties(PEVENT_RECORD pEvent, PTRACE_EVENT_INFO& pInfo);
-    PBYTE ansiStr2wStr(PBYTE str);
-    static void beginThreadParse() {
-        threadParseFlag = true;
-    }
-    static void endThreadParse() {
-        threadParseFlag = false;
-    }
-    void addThreadParseProviders(ULONG64 proid) {
-        threadParseProviders.insert(proid);
-    }
-    void removeThreadParseProviders(ULONG64 proid) {
-        threadParseProviders.erase(proid);
-    }
-    static bool inThreadParseProviders(ULONG64 proid) {
-        return threadParseProviders.count(proid) != 0;
-    }
-    //static void initOutPut(int type, std::string option);
-
-    //following functions are provided by TDH‘ library
-    BaseEvent* WINAPI getPropertiesByTdh(PEVENT_RECORD pEvent);
-    //static VOID WINAPI GetFormattedPropertiesByTdh(PEVENT_RECORD pEvent,std::ofstream fout);
-    DWORD GetArraySize(PEVENT_RECORD pEvent, PTRACE_EVENT_INFO pInfo, USHORT i, PUSHORT ArraySize);
-    //DWORD GetEventInformation(PEVENT_RECORD pEvent, PTRACE_EVENT_INFO& pInfo);
-    DWORD FormatAndPrintData(PEVENT_RECORD pEvent, USHORT InType, USHORT OutType, PBYTE pData, DWORD DataSize,
-                             PEVENT_MAP_INFO pMapInfo, std::string paramName);
-
-    void RemoveTrailingSpace(PEVENT_MAP_INFO pMapInfo);
-    DWORD GetEventInformation(PEVENT_RECORD pEvent, PTRACE_EVENT_INFO& pInfo);
-    DWORD GetPropertyLength(PEVENT_RECORD pEvent, PTRACE_EVENT_INFO pInfo, USHORT i, PUSHORT PropertyLength);
-    DWORD PrintProperties(PEVENT_RECORD pEvent, PTRACE_EVENT_INFO pInfo, USHORT i, LPWSTR pStructureName, USHORT StructIndex);
-    DWORD GetMapInfo(PEVENT_RECORD pEvent, LPWSTR pMapName, DWORD DecodingSource, PEVENT_MAP_INFO& pMapInfo);
-    DWORD PrintPropertyMetadata(TRACE_EVENT_INFO* pinfo, DWORD i, USHORT indent);
-    VOID WINAPI GetEventMetaData(PEVENT_RECORD pEvent);
-
-    void SetargsJson(std::string name ,std::string value){
-        argsJson[name]=value;
-    }
-    void SetargsJson(std::string name ,ULONG64 value){
-        argsJson[name]=value;
-    }
-public:
-    friend class Initializer;
-    friend class EventProcess;
-    static json j;
-    static json argsJson;
-
-    // 输出线程优雅退出:通知 final flush 后返回(供 ETW 会话清理路径调用)
-    static void requestOutputStop() {
-        if (op) op->requestStop();
-    }
+    static void WINAPI ConsumeEventMain(PEVENT_RECORD event);
+    static void WINAPI ConsumeUserEvent(PEVENT_RECORD event);
+    static void shutdownOutput();
+    // Backlog snapshot: parse queue, serializer queue, output queue.
+    static void PipelineDepth(size_t& parseDepth, size_t& serializeDepth,
+                              size_t& outputDepth);
+    static void SetSerializerTarget(size_t count);
+    static size_t GetSerializerTarget();
 
 private:
-    static Filter filter;
+    friend class Initializer;
+
+    static void eventParseThreadFunc(BaseEvent* event);
+    static void serializeThreadFunc(BaseEvent* event);
+    static BaseEvent* WINAPI getEventWithIdentifier(PEVENT_RECORD event);
+    static BaseEvent* WINAPI getUserEventWithIdentifier(PEVENT_RECORD event);
+    static BaseEvent* getPropertiesByParsingOffset(BaseEvent* event, int length, void* data);
+
+    static DWORD GetEventInformation4GetProperties(PEVENT_RECORD event, PTRACE_EVENT_INFO& info);
+    static DWORD PrintProperties4GetProperties(BaseEvent* event, PEVENT_RECORD record,
+        PTRACE_EVENT_INFO info, USHORT index, LPWSTR structureName, USHORT structureIndex);
+    static DWORD FormatAndPrintData(BaseEvent* event, PEVENT_RECORD record, USHORT inType,
+        USHORT outType, PBYTE data, DWORD dataSize, PEVENT_MAP_INFO map);
+    static DWORD GetArraySize4GetProperties(PEVENT_RECORD event, PTRACE_EVENT_INFO info,
+        USHORT index, PUSHORT arraySize);
+    static DWORD GetMapInfo4GetProperties(PEVENT_RECORD event, LPWSTR mapName,
+        DWORD decodingSource, PEVENT_MAP_INFO& map);
+    static void PrintMapString(PEVENT_MAP_INFO map, PBYTE data);
+    static void RemoveTrailingSpace4GetProperties(PEVENT_MAP_INFO map);
+
+    enum PropertyType { PBYTE_ = 1, PUSHORT_ = 2, PULONG4_ = 4, PULONG8_ = 8,
+                        PULONGLONG_ = 13, PWSTRING_ = 10, SID_ = 12, PSTRING_ = 11 };
     static Output* op;
-    static ThreadPool* parsePools;	//thread pool, each thread in pool used to parse event.
-    enum PropertyType { PBYTE_ = 1, PUSHORT_ = 2, PULONG4_ = 4, PULONG8_ = 8, PULONGLONG_ = 13, PWSTRING_ = 10, SID_ = 12, PSTRING_ = 11 };
-    static PropertyType propertyType;
+    static std::thread outputThread;
+    static bool evidenceOnly;
     static bool isWdm;
+    static ThreadPool* parsePools;
+    static ThreadPool* serializePool;
     static std::atomic<ULONG64> successParse;
-    static std::set<ULONG64> threadParseProviders;
-    static std::atomic<bool> threadParseFlag;
 };

@@ -2,6 +2,8 @@
 
 [简体中文](./README.zh-CN.md) | English 
 
+[项目架构与交接报告](./PROJECT_REPORT.md)
+
 ![](http://121.40.168.60/kellect/kellect.jpeg)
 
 
@@ -13,12 +15,12 @@
 
 KelletAgent Windows (hereinafter referred to as KelletAgent) is a multi-threaded Windows kernel log collector based on ETW (Event Tracing for Windows), developed in C++language, with high performance and low system overhead. KelletAgent Windows can track kernel level event information of Windows systems, such as FileIO, Process, Thread, ImageLoad, Registry, etc. It can also track event information on the user side, such as Microsoft Windows DNS Client.
 
-The program integrates functions such as event collection, event analysis, event semantic correction, and event output. The output format follows the JSON specification, and there are the following four output methods:
+The collector emits JSON through these primary outputs.
 
 - Output to console display;
 - Output to the specified file path;
-- Output to the designated Socket communication terminal;
-- Output to the specified Kafka server.
+- Output to a Socket endpoint;
+- Output to the Kellect backend through the probe channel.
 
 Users can use this tool directly through "PowerShell.exe" or "cmd.exe", and set command parameters as needed. We also provide some configuration files, which users can customize according to their needs.
 
@@ -34,7 +36,6 @@ KellectAgent uses a number of 3rd party libraries, as shown below. Please see LI
 | moodycamel::ConcurrentQueue | /              | https://github.com/cameron314/concurrentqueue |
 | nlohmann::json              | v3.10.4        | https://github.com/nlohmann/json              |
 | TinyXML-2                   | v2             | https://github.com/leethomason/tinyxml2       |
-| librdkafka                  | v1.6           | https://github.com/edenhill/librdkafka        |
 
 The development of KellectAgent mainly depends on the Clion development tool, and the compilation mainly depends on the MSVC compiler. The software and versions used for development are shown in the table below:
 
@@ -53,7 +54,7 @@ The directory of kellect is shown as below:
 | lib               | the  3rd party libraries |
 | source            | source files             |
 | source/config     | config files             |
-| release           | executable file   |
+| bin               | Local build output |
 
 ## **KellectAgent Manual**
 
@@ -61,7 +62,16 @@ The directory of kellect is shown as below:
 
 After testing, KellectAgent can run on **Windows7 (client version), Windows Server2008 (server version) and above versions**.
 
-> **Note:** The Windows 11 version is currently not supported, and will be supported in subsequent versions.
+> **Windows 11 / newer builds:** earlier releases picked the layout file with
+> `major==6 && minor==1 ? win7 : win10`, so Win11 frames were decoded with the
+> Win10 layout and silently mis-parsed whenever a frame size differed. Parsing is
+> now selected by build number (`eventStruct_*.xml` declares `MinBuild/MaxBuild`),
+> every field read is bounds-checked against `UserDataLen`, and frame/layout
+> mismatches are reported. `eventStruct_win11.xml` is selected on 22000+.
+> Adapting a new build is a measurable step now:
+> `kellect.exe -e all -c --schema-probe out.json` then
+> `python tools\schema_lint.py --probe out.json --profile win11`.
+> See [docs/WIN11-ADAPTATION.zh-CN.md](docs/WIN11-ADAPTATION.zh-CN.md) (Chinese).
 
 The KellectAgent must be run as **Administrator**. As shown below, the function can be selected in the form of configuration parameters.
 
@@ -326,9 +336,8 @@ Launch `KellectConsole.exe`, then:
 1. **Settings** → `kellect.exe` is auto-detected at startup (GUI's own folder,
    then one folder up — the install root); override in Settings if needed.
 2. Tick the **kernel event classes** you want (or pick a preset).
-3. Choose an **output target**: Console (live on-screen view), File, Socket, or
-   Kafka. Console/File/Socket are tee'd from the live stream by the GUI so the
-   on-screen view is always available; Kafka is sent directly by `kellect.exe`.
+3. Choose an **output target** from Console (live on-screen view), File or Socket.
+   The GUI forwards the live stream to the selected destination.
 4. **Start**. The JSON event stream renders with per-event-type colouring
    and a details dialog on double-click.
 
@@ -357,9 +366,43 @@ cmd /c scripts\build-all.bat
 → `installer\build-msi\Kellect-win-x64.msi` (custom install folder; the GUI
 installs into `gui\` with its Qt/CRT runtime, the collector into the root).
 
-> The Windows-service wrapper (`KellectService`) was removed on 2026-09-19.
-> For unattended collection use Task Scheduler (`schtasks /sc onstart` with a
-> restart-on-failure setting) running `kellect.exe` directly.
+> Unattended collection: use the **Windows service** product
+> (`KellectService.exe`, registered with the SCM, restart-on-failure) - see
+> [docs/ARCHITECTURE.zh-CN.md](docs/ARCHITECTURE.zh-CN.md). Task Scheduler is no
+> longer the recommended path.
+
+### Two products: GUI client and Windows service
+
+Both are built from the same `kellect_core` static library, so collection,
+filtering and schema handling are identical:
+
+| | GUI client | Windows service |
+|---|---|---|
+| Binaries | `KellectConsole.exe` (Qt) + `kellect.exe` | `KellectService.exe` |
+| Lifecycle | user-driven; GUI spawns the engine | SCM: auto-start, `net stop`, restart-on-failure |
+| Config | GUI + command line | `config/agent.ini` |
+| Output | live console view | file (`%ProgramData%\Kellect\events\`) / Socket |
+
+```bat
+scripts\install-service.bat        :: elevated: register + start KellectAgent
+scripts\service-status.bat
+net stop KellectAgent
+scripts\uninstall-service.bat
+```
+
+### Backend channel (`--probe`)
+
+`--probe` streams events to the Kellect backend (`System/docs/probe-integration.md`,
+protocol v1) over WebSocket + MessagePack: token auth, heartbeat, command
+dispatch, exponential-backoff reconnect and a bounded local queue.
+
+- Config: [config/probe.ini](source/config/probe.ini); service: `output=probe`.
+- Details: [docs/PROBE-CHANNEL.zh-CN.md](docs/PROBE-CHANNEL.zh-CN.md) (Chinese).
+
+```bat
+kellect.exe -e all --probe
+python tools\probe_wire_test.py --vectors    :: offline wire checks
+```
 
 ### User-mode providers (`-u`)
 
@@ -375,6 +418,20 @@ installs into `gui\` with its Qt/CRT runtime, the collector into the root).
 ```
 kellect.exe -e all -u 0x02 -f dns.json   :: DNS resolution to a file (as Administrator)
 ```
+
+### Raw ETW evidence
+
+Run from the executable directory in an elevated console:
+
+```powershell
+.\kellect.exe --profile provenance --evidence-dir D:\KellectEvidence
+.\kellect.exe --profile full_kernel --evidence-dir D:\KellectEvidence --kernel-etl
+```
+
+Profiles live in `config/profiles.ini`. Each run writes raw ETW records, stack
+artifacts and a coverage ledger to a new directory. Add `-f <path>` for
+the existing decoded JSON with raw record references.
+[Coverage and verification](docs/baseline.md)
 
 ## Future Work
 

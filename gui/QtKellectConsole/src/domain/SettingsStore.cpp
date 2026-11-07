@@ -18,11 +18,11 @@ SettingsStore::Settings SettingsStore::load() const {
     d.autoScroll      = o.value("autoScroll").toBool(true);
     d.filterKeyword   = o.value("filterKeyword").toString();
     d.outputMode  = o.value("outputMode").toInt(0);
+    if (d.outputMode < 0 || d.outputMode > 2)
+        d.outputMode = 0;
     d.outputFile  = o.value("outputFile").toString();
     d.socketHost  = o.value("socketHost").toString();
     d.socketPort  = static_cast<quint16>(o.value("socketPort").toInt(0));
-    d.kafkaBroker = o.value("kafkaBroker").toString();
-    d.kafkaTopic  = o.value("kafkaTopic").toString();
     return d;
 }
 
@@ -36,8 +36,6 @@ void SettingsStore::save(const Settings& s) const {
     o["outputFile"]  = s.outputFile;
     o["socketHost"]  = s.socketHost;
     o["socketPort"]  = s.socketPort;
-    o["kafkaBroker"] = s.kafkaBroker;
-    o["kafkaTopic"]  = s.kafkaTopic;
     QFile f(path_);
     if (f.open(QIODevice::WriteOnly | QIODevice::Truncate))
         f.write(QJsonDocument(o).toJson(QJsonDocument::Indented));

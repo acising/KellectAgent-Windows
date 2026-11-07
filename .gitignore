@@ -14,6 +14,8 @@ docs/
 
 # ===== 构建产物 =====
 /bin/
+/evidence/
+/build/
 /build-*/
 installer/stage/
 installer/build-msi/
@@ -23,3 +25,6 @@ dist/
 *.log
 *.zip
 *.user
+__pycache__/
+*.pyc
+evidence-test/

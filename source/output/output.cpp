@@ -1,6 +1,7 @@
 #include "output/output.h"
 #include "tools/logger.h"
 #include "tools/tools.h"
+#include <cstdio>
 #include <regex>
 #include <exception> 
 
@@ -13,11 +14,45 @@ void FileOutPut::output(std::string outputString) {
 
     outputStream << outputString;
     outputStream.flush();   // 进程可能在任意时刻 exit(),每批写完立即落盘
+
+    writtenBytes += outputString.size();
+    if (maxFileBytes != 0 && writtenBytes >= maxFileBytes)
+        Rotate();
+}
+
+// Rename the current file to <name>.YYYYMMDD-HHMMSS and continue in a fresh
+// one. A service can run for weeks; without this the event file grows without
+// bound. Runs on the single output thread, so no locking is required.
+void FileOutPut::Rotate() {
+    outputStream.close();
+
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    char suffix[40];
+    snprintf(suffix, sizeof(suffix), ".%04u%02u%02u-%02u%02u%02u",
+             st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+
+    const std::string backup = fileName + suffix;
+    if (!MoveFileA(fileName.c_str(), backup.c_str())) {
+        // Another file with the same second-resolution name exists: overwrite.
+        DeleteFileA(backup.c_str());
+        MoveFileA(fileName.c_str(), backup.c_str());
+    }
+
+    outputStream.open(fileName, mode);
+    writtenBytes = 0;
+
+    if (!outputStream.is_open())
+        MyLogger::writeLog("FileOutPut rotate: reopen failed for " + fileName);
 }
 
 STATUS FileOutPut::init() {
     
     STATUS status = STATUS_SUCCESS;
+    // A service/CLI may point -f at a directory that does not exist yet
+    // (default %ProgramData%\Kellect\events\). Creating it here keeps a missing
+    // directory from being fatal to the whole collector.
+    Tools::ensureParentDirectory(fileName);
     outputStream = std::ofstream(fileName,mode);
 
     if (outputStream.fail())
@@ -26,8 +61,21 @@ STATUS FileOutPut::init() {
         //MyLogger::writeLog(fileName + "文件打开错误!\n");
     }
 
-    if(status == STATUS_SUCCESS)
+    if(status == STATUS_SUCCESS) {
+        // Seed the rotation counter with what is already on disk (append mode
+        // after a service restart), otherwise the threshold only applies to
+        // bytes written by this run.
+        HANDLE existing = CreateFileA(fileName.c_str(), GENERIC_READ,
+                                      FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+                                      OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (existing != INVALID_HANDLE_VALUE) {
+            LARGE_INTEGER size = {};
+            if (GetFileSizeEx(existing, &size))
+                writtenBytes = static_cast<ULONG64>(size.QuadPart);
+            CloseHandle(existing);
+        }
         setInit(true);
+    }
 
     return status;
 }
@@ -132,15 +180,16 @@ STATUS SocketOutPut::init() {
 
 void Output::outputStrings(){
 
+    // One reusable pointer array instead of a 15k-pointer allocation per wakeup.
+    std::string** sRes = new std::string*[maxDequeNumber];
+
     while (!stopRequested) {
 
         int tempCnt = 0;
         std::string resJson;
         std::unique_lock<std::mutex> ulk(m);
 
-        // 攒够阈值 OR 500ms 超时 OR 收到停止信号,都走出等待。
-        // 定时 flush 保证低流量时事件最迟 500ms 到达输出端;
-        // requestStop() 通过 notify_all 唤醒此处并因 stopRequested 退出循环。
+        // Wake on the batch threshold, on the 500 ms timer, or on stop.
         while (!stopRequested && (tempCnt = count.load()) < outputThreshold) {
             if (cv.wait_for(ulk, std::chrono::milliseconds(flushIntervalMs)) == std::cv_status::timeout)
                 break;
@@ -148,35 +197,36 @@ void Output::outputStrings(){
 
         tempCnt = count.fetch_and(0);       //reset count
 
-        std::string** sRes = new std::string*[maxDequeNumber];
         tempCnt = q.try_dequeue_bulk(sRes, maxDequeNumber);    //try to get larger items than tempCnt, return true dequeue size to tempCnt
+
+        if (tempCnt > 0)
+            resJson.reserve(static_cast<size_t>(tempCnt) * 160ull + 64ull);
 
         for (int i = 0; i < tempCnt; ++i) {
             resJson +=(*sRes[i])+"\n";
             delete sRes[i];
         }
-        delete[] sRes;
 
         if (tempCnt > 0)
             output(resJson);
     }
 
-    // final flush: 停止信号到达后,把队列里剩余的事件全部写出再返回
+    // final flush: write everything still queued before returning
     {
-        int remaining = static_cast<int>(count.exchange(0));
-        if (remaining > 0 || q.size_approx() > 0) {
+        count.exchange(0);
+        while (const size_t got = q.try_dequeue_bulk(sRes, maxDequeNumber)) {
             std::string resJson;
-            std::string** sRes = new std::string*[maxDequeNumber];
-            size_t got = q.try_dequeue_bulk(sRes, maxDequeNumber);
+            resJson.reserve(got * 160ull + 64ull);
             for (size_t i = 0; i < got; ++i) {
                 resJson += (*sRes[i]) + "\n";
                 delete sRes[i];
             }
-            delete[] sRes;
             if (!resJson.empty())
                 output(resJson);
         }
     }
+
+    delete[] sRes;
 }
 void Output::outputStringPointer(std::string *rjson) {
     std::cout<<*rjson<<std::endl;

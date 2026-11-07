@@ -26,6 +26,7 @@ set(SOURCES
     src/ui/LogHeader.cpp
     src/ui/EventColor.cpp
     src/ui/LogDelegate.cpp
+    src/service/ServicePanel.cpp
     src/domain/Preset.cpp
     src/domain/LogParser.cpp
     src/domain/Utf8Accumulator.cpp
@@ -36,6 +37,7 @@ set(SOURCES
 set(HEADERS
     src/ui/MainWindow.h
     src/ui/LogHeader.h
+    src/service/ServicePanel.h
 )
 
 # qt5_add_resources 接受 .qrc(不是 .qss),否则 rcc 解析失败

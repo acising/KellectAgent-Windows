@@ -1,138 +1,85 @@
 #include "tools/threadpool.h"
 
-inline ThreadPool::~ThreadPool() {
+#include <chrono>
 
-	{
-		std::unique_lock<std::mutex> lock(m);
-		isDone = true;
-	}
-	cv.notify_all();
-	for (std::thread& worker : threadPool)
-		worker.join();
+ThreadPool::ThreadPool(size_t size, size_t tasksLimitSize, size_t maxWorkers)
+    : limit_(tasksLimitSize == 0 ? 200000 : tasksLimitSize) {
+    if (size == 0) size = 1;
+    if (maxWorkers < size) maxWorkers = size;
+    target_.store(size);
+    workers_.reserve(maxWorkers);
+    for (size_t i = 0; i < maxWorkers; ++i)
+        workers_.push_back(std::thread(&ThreadPool::workerLoop, this, i));
 }
 
-void ThreadPool::addThread() {
-
-	while (!isDone) {
-
-		Task t;
-		{
-			std::unique_lock<std::mutex> ulk(m);
-
-			while (isEmpty) {
-				cv.wait(ulk);
-			}
-
-			if (this->isDone && this->tasks.empty())
-				return;
-
-			//t = std::move(tasks.front());
-			t = std::move(tasks.front());
-			//tasks.pop();
-			tasks.pop_front();
-
-			if (tasks.empty())	isEmpty = true;
-			isFull = false;
-
-			cv.notify_one();
-		}
-
-		t();
-		
-		//try to reduce cpu usage
-		Sleep(0);
-	}
+void ThreadPool::SetTargetWorkers(size_t count) {
+    if (workers_.empty()) return;
+    if (count < 1) count = 1;
+    if (count > workers_.size()) count = workers_.size();
+    target_.store(count);
+    gateCv_.notify_all();
+    cv_.notify_all();
 }
 
-void ThreadPool::enqueueTask(beginThreadParseFunc f) {
-
-	using return_type = void;
-	auto task = std::make_shared< std::packaged_task<return_type()> >(std::forward<beginThreadParseFunc>(f));
-
-	{
-		std::unique_lock<std::mutex> ulk(m);
-
-		while (isFull) {
-			cv.wait(ulk);
-		}
-
-		// don't allow enqueueing after stopping the pool
-		if (isDone)
-			throw std::runtime_error("enqueue on stopped ThreadPool");
-
-		tasks.push_back([task]() { (*task)(); });
-		//tasks.emplace([task]() { (*task)(); });
-		isEmpty = false;
-	}
-	cv.notify_one();
+ThreadPool::~ThreadPool() {
+    done_.store(true);
+    cv_.notify_all();
+    gateCv_.notify_all();
+    for (std::thread& worker : workers_) {
+        if (worker.joinable())
+            worker.join();
+    }
 }
 
-void ThreadPool::enqueueTask(threadParseEvent f, BaseEvent* event)
-{
-	using return_type = void;
+bool ThreadPool::enqueueTask(threadParseEvent f, BaseEvent* event) {
+    // Reserve before publication. A worker can dequeue as soon as enqueue
+    // publishes the item, so counting afterward can underflow pending_.
+    const auto previous = pending_.fetch_add(1, std::memory_order_relaxed);
+    if (previous >= limit_ || !queue_.enqueue(Item{f, event})) {
+        pending_.fetch_sub(1, std::memory_order_relaxed);
+        return false;
+    }
 
-	auto task = std::make_shared< std::packaged_task<return_type()> >(
-		std::bind(std::forward<threadParseEvent>(f), std::forward<BaseEvent*>(event))
-		);
-	//std::future<return_type> res = task->get_future();
-
-	{
-		std::unique_lock<std::mutex> ulk(m);
-
-		while (isFull) {
-			cv.wait(ulk);
-		}
-
-		// don't allow enqueueing after stopping the pool
-		if (isDone)
-			throw std::runtime_error("enqueue on stopped ThreadPool");
-
-		tasks.push_back([task]() { (*task)(); });
-		//tasks.emplace([task]() { (*task)(); });
-
-		//if(tasks.size() % 1000 == 0)
-			//std::cout << "                                            "<<tasks.size() << std::endl;
-//        tasksLimitSize++;
-//		if (tasks.size() == tasksLimitSize) {
-//			isFull = true;
-//			std::cout << "tasksLimitSize is full " << tasksLimitSize << std::endl;
-//		}
-		isEmpty = false;
-	}
-	cv.notify_one();
-	//return res;
+    if (previous == 0) {
+        // Wake every idle worker once; afterwards they drain without further
+        // notifications (they re-check the queue before sleeping).
+        cv_.notify_all();
+    }
+    return true;
 }
 
-/*
-void ThreadPool::enqueueTask(threadParsePeventRecord f, PEVENT_RECORD pEvent)
-{
-	using return_type = void;
+void ThreadPool::workerLoop(size_t index) {
+    for (;;) {
+        // Park workers above the current dynamic budget. They wake on
+        // SetTargetWorkers() or shutdown.
+        {
+            std::unique_lock<std::mutex> gate(gateMutex_);
+            gateCv_.wait(gate, [this, index] {
+                return done_.load(std::memory_order_relaxed) ||
+                       index < target_.load(std::memory_order_relaxed);
+            });
+            if (done_.load(std::memory_order_relaxed))
+                return;
+        }
 
-	auto task = std::make_shared< std::packaged_task<return_type()> >(
-		std::bind(std::forward<threadParsePeventRecord>(f), std::forward<PEVENT_RECORD>(pEvent))
-		);
-	//std::future<return_type> res = task->get_future();
+        Item item;
+        if (queue_.try_dequeue(item)) {
+            pending_.fetch_sub(1, std::memory_order_relaxed);
+            item.parse(item.event);
+            continue;
+        }
 
-	{
-		std::unique_lock<std::mutex> ulk(m);
+        // Empty: sleep until work arrives or the pool stops. The predicate is
+        // re-evaluated under the lock, so a notify that lands between the
+        // failed dequeue and the wait cannot be lost.
+        std::unique_lock<std::mutex> lock(waitMutex_);
+        cv_.wait_for(lock, std::chrono::milliseconds(50), [this] {
+            return done_.load(std::memory_order_relaxed) ||
+                   pending_.load(std::memory_order_relaxed) > 0;
+        });
 
-		while (isFull) {
-			//std::cout << std::this_thread::get_id() << "????????" << std::endl;
-			cv.wait(ulk);		//???????????????????????notify
-		}
-
-		// don't allow enqueueing after stopping the pool
-		if (isDone)
-			throw std::runtime_error("enqueue on stopped ThreadPool");
-
-		tasks.push_back([task]() { (*task)(); });
-		//tasks.emplace([task]() { (*task)(); });
-
-		if (tasks.size() == tasksLimitSize)	isFull = true;
-
-		isEmpty = false;
-	}
-	cv.notify_one();
-	//return res;
+        if (done_.load(std::memory_order_relaxed) &&
+            pending_.load(std::memory_order_relaxed) == 0)
+            return;
+    }
 }
-*/

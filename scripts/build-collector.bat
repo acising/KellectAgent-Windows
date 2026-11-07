@@ -1,38 +1,49 @@
 @echo off
-REM kellect collector build - x86 /MT static CRT (Ninja + vcvars cl 14.29 / SDK 19041)
+REM kellect collector build - x86 /MT static CRT (MSVC + Ninja).
 REM
-REM WHY x86:  lib\librdkafka*.lib are 32-bit import libs; an x64 link fails
-REM           (LNK4272 -> LNK2019). Building x86 matches them and links clean.
 REM WHY /MT:  root CMakeLists sets CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded ->
 REM           self-contained exe, no VC++ 2015-2022 redist on target.
-REM Uses a dedicated build-core-x86 dir so an old x64 build-core cache can't
-REM contaminate the x86 configure (CMake refuses a compiler-arch change in-place).
+REM
+REM Works with VS2022 (17.x) and VS2026 (18.x): vswhere range is [17.0,) and
+REM CMake/Ninja are taken from the VS installation when they are not on PATH.
 REM
 REM Usage:   cmd /c scripts\build-collector.bat
-REM Output:  bin\kellect.exe (+ DLLs + config\ copied there by CMake)
+REM Output:  bin\kellect.exe (+ config\ copied there by CMake)
+REM
+REM   powershell -ExecutionPolicy Bypass -File scripts\build-single.ps1
 setlocal
+cd /d "%~dp0.." || exit /b 1
 chcp 65001 >nul
-REM --- locate VS2022 via vswhere (any edition incl. BuildTools; no hardcoded path) ---
+
 set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
 if not exist "%VSWHERE%" (
     echo ERROR: vswhere.exe not found - no Visual Studio 2017+ install detected 1>&2
     exit /b 1
 )
+
 REM vswhere: write output to a temp file and read it back - a for /f
 REM parse gets truncated by the ")" that %ProgramFiles(x86)% expands to.
-"%VSWHERE%" -latest -version "[17.0,18.0)" -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath > "%TEMP%\kellect-vswhere.txt" 2>nul
+"%VSWHERE%" -latest -version "[17.0,)" -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath > "%TEMP%\kellect-vswhere.txt" 2>nul
 set "VSINSTALL="
 set /p VSINSTALL=<"%TEMP%\kellect-vswhere.txt"
 del "%TEMP%\kellect-vswhere.txt" 2>nul
 if not defined VSINSTALL (
-    echo ERROR: VS2022 with C++ workload ^(VC.Tools.x86.x64^) not found 1>&2
+    echo ERROR: Visual Studio with C++ workload ^(VC.Tools.x86.x64^) not found 1>&2
     exit /b 1
 )
 echo [env] VS: %VSINSTALL%
-call "%VSINSTALL%\VC\Auxiliary\Build\vcvarsall.bat" x86 10.0.19041.0 -vcvars_ver=14.29
+
+call "%VSINSTALL%\VC\Auxiliary\Build\vcvarsall.bat" x86
 if errorlevel 1 exit /b 1
-cmake -B build-core-x86 -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_SYSTEM_VERSION=10.0.19041.0
+
+REM CMake/Ninja are bundled with VS but not necessarily on PATH.
+set "CMAKE=cmake"
+where cmake >nul 2>&1 || set "CMAKE=%VSINSTALL%\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe"
+set "NINJA=%VSINSTALL%\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja"
+if exist "%NINJA%\ninja.exe" set "PATH=%NINJA%;%PATH%"
+
+"%CMAKE%" -B build\collector-x86 -G Ninja -DCMAKE_BUILD_TYPE=Release
 if errorlevel 1 exit /b 1
-cmake --build build-core-x86
+"%CMAKE%" --build build\collector-x86
 if errorlevel 1 exit /b 1
-echo === build-collector OK: bin\kellect.exe (x86 /MT) linked ===
+echo === build-collector OK: bin\kellect.exe + bin\KellectService.exe (x86 /MT) linked ===

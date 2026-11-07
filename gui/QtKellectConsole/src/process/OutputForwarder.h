@@ -1,6 +1,5 @@
 // src/process/OutputForwarder.h
 // 把 stdout 收到的行按当前模式转发:None=不转发 / File=写文件 / Socket=QTcpSocket。
-// Kafka 模式不经 forwarder(由 MainWindow::onStart 的 -k 参数让 kellect 直传),forwarder 保持 None。
 #pragma once
 #include <QObject>
 #include <QString>

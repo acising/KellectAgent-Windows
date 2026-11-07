@@ -2,15 +2,17 @@
 <!--
   kellect MSI - WiX v4/v5/v7 source (with install UI + customizable options).
   Per-machine installer that:
-    * lays kellect.exe + 4 DLLs + config into [ProgramFilesFolder]kellect\
-      (Program Files (x86); collector is x86), and the GUI + Qt/CRT runtime
-      into the gui\ subfolder
+    * lays kellect.exe + KellectService.exe + 4 DLLs + config into
+      [ProgramFilesFolder]kellect\ (Program Files (x86); collector is x86), and
+      the GUI + Qt/CRT runtime into the gui\ subfolder
+    * optionally registers the headless Windows service (KellectAgent) - the
+      "server product"; off by default, chosen in the setup options page
     * Start Menu shortcut for the GUI (always, when the GUI feature is installed)
     * install UI: one hand-authored SetupOptionsDlg (WixUI_Common; WIX0094 blocks stock sets; no license)
     * major upgrades via a fixed UpgradeCode
 
-  (The Windows-service wrapper was removed on 2026-09-19; see
-  dist/kellect-service-backup-20260919.zip for the pre-removal state.)
+  (A service wrapper existed until 2026-09-19 and was removed; KellectService.exe
+  is a fresh implementation that links kellect_core directly.)
 
   Build:  wix build kellect.wxs -ext WixToolset.UI.wixext -o build-msi\Kellect-win-x64.msi
   (build-msi.bat assembles stage\ first.)
@@ -38,6 +40,10 @@
     <!-- GUI installed by default (radio "1"). "Skip the GUI" -> INSTALLGUI="0" -> Remove Gui
          on the Install button. Never null: the choice is a RadioButtonGroup (see below). -->
     <Property Id="INSTALLGUI" Value="1" />
+    <!-- Windows service off by default: installing it registers an always-on
+         LocalSystem collector, which is the "server product", not something a
+         GUI user expects. Radio "1" -> AddLocal Service. -->
+    <Property Id="INSTALLSVC" Value="0" />
 
     <UI>
       <UIRef Id="WixUI_Common" />
@@ -76,12 +82,21 @@
           </RadioButtonGroup>
         </Control>
 
+        <Control Id="InstallSvc" Type="RadioButtonGroup" X="20" Y="145" Width="330" Height="40" Property="INSTALLSVC">
+          <RadioButtonGroup Property="INSTALLSVC">
+            <RadioButton Value="1" X="0" Y="0" Width="330" Height="17" Text="Install the Kellect Windows service (headless collector)" />
+            <RadioButton Value="0" X="0" Y="20" Width="330" Height="17" Text="Do not install the service" />
+          </RadioButtonGroup>
+        </Control>
+
         <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
         <Control Id="Install" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="&amp;Install">
           <Publish Event="SetTargetPath" Value="INSTALLDIR" Order="1" Condition="1" />
           <Publish Event="AddLocal" Value="Gui" Order="2" Condition='INSTALLGUI = "1"' />
           <Publish Event="Remove" Value="Gui" Order="3" Condition='INSTALLGUI &lt;&gt; "1"' />
-          <Publish Event="EndDialog" Value="Return" Order="4" Condition="1" />
+          <Publish Event="AddLocal" Value="Service" Order="4" Condition='INSTALLSVC = "1"' />
+          <Publish Event="Remove" Value="Service" Order="5" Condition='INSTALLSVC &lt;&gt; "1"' />
+          <Publish Event="EndDialog" Value="Return" Order="6" Condition="1" />
         </Control>
         <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="Cancel">
           <Publish Event="SpawnDialog" Value="CancelDlg" Condition="1" />
@@ -109,6 +124,12 @@
         <ComponentRef Id="cmp.GuiExe" />
         <ComponentRef Id="cmp.StartMenuShortcut" />
         <ComponentGroupRef Id="cg.QtRuntime" />
+      </Feature>
+      <!-- Level 3: off at the default INSTALLLEVEL=1; the wizard's service
+           radio turns it on with AddLocal Service. -->
+      <Feature Id="Service" Title="Windows service" Level="3"
+               Description="KellectService.exe - headless collector registered with the SCM.">
+        <ComponentRef Id="cmp.ServiceHost" />
       </Feature>
     </Feature>
   </Package>
@@ -139,19 +160,42 @@
         <File Id="file.CollectorManifest" Source="$(var.StageDir)kellect.exe.manifest" KeyPath="yes" />
       </Component>
 
-      <Component Id="cmp.DllLibrdkafka" Guid="*"><File Id="file.Librdkafka" Source="$(var.StageDir)librdkafka.dll" KeyPath="yes" /></Component>
-      <Component Id="cmp.DllLibrdkafkacpp" Guid="*"><File Id="file.Librdkafkacpp" Source="$(var.StageDir)librdkafkacpp.dll" KeyPath="yes" /></Component>
-      <Component Id="cmp.DllLibzstd" Guid="*"><File Id="file.Libzstd" Source="$(var.StageDir)libzstd.dll" KeyPath="yes" /></Component>
-      <Component Id="cmp.DllZlib" Guid="*"><File Id="file.Zlib" Source="$(var.StageDir)zlib.dll" KeyPath="yes" /></Component>
-
-      <!-- config\: runtime-read set (win7/win10 xml, initImages, filter, log.conf) -->
+      <!-- config\: runtime-read set (schema profiles, initImages, filter, agent.ini, log.conf) -->
       <Component Id="cmp.CfgWin7"         Guid="*" Directory="ConfigDir"><File Id="file.CfgWin7"         Source="$(var.StageDir)config\eventStruct_win7.xml"  KeyPath="yes" /></Component>
       <Component Id="cmp.CfgWin10"        Guid="*" Directory="ConfigDir"><File Id="file.CfgWin10"        Source="$(var.StageDir)config\eventStruct_win10.xml" KeyPath="yes" /></Component>
+      <Component Id="cmp.CfgWin11"        Guid="*" Directory="ConfigDir"><File Id="file.CfgWin11"        Source="$(var.StageDir)config\eventStruct_win11.xml" KeyPath="yes" /></Component>
       <Component Id="cmp.CfgInitImages"   Guid="*" Directory="ConfigDir"><File Id="file.CfgInitImages"   Source="$(var.StageDir)config\initImages.txt"        KeyPath="yes" /></Component>
       <Component Id="cmp.CfgFilter"       Guid="*" Directory="ConfigDir"><File Id="file.CfgFilter"       Source="$(var.StageDir)config\filter.txt"            KeyPath="yes" /></Component>
+      <Component Id="cmp.CfgAgentIni"     Guid="*" Directory="ConfigDir"><File Id="file.CfgAgentIni"     Source="$(var.StageDir)config\agent.ini"             KeyPath="yes" /></Component>
+      <Component Id="cmp.CfgProfilesIni"  Guid="*" Directory="ConfigDir"><File Id="file.CfgProfilesIni"  Source="$(var.StageDir)config\profiles.ini"          KeyPath="yes" /></Component>
+      <Component Id="cmp.CfgProbeIni"     Guid="*" Directory="ConfigDir"><File Id="file.CfgProbeIni"     Source="$(var.StageDir)config\probe.ini"             KeyPath="yes" /></Component>
+      <Component Id="cmp.CfgSecargusIni"  Guid="*" Directory="ConfigDir"><File Id="file.CfgSecargusIni"  Source="$(var.StageDir)config\secargus.ini"         KeyPath="yes" /></Component>
       <Component Id="cmp.CfgLogConf"      Guid="*" Directory="ConfigDir"><File Id="file.CfgLogConf"      Source="$(var.StageDir)config\log.conf"              KeyPath="yes" /></Component>
     </ComponentGroup>
   </Fragment>
+
+  <!-- ===================== Windows service (optional feature) ===================== -->
+  <!-- The service host runs the same collector core headless. It is installed
+       only when the wizard's "Install the Windows service" option is chosen
+       (Feature level 3 -> off at the default INSTALLLEVEL=1). The service is
+       registered but NOT started here: a failing first start must not roll back
+       the whole install. Start it with:  net start KellectAgent -->
+  <Fragment>
+    <Component Id="cmp.ServiceHost" Guid="*" Directory="INSTALLDIR">
+      <File Id="file.ServiceHost" Source="$(var.StageDir)KellectService.exe" KeyPath="yes" />
+      <ServiceInstall Id="svc.KellectAgent"
+                      Name="KellectAgent"
+                      DisplayName="Kellect Agent"
+                      Description="Kellect kernel event collector (ETW). Configure via config\agent.ini."
+                      Type="ownProcess"
+                      Start="auto"
+                      ErrorControl="normal"
+                      Account="LocalSystem" />
+      <ServiceControl Id="svc.KellectAgentControl" Name="KellectAgent"
+                      Stop="both" Remove="uninstall" Wait="yes" />
+    </Component>
+  </Fragment>
+
 
   <!-- ===================== GUI + Start Menu shortcut ===================== -->
   <Fragment>

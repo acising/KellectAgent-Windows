@@ -25,9 +25,9 @@ echo repo: %REPO_ROOT%
 echo.
 
 REM ---------------------------------------------------------------------------
-REM [1/3] Collector (x86 /MT static CRT) - staged to bin\ for the MSI
+REM [1/3] Collector + service (x86 /MT static CRT) - staged to bin\ for the MSI
 REM ---------------------------------------------------------------------------
-echo === [1/3] collector: bin\kellect.exe (x86 /MT) ===
+echo === [1/3] collector: bin\kellect.exe + bin\KellectService.exe (x86 /MT) ===
 pushd "%REPO_ROOT%"
 call scripts\build-collector.bat
 set "RC=%errorlevel%"
@@ -36,7 +36,9 @@ if not "%RC%"=="0" goto :col_fail
 if not exist "%REPO_ROOT%\bin\kellect.exe" goto :col_fail
 REM size guard: a 0-byte exe (stale ninja graph / interrupted link) must NOT pass
 for %%I in ("%REPO_ROOT%\bin\kellect.exe") do if %%~zI LSS 102400 goto :col_fail
-echo     OK: bin\kellect.exe
+if not exist "%REPO_ROOT%\bin\KellectService.exe" goto :col_fail
+for %%I in ("%REPO_ROOT%\bin\KellectService.exe") do if %%~zI LSS 51200 goto :col_fail
+echo     OK: bin\kellect.exe + bin\KellectService.exe
 echo.
 
 REM ---------------------------------------------------------------------------
@@ -54,7 +56,7 @@ echo     OK: gui\QtKellectConsole\build\KellectConsole.exe
 echo.
 
 REM ---------------------------------------------------------------------------
-REM [3/3] MSI (stages collector+DLLs+config+GUI with Qt runtime)
+REM [3/3] MSI (stages collector+config+GUI with Qt runtime)
 REM ---------------------------------------------------------------------------
 echo === [3/3] MSI: Kellect-win-x64.msi ===
 pushd "%REPO_ROOT%"

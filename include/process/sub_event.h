@@ -2,6 +2,7 @@
 #include "event.h"
 #include "tools/tools.h"
 #include "initialization/initializer.h"
+#include <mutex>
 
 #define MAX_PROCESSOR_NUM 65535
 #define MAX_THREAD_NUM 65535
@@ -11,9 +12,6 @@
 class EventProcess :public BaseEvent {
 
 private:
-	using MinMaxModuleAddressPair = std::pair<ULONG64, ULONG64>;
-	const static ULONG64 initMinAddress = 0xffffffff;
-	const static ULONG64 initMaxAddress = 0;
 	const static int ProcessNumSize = 65535;
 
 public:
@@ -23,7 +21,6 @@ public:
     static std::map<int, int> processID2ParentProcessID;
 	static std::map<int, std::string> processID2Name;
 	static std::map<std::string, int> processName2ID;
-	static ReadWriteMap<int, MinMaxModuleAddressPair> processID2ModuleAddressPair;
 	//static ReadWriteMap<int, std::string> processID2Name;
 	//static ReadWriteMap<std::string, int> processName2ID;
 //	static const int UnknownProcess = -1;
@@ -157,17 +154,25 @@ class EventUnImportant :public BaseEvent {
 class EventImage :public BaseEvent {
 
 public:
-	//static std::map < int, std::set<Module*, ModuleSortCriterion> > processID2Modules;
-	static ReadWriteMap < int, std::set<Module*, ModuleSortCriterion> > processID2Modules;
+    static std::map<int, std::map<ULONG64, Module>> processID2Modules;
 	static std::map < std::string, std::string > volume2Disk;
 	static std::map < std::string, std::set<MyAPI*, MyAPISortCriterion> > modulesName2APIs;
 	//static ReadWriteMap < std::string, std::set<MyAPI*, MyAPISortCriterion> > modulesName2APIs;
 	static std::map < std::string, std::set<MyAPI*, MyAPISortCriterion> > usedModulesName2APIs;
-	static std::set <Module*, ModuleSortCriterion> globalModuleSet;
-	static std::set <Module*, ModuleSortCriterion> usedModuleSet;
 
-	static STATUS getAPIsFromFile(std::string& fileName, std::set<MyAPI*, MyAPISortCriterion>& apis);
-	static STATUS getExportAPIs(LPVOID hModule, std::string& fileName, std::set<MyAPI*, MyAPISortCriterion>& apis);
+	// Export-table loading is the most expensive step (LoadLibrary + PE walk,
+	// hundreds of microseconds per new image). It runs on a dedicated loader
+	// thread so a burst of ImageLoad events cannot stall the ordered parse
+	// thread. modulesName2APIs is guarded because CallStack reads it while the
+	// loader publishes new tables.
+	static std::mutex modulesApiMutex;
+	static void startApiLoader();
+    static void stopApiLoader();
+    // Phase-1 module snapshot (Toolhelp) before ETW starts.
+    static void PreEnumerateModules();
+    static void setAdaptiveExports(bool enabled);
+	static bool enqueueModuleApis(const std::string& imageFileName);   // false = queue full
+	static void loadModuleApis(const std::string& imageFileName);      // blocking
 	//std::string toJsonString() override;
 	void parse() override;
 	~EventImage() {
@@ -188,40 +193,15 @@ private:
 	};
 };
 
-class CallStackIdentifier {
-
-private:
-	int depth;		//callstacks depth
-	std::vector<ULONG64> callAddresses;
-
-public:
-    CallStackIdentifier(int depth, std::vector<ULONG64> callAddresses) :
-            depth(depth), callAddresses(callAddresses) {}
-
-	bool operator< (const CallStackIdentifier& ci)const {
-		if (depth != ci.depth)	return depth < ci.depth;
-		else {
-            for(int i =0;i<depth;i++){
-                if(ci.callAddresses[i] == this->callAddresses[i]){
-                    if(i>5) return false;
-                    continue;
-                }
-                return ci.callAddresses[i] < this->callAddresses[i];
-            }
-            return false;
-		}
-	}
-};
-
 class EventCallstack :public BaseEvent {
 
 public:
 	std::vector<ULONG64> stackAddresses;
 
-    static std::atomic<int> callStackRecordNum;
-//	static ReadWriteMap<CallStackIdentifier, std::string*> callStackRecord;
-	static std::map<CallStackIdentifier, std::string*> callStackRecord;
-	static void initCallStackTracing(TRACEHANDLE& SessionHandle);
+	static ULONG initCallStackTracing(TRACEHANDLE SessionHandle);
+	// behaviour: only key events get stacks (no per-Read/Write, Send/Recv).
+	// full: every supported classic event.
+	static void SetStackScope(bool behaviorScope);
 	static void initCallStackEvents();
 	void parse() override;
 	//void setCallStackInfo(std::wstring& callStackInfo) { this->callStackInfo = callStackInfo; }

@@ -1,52 +1,59 @@
 #pragma once
-#include <thread>
-#include <mutex>
-#include <future>
+//
+// Bounded worker pool for the event pipeline.
+//
+// Two things matter here more than API elegance:
+//   1. The ETW callback enqueues from one thread at 10^5-10^6 events/s, so the
+//      producer must not take a mutex per event (the previous implementation
+//      wrapped every task in shared_ptr<packaged_task> + std::function +
+//      std::list node, and locked; allocator + lock traffic dominated).
+//   2. enqueueTask() returns false when the backlog is full. The caller
+//      retains ownership and applies its stage's overload policy.
+//
+#include <atomic>
 #include <condition_variable>
-#include <functional>
-#include <queue>
-#include "process/event.h"
+#include <cstddef>
+#include <mutex>
+#include <thread>
+#include <vector>
 
-typedef std::function<void()> Task;
+#include "process/event.h"
+#include "tools/ConcurrentQueue.h"
+
 typedef void (*threadParseEvent)(BaseEvent* event);
-typedef void (*threadParsePeventRecord)(PEVENT_RECORD pEvent);
-typedef void (*beginThreadParseFunc)();
 
 class ThreadPool {
-private:
-	static const int MaxThreadSize = 65535;
-
 public:
-	size_t poolSize = 0;
-	size_t tasksLimitSize = 0;
-	std::vector <std::thread> threadPool;
-	std::list<Task> tasks;
-	//std::queue<Task> tasks;
-	bool isDone;
-	bool isEmpty;
-	bool isFull;
-	//static std::atomic<int> threadCounts[MaxThreadSize];
+    ThreadPool(size_t size, size_t tasksLimitSize, size_t maxWorkers = 0);
+    ~ThreadPool();
 
-	std::mutex m;
-	std::condition_variable cv;
+    ThreadPool(const ThreadPool&) = delete;
+    ThreadPool& operator=(const ThreadPool&) = delete;
 
-	inline ThreadPool() {};
-	inline ThreadPool(size_t size,size_t tasksLimitSize) :isDone(false), isEmpty(true), isFull(false), poolSize(size), tasksLimitSize(tasksLimitSize){
-		for (int i = 0; i < size; i++) {
-			//添加线程
-			threadPool.push_back(std::thread(&ThreadPool::addThread, this));
-		}
-	};
+    bool enqueueTask(threadParseEvent f, BaseEvent* event);
 
-	inline ~ThreadPool();
-	//void addTask(const Task& task);
+    // Backlog snapshot for diagnostics (relaxed, approximate under concurrency).
+    size_t pending() const { return pending_.load(std::memory_order_relaxed); }
+    // Dynamic worker budget: workers above the target park at the gate.
+    void SetTargetWorkers(size_t count);
+    size_t TargetWorkers() const { return target_.load(std::memory_order_relaxed); }
 
-	//template<class F, class... Args> 
-	//auto enqueueTask(F&& f, Args&&... args)->std::future<decltype(f(args...))>;
+private:
+    struct Item {
+        threadParseEvent parse = nullptr;
+        BaseEvent* event = nullptr;
+    };
 
-	void enqueueTask(threadParseEvent f,BaseEvent* event);
-	void enqueueTask(beginThreadParseFunc f);
-	//void enqueueTask(threadParsePeventRecord f, PEVENT_RECORD pEvent);
+    void workerLoop(size_t index);
 
-	void addThread();
+    moodycamel::ConcurrentQueue<Item> queue_;
+    std::atomic<size_t> pending_{ 0 };
+    std::atomic<size_t> target_{ 1 };
+    std::mutex gateMutex_;
+    std::condition_variable gateCv_;
+    std::atomic<bool> done_{ false };
+    std::mutex waitMutex_;
+    std::condition_variable cv_;
+    size_t limit_ = 0;
+    std::vector<std::thread> workers_;
 };

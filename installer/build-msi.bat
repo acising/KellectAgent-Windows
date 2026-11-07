@@ -6,10 +6,8 @@ REM
 REM  Prereqs on the machine (one-time):
 REM    dotnet tool install -g wix        (WiX CLI, ~7.x)
 REM  Binary prereqs (produced by the other build steps):
-REM    (collector)                        -> bin\kellect.exe + DLLs + bin\config\
+REM    (collector)                        -> bin\kellect.exe + bin\KellectService.exe + bin\config\
 REM    gui\QtKellectConsole\scripts\build.bat -> gui\QtKellectConsole\build\KellectConsole.exe
-REM  If bin\kellect.exe is absent, the script falls back to release\ as a
-REM  prebuilt collector source.
 REM ===========================================================================
 setlocal enableextensions enabledelayedexpansion
 
@@ -31,33 +29,26 @@ mkdir "%STAGE%"          2>nul
 mkdir "%STAGE%\config"   2>nul
 
 REM ---------------------------------------------------------------------------
-REM Collector artifacts: bin > release (prebuilt).
+REM Collector artifacts: bin.
 REM ---------------------------------------------------------------------------
 set "COLLECTOR_SRC="
 if exist "%REPO_ROOT%\bin\kellect.exe"                            set "COLLECTOR_SRC=%REPO_ROOT%\bin"
-if not defined COLLECTOR_SRC if exist "%REPO_ROOT%\release\kellect.exe"              set "COLLECTOR_SRC=%REPO_ROOT%\release"
 if not defined COLLECTOR_SRC (
-    echo ERROR: kellect.exe not found. Build the collector, or drop a prebuilt 1>&2
-    echo        copy into release\. Aborting. 1>&2
+    echo ERROR: kellect.exe not found. Run scripts\build-collector.bat. 1>&2
     exit /b 1
 )
 echo [stage] collector from %COLLECTOR_SRC%
 copy /y "%COLLECTOR_SRC%\kellect.exe"            "%STAGE%\" >nul || goto :err
-copy /y "%COLLECTOR_SRC%\librdkafka.dll"         "%STAGE%\" >nul || goto :err
-copy /y "%COLLECTOR_SRC%\librdkafkacpp.dll"      "%STAGE%\" >nul || goto :err
-copy /y "%COLLECTOR_SRC%\libzstd.dll"            "%STAGE%\" >nul || goto :err
-copy /y "%COLLECTOR_SRC%\zlib.dll"               "%STAGE%\" >nul || goto :err
 
-REM --- kellect.exe.manifest sidecar: bin\ doesn't ship it (CMake copies only
-REM     config + dlls), so resolve from the other collector-source candidates. ---
-set "MANIFEST_SRC="
-if exist "%COLLECTOR_SRC%\kellect.exe.manifest"            set "MANIFEST_SRC=%COLLECTOR_SRC%\kellect.exe.manifest"
-if not defined MANIFEST_SRC if exist "%REPO_ROOT%\release\kellect.exe.manifest"            set "MANIFEST_SRC=%REPO_ROOT%\release\kellect.exe.manifest"
-if not defined MANIFEST_SRC (
-    echo ERROR: kellect.exe.manifest sidecar not found. 1>&2
+REM Service host (product 2). Built by the same CMake run as kellect.exe.
+if not exist "%COLLECTOR_SRC%\KellectService.exe" (
+    echo ERROR: KellectService.exe not found next to kellect.exe in 1>&2
+    echo        %COLLECTOR_SRC% - rebuild with scripts\build-collector.bat 1>&2
     exit /b 1
 )
-copy /y "%MANIFEST_SRC%"                          "%STAGE%\" >nul || goto :err
+copy /y "%COLLECTOR_SRC%\KellectService.exe"     "%STAGE%\" >nul || goto :err
+
+copy /y "%SCRIPT_DIR%kellect.exe.manifest" "%STAGE%\" >nul || goto :err
 
 REM ---------------------------------------------------------------------------
 REM GUI binary

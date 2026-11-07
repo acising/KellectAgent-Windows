@@ -22,8 +22,7 @@ std::map<std::string, int> EventProcess::processName2ID;
 //ReadWriteMap<std::string, int> EventProcess::processName2ID;
 //std::set<INT64> EventProcess::processIDSet;
 
-ReadWriteMap <int, std::set<Module*, ModuleSortCriterion> > EventImage::processID2Modules;
-//std::map <int, std::set<Module*, ModuleSortCriterion> > EventImage::processID2Modules;
+std::map<int, std::map<ULONG64, Module>> EventImage::processID2Modules;
 //std::map < std::string, std::set<MyAPI*, MyAPISortCriterion> > EventImage::usedModulesName2APIs;
 
 extern std::map<ULONG64, std::string> addr2FuncName;
@@ -74,30 +73,31 @@ void BaseEvent::fillProcessInfo(){
 
 dataType* BaseEvent::getProperty(int propertyNameIndex) {
 
-	if (BaseEvent::propertyNameVector.size() <= propertyNameIndex ) {
-		MyLogger::writeLog("propertyNameIdex exceed EventIdentifier::propertyNameVector size！\n");
-		exit(-1);
-	}
 	if (propertyNameIndex < 0) {
 		MyLogger::writeLog("getProperty propertyNameIdex is negative\n");
 		exit(-1);
 	}
-
-	std::string propertyName = BaseEvent::propertyNameVector[propertyNameIndex];
-	//event doesn't have this property
-	if (!properties.count(propertyName)) {
-
-		propertyName = "unknownProperty";
-		properties.insert(std::map <std::string, dataType*>::value_type(propertyName, nullptr));
-		MyLogger::writeLog("can not find propertyName\n");
+	if (BaseEvent::propertyNameVector.size() <= static_cast<size_t>(propertyNameIndex)) {
+		MyLogger::writeLog("propertyNameIdex exceed EventIdentifier::propertyNameVector size！\n");
+		exit(-1);
 	}
 
-	return this->properties[propertyName];
+	const std::string& propertyName = BaseEvent::propertyNameVector[propertyNameIndex];
+	for (auto& kv : properties) {
+		if (kv.first == propertyName)
+			return kv.second;
+	}
+
+	// Missing field is normal (optional XML fields, per-version layouts).
+	// Returning null keeps the hot path allocation-free; the previous code
+	// inserted a synthetic "unknownProperty" entry (never serialised because the
+	// value was null) and logged on every miss.
+	return nullptr;
 }
 
 void BaseEvent::setProperty(int propertyNameIdex, dataType* dt) {
 
-	if (BaseEvent::propertyNameVector.size() <= propertyNameIdex) {
+	if (BaseEvent::propertyNameVector.size() <= static_cast<size_t>(propertyNameIdex)) {
 		MyLogger::writeLog("propertyNameIdex exceed EventIdentifier::propertyNameVector size！\n");
 		exit(-1);
 	}
@@ -106,9 +106,15 @@ void BaseEvent::setProperty(int propertyNameIdex, dataType* dt) {
 		MyLogger::writeLog("setProperty propertyNameIdex is negative\n");
 		exit(-1);
 	}
-	std::string propertyName = BaseEvent::propertyNameVector[propertyNameIdex];
+	const std::string& propertyName = BaseEvent::propertyNameVector[propertyNameIdex];
 
-	properties[propertyName] = dt;
+	for (auto& kv : properties) {
+		if (kv.first == propertyName) {
+			kv.second = dt;
+			return;
+		}
+	}
+	properties.emplace_back(propertyName, dt);
 }
 
 void BaseEvent::removeQuotesFromProperty(int propertyIndex) {
@@ -118,21 +124,24 @@ void BaseEvent::removeQuotesFromProperty(int propertyIndex) {
 
 void BaseEvent::replaceCharacterFromProperty(int propertyIndex,char target ,std::string substitute){
 
-    auto tempDataType = getProperty(propertyIndex);
+    dataType* tempDataType = getProperty(propertyIndex);
+    if (tempDataType == nullptr)
+        return;
 
-    if(tempDataType!= nullptr){
-        std::string propertyValue = tempDataType->getString();
+    const std::string& propertyValue = tempDataType->getString();
+    // Most values contain no target at all (paths, command lines): skip the
+    // allocation entirely instead of rebuilding the string field by field.
+    if (propertyValue.find(target) == std::string::npos)
+        return;
 
-        int len = propertyValue.size();
-        for(int i =len-1;i>=0;i--){
-            if(propertyValue.at(i) == target){
-                propertyValue.replace(i,1,substitute);
-            }
-        }
-
-//        Tools::convertFileNameInDiskFormat(propertyValue);
-        delete tempDataType;
-        setProperty( propertyIndex,new dataType(propertyValue));
+    std::string replaced;
+    replaced.reserve(propertyValue.size() + 8);
+    for (char c : propertyValue) {
+        if (c == target) replaced.append(substitute);
+        else replaced.push_back(c);
     }
+
+    delete tempDataType;
+    setProperty(propertyIndex, new dataType(replaced));
 }
 

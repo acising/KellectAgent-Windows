@@ -1,4 +1,5 @@
 #include "tools/filter.h"
+#include "tools/stats.h"
 #include <tdh.h>
 
 bool Filter::firstFilter(PEVENT_RECORD pEvent) {
@@ -45,6 +46,13 @@ bool Filter::thirdFilter(BaseEvent* event) {
             flt = true;
         }
     }else {
+        // Not one of the requested providers (typically the DiskIo events that
+        // FileIO's DISK_IO dependency pulls in). Record the identity so the
+        // log shows what is being filtered instead of guessing.
+        if (event->getEventIdentifier())
+            kellect::stats::RecordFailure(
+                event->getEventIdentifier()->getProviderID(),
+                event->getEventIdentifier()->getOpCode(), 0, "provider_not_listened");
         flt = true;
     }
 

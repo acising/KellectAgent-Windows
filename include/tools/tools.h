@@ -22,6 +22,16 @@ public:
 	static std::string parseEventInJsonFormat(const BaseEvent &event);
 	static std::string convertTimestamp(ULONG64 timestamp);
 	static std::string jsonEscape(const std::string& s);      //JSON string escape (backslash, quote, control chars)
+	// Allocation-free append variants used by the event serialiser hot path:
+	// they avoid the temporary std::string that jsonEscape/std::to_string
+	// create for every field of every event.
+	static void appendJsonEscaped(std::string& out, const std::string& s);
+	static void appendUnsigned(std::string& out, unsigned long long v);
+	static void appendInt(std::string& out, long long v);
+	// Create the parent directory of `filePath` (recursively). No-op when the
+	// path is relative with no directory part. Used by FileOutPut so that
+	// `-f %ProgramData%\Kellect\events\x.jsonl` works on a fresh machine.
+	static bool ensureParentDirectory(const std::string& filePath);
 };
 
 template<typename Key, typename Val>

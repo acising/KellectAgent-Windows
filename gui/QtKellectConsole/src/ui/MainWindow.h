@@ -32,11 +32,12 @@ private slots:
     void onSave();
     void onClear();
     void openSettingsDialog();
+    void openServicePanel();   // 管理 KellectService.exe（无 GUI 的服务形态）
 private:
     void openDetailDialog(const QModelIndex& proxyIndex);
     // 弹某输出模式的字段编辑子对话框(openSettingsDialog 的"配置…"按钮调用)。
     void editOutputFieldsDialog(OutputMode m, QString& file, QString& sockHost,
-                                quint16& sockPort, QString& kBroker, QString& kTopic);
+                                quint16& sockPort);
 private:
     void applyPreset(int idx);
     quint8 currentMask() const;
@@ -47,10 +48,10 @@ private:
 
     SettingsStore* store_;
     KellectProcessService proc_;
-    enum class OutputMode { Console = 0, File = 1, Socket = 2, Kafka = 3 };
+    enum class OutputMode { Console = 0, File = 1, Socket = 2 };
     OutputForwarder forwarder_;
     int outputMode_ = 0;
-    QString outputFile_, socketHost_, kafkaBroker_, kafkaTopic_;
+    QString outputFile_, socketHost_;
     quint16 socketPort_ = 0;
     QLabel* outputLabel_ = nullptr;
     LogModel model_;

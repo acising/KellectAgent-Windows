@@ -1,59 +1,27 @@
 #pragma once
-#include "event_parse.h"
 
-class ETWConfiguration
-{
+#include <windows.h>
 
+class ETWConfiguration {
 public:
-    static EventParser eventParser;
-    CONST INT MAXIMUM_SESSION_NAME = 1024;
+    ETWConfiguration(ULONG kernelFlags, GUID userProvider)
+        : kernelFlags_(kernelFlags), userProvider_(userProvider) {}
 
-public:
-	ETWConfiguration(ULONG64 enabledFalg,GUID Provide){
-        ProviderId=Provide;
-        enable_flag = enabledFalg;
-        logfile_path = L"C:\\logfile.bin";
+    int Run();
+    // Stops only the logger handles opened by this process.
+    static void StopSessions();
+
+    // Adaptive controls (kernel logger only).
+    struct KernelBufferStats {
+        ULONG allocated = 0;
+        ULONG freeBuffers = 0;
+        ULONG maxBuffers = 0;
+        ULONG eventsLost = 0;
     };
-	ETWConfiguration() { enable_flag = 1;};
+    static bool QueryKernel(KernelBufferStats& stats);
+    static bool SetKernelMaximumBuffers(ULONG maximumBuffers);
 
-	ETWConfiguration(const ETWConfiguration& config) {
-		enable_flag = config.enable_flag;
-		logfile_path = config.logfile_path;
-	};
-
-	ETWConfiguration& operator=(const ETWConfiguration& config);
-	~ETWConfiguration() {};
-
-	INT ETWSessionConfig(bool real_time_switch);
-	INT mainSessionConfig(bool real_time_switch);
-	INT subSessionConfig(
-		bool real_time_switch, 
-		GUID providerGUID, 
-		ULONG matchAnyKeywords, 
-		PWSTR privateLoggerName);
-
-	VOID showAllProviders();
-
-	void allocateTraceLogFile(
-		_In_opt_ PWSTR LoggerName, 
-		EVENT_TRACE_LOGFILE& event_logfile,
-		BOOLEAN isMainConsumer = TRUE,
-		_In_opt_ BOOLEAN isRealTimeSession = TRUE);
-
-	PEVENT_TRACE_PROPERTIES allocateTraceProperties(
-		_In_opt_ PWSTR LoggerName,
-		_In_opt_ PWSTR LogFileName,
-		 _In_opt_ BOOLEAN isSysLogger = FALSE,
-		_In_opt_ BOOLEAN isRealTimeSession = TRUE);
-
-    static int __CLRCALL_PURE_OR_STDCALL ConsumeUserEventMain(PEVENT_RECORD pEvent);
-
-    int SetupUserEventConsumer( PSTR LoggerName);
 private:
-    GUID ProviderId;
-	ULONG enable_flag;
-	std::wstring logfile_path;
-	VOID SetupEventConsumer(
-		LPWSTR loggerName, 
-		BOOLEAN isMainConsumer = TRUE);
+    ULONG kernelFlags_;
+    GUID userProvider_;
 };

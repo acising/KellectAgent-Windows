@@ -1,7 +1,5 @@
 //Turns the DEFINE_GUID for EventTraceGuid into a const.
 #define _CRT_SECURE_NO_WARNINGS
-#pragma once
-#include <atlstr.h>     //CString��ͷ�ļ�
 
 #define INITGUID
 #include <string>
@@ -13,10 +11,12 @@
 #include <evntrace.h>
 #include <tdh.h>
 #include <in6addr.h>
-#include<iostream>
+#include <iomanip>
+#include <iostream>
+#include <sstream>
+#include <winsock2.h>
 #include <ws2ipdef.h>
 #include <WS2tcpip.h>
-#include "tools/json.hpp"
 #include "process/event.h"
 #include "output/output.h"
 #include "process/event_parse.h"
@@ -24,30 +24,11 @@
 #pragma comment(lib, "tdh.lib")
 #pragma comment(lib, "ws2_32.lib")  // For ntohs function
 
-#define LOGFILE_PATH L"C:\\mylogfile.etl"
 
-#define MAX_NAME 256
- USHORT g_PointerSize1 = 0;
+constexpr size_t MAX_NAME = 256;
+USHORT g_PointerSize1 = 0;
 using namespace std;
 string argName;                 //����arguments�����еĲ�����
-BaseEvent* userEvent;
-bool isChineseCharacter(std::string str) {
-    int i = 0;
-    for (; i < str.length(); i++)
-    {
-        //不是全角字符
-        if (str[i] >= 0 && str[i] <= 127)
-        {
-
-        }
-        else
-        {
-            return true;
-        }
-    }
-    return false;
-}
-json EventParser:: argsJson;
 std::string WString2String(LPCWSTR ws) {
     int nLen = WideCharToMultiByte(CP_UTF8, 0, ws, -1, NULL, 0, NULL, NULL);
     if (nLen == 0)	return nullptr;
@@ -62,20 +43,6 @@ typedef LPTSTR(NTAPI* PIPV6ADDRTOSTRING)(
         LPTSTR S
 );
 // Pointer value. The value will be 4 or 8.
-
-
-class StyledWriter;
-
-//�����ַ�תΪstring
-string Unicode2AnsiString(LPCWSTR ws) {
-
-    CString str(ws);
-    string s(CW2A(reinterpret_cast<LPCWSTR>(str.GetString())));
-
-    return s;
-}
-
-
 
 
 BaseEvent* WINAPI EventParser::getUserEventWithIdentifier(PEVENT_RECORD pEvent) {
@@ -95,122 +62,10 @@ BaseEvent* WINAPI EventParser::getUserEventWithIdentifier(PEVENT_RECORD pEvent) 
 
 
 //
-//BaseEvent*WINAPI EventParser:: GetPropertiesByTdh(PEVENT_RECORD pEvent)
-//{
-//    ULONG g_TimerResolution = 0;
-//    json();
-//    BOOL g_bUserMode = FALSE;
-//
-//    TRACEHANDLE g_hTrace = 0;
-//
-//    DWORD status = ERROR_SUCCESS;
-//    PTRACE_EVENT_INFO pInfo = NULL;
-//    LPWSTR pwsEventGuid = NULL;
-//    status = GetEventInformation4GetProperties(pEvent, pInfo);
-////    if (IsEqualGUID(pEvent->EventHeader.ProviderId, EventTraceGuid) &&
-////        pEvent->EventHeader.EventDescriptor.Opcode == EVENT_TRACE_TYPE_INFO)
-////    {
-////        ; // Skip this event.
-////    }
-////    else
-////    {
-////        status = GetEventInformation4GetProperties(pEvent, pInfo);
-////
-////        if (ERROR_SUCCESS != status)
-////        {
-////            wprintf(L"GetEventInformation failed with %lu\n", status);
-////            goto cleanup;
-////        }
-////        if (DecodingSourceWbem == pInfo->DecodingSource)  // MOF class
-////        {
-////            HRESULT hr = StringFromCLSID(pInfo->EventGuid, &pwsEventGuid);
-////
-////            if (FAILED(hr))
-////            {
-////                wprintf(L"StringFromCLSID failed with 0x%x\n", hr);
-////                status = hr;
-////                goto cleanup;
-////            }
-////            std::wstring wstr(pwsEventGuid);
-////            std::string eventGuid(wstr.begin(), wstr.end());
-////            j["Event_GUID"]= eventGuid;
-////            CoTaskMemFree(pwsEventGuid);
-////            pwsEventGuid = NULL;
-////            j["Event_version"]= pEvent->EventHeader.EventDescriptor.Version;
-////            j["Event_opCode"]= pEvent->EventHeader.EventDescriptor.Opcode;
-////
-////        }
-////        else if (DecodingSourceXMLFile == pInfo->DecodingSource) // Instrumentation manifest
-////        {
-////
-////            j["Event_ProviderId"]= pEvent->EventHeader.ProviderId.Data1;
-////
-////        }
-////        else // Not handling the WPP case
-////        {
-////            goto cleanup;
-////        }
-////        std::wstring wstr(reinterpret_cast<wchar_t*>(reinterpret_cast<PBYTE>(pInfo) + pInfo->ProviderNameOffset));
-////        std::string providerName(wstr.begin(), wstr.end());
-////        j["Provider_name"]= providerName;
-////        j["Event_ID"]= pInfo->EventDescriptor.Id;
-////        j["Thread_ID"]=pEvent->EventHeader.ThreadId;
-////        j["Process_ID"]=pEvent->EventHeader.ProcessId;
-////        j["TimeStamp"]=pEvent->EventHeader.TimeStamp.QuadPart;
-////        if (EVENT_HEADER_FLAG_32_BIT_HEADER == (pEvent->EventHeader.Flags & EVENT_HEADER_FLAG_32_BIT_HEADER))
-////        {
-////            g_PointerSize = 4;
-////        }
-////        else
-////        {
-////            g_PointerSize = 8;
-////        }
-////
-////        if (EVENT_HEADER_FLAG_STRING_ONLY == (pEvent->EventHeader.Flags & EVENT_HEADER_FLAG_STRING_ONLY))
-////        {
-////            wprintf(L"userdata：%s\n", (LPWSTR)pEvent->UserData);
-////        }
-////        else
-////        {
-//            status = GetEventInformation4GetProperties(pEvent, pInfo);
-//            for (USHORT i = 0; i < pInfo->TopLevelPropertyCount; i++)
-//            {
-//                status = PrintProperties4GetProperties(pEvent, pInfo, i, NULL, 0);
-//                if (ERROR_SUCCESS != status)
-//                {
-//                    wprintf(L"Printing top level properties failed.\n");
-//                    goto cleanup;
-//                }
-//                j["args"]=argsJson;
-//                std::string* sJson = new std::string(j.dump());
-////                std::cout<<j.dump()<<std::endl;
-////                std::cout<<""<<std::endl;
-//               op->output(j.dump());
-//                delete sJson;
-////            }
-////        }
-//    }
-//
-//    cleanup:
-//
-//    if (pInfo)
-//    {
-//        free(pInfo);
-//    }
-//
-//    if (ERROR_SUCCESS != status)
-//    {
-//        CloseTrace(g_hTrace);
-//    }
-//
-//}
-
-
 // Print the property.
 
 DWORD EventParser:: PrintProperties4GetProperties(BaseEvent* event,PEVENT_RECORD pEvent, PTRACE_EVENT_INFO pInfo, USHORT i, LPWSTR pStructureName, USHORT StructIndex)
 {
-    userEvent=event;
     DWORD status = ERROR_SUCCESS;
     DWORD LastMember = 0;  // Last member of a structure
     USHORT ArraySize = 0;
@@ -1008,26 +863,10 @@ DWORD EventParser:: GetEventInformation4GetProperties(PEVENT_RECORD pEvent, PTRA
     if (ERROR_SUCCESS != status)
     {
 
-        char desc[256];
-        sprintf(desc, "no schema found for the provider:%lld and opCode:%d",
-                pEvent->EventHeader.ProviderId.Data1, pEvent->EventHeader.EventDescriptor.Opcode);
-
-
         wprintf(L"TdhGetEventInformation failed with 0x%x.\n", status);
     }
 
     cleanup:
 
     return status;
-}
-
-PBYTE EventParser:: ansiStr2wStr(PBYTE str) {
-
-    size_t convertedChars = 0;
-    size_t len = strlen((LPSTR)str) + 1;
-    WCHAR Temp[1280] = { 0 };
-
-    //_TRUNCATE��unsigned long�����ֵ��convertedChars��ת�����ַ���
-    mbstowcs_s(&convertedChars, Temp, len, (LPSTR)str, _TRUNCATE);
-    return (PBYTE)Temp;
 }

@@ -1,29 +1,51 @@
-#pragma once
+
+
 #include "initialization/initializer.h"
 #include "process/event_parse.h"
 #include "process/etw_config.h"
 #include "tools/tools.h"
 #include "tools/logger.h"
 #include <regex>
+#include <sstream>
+#include <memory>
 #include <TlHelp32.h>
+#include "nlohmann/json.hpp"
 #include "filter.h"
 #include "tools/providerInfo.h"
 #include "tools/tinyxml2.h"
-#include "output/KafkaOutput.h"
+#include "schema/schema.h"
+#include "channel/probe_channel.h"
+#include "output/tee_output.h"
+#include "secargus/config.h"
+#include "secargus/mqtt_output.h"
+#include "secargus/util.h"
+#include "runtime/collector.h"
+#include <thread>
+
+namespace {
+
+// Starting an ETW session (kernel logger or a private session) requires
+// SeSystemProfilePrivilege / an elevated token. Failing later with a bare
+// "StartTrace failed with 5" is unhelpful, so check up front.
+bool IsProcessElevated() {
+    HANDLE token = nullptr;
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token))
+        return false;
+
+    TOKEN_ELEVATION elevation;
+    ZeroMemory(&elevation, sizeof(elevation));
+    DWORD returned = 0;
+    const BOOL ok = GetTokenInformation(token, TokenElevation, &elevation,
+                                        sizeof(elevation), &returned);
+    CloseHandle(token);
+    return ok != FALSE && elevation.TokenIsElevated != 0;
+}
+
+} // namespace
 
 INITIALIZE_EASYLOGGINGPP
 using namespace std;
 using namespace tinyxml2;
-
-IMAGEUNLOAD pImageUnload;
-IMAGELOAD pImageLoad;
-SYMGETSYMBOLFILE pSymGetSymbolFile;
-HANDLE hProcess;
-PWIN32KFUNCINFO FuncAddressInfo;
-PLOADED_IMAGE pli;
-
-//used to get systemCall information
-std::string parseFiles[] = { "\\SystemRoot\\System32\\win32k.sys","\\SystemRoot\\System32\\ntoskrnl.exe" };
 
 //use to classify events by providerID and opcodes.
 std::map<EventIdentifier*, std::list<BaseEvent::PropertyInfo>, EventIdentifierSortCriterion>  BaseEvent::eventStructMap;
@@ -31,14 +53,18 @@ std::map<EventIdentifier*, std::list<BaseEvent::PropertyInfo>, EventIdentifierSo
 std::set<EventIdentifier*, EventIdentifierSortCriterion> Filter::filteredEventIdentifiers;
 std::set<EventIdentifier*, EventIdentifierSortCriterion> Filter::droppedEventIdentifiers;
 std::set<int> Filter::filteredProcessID;
+std::mutex Filter::processIdMutex;
 std::set<std::string> Filter::filteredImageFile;
+std::set<std::string> Filter::parsedApiImage;
 std::set<std::string> Initializer::userDroppedEventNames;
 std::set<ULONG64> Filter::listenedEventsProviders;
 bool Filter::listenAllEvents(false);
 bool Initializer::listenCallStack(false);
+int Initializer::statsInterval = 0;
+bool Initializer::adaptiveEnabled = true;
 std::map <std::string, std::set<MyAPI*, MyAPISortCriterion> > EventImage::modulesName2APIs;
 ThreadPool* EventParser::parsePools;
-std::atomic<bool> EventParser::threadParseFlag;
+ThreadPool* EventParser::serializePool;
 int EventThread::processorId2threadId[MAX_PROCESSOR_NUM];
 std::map<ULONG64, int> EventThread::threadId2processId;
 
@@ -46,7 +72,7 @@ STATUS Initializer::initEnabledEvent(ULONG64 eventType) {
 
     if(!enbaleFlagsInited ) return STATUS_SUCCESS;
 
-    enabledFlags = EVENT_TRACE_FLAG_PROCESS|EVENT_TRACE_FLAG_THREAD;        //guarantee the fillProcessInfo() executes correctly
+    enabledFlags = EVENT_TRACE_FLAG_PROCESS;   // thread family is opt-in (--enable-thread-events)
     //callstack initialize in
     if (eventType & CALLSTACKEVENT){
         setListenCallStack(true);   // set listenCallStack true;
@@ -73,8 +99,15 @@ STATUS Initializer::initEnabledEvent(ULONG64 eventType) {
         //setFileName() and get dropped. DISK_IO is therefore enabled here too;
         //DiskIo's own events stay out of the output because DiskIoGuid is not
         //in listenedEventsProviders under a FILE-only mask (thirdFilter drops them).
-        enabledFlags |= EVENT_TRACE_FLAG_FILE_IO_INIT | EVENT_TRACE_FLAG_DISK_FILE_IO | EVENT_TRACE_FLAG_FILE_IO
-                | EVENT_TRACE_FLAG_DISK_IO | EVENT_TRACE_FLAG_DISK_IO_INIT | EVENT_TRACE_FLAG_CSWITCH;
+        // DISK_FILE_IO is what makes the FileIo_Name family available; DISK_IO
+        // is required for that mapping. DISK_IO_INIT is *not* needed and its
+        // Init/Complete records are pure overhead for behaviour collection.
+        enabledFlags |= EVENT_TRACE_FLAG_FILE_IO_INIT | EVENT_TRACE_FLAG_DISK_FILE_IO |
+                        EVENT_TRACE_FLAG_FILE_IO | EVENT_TRACE_FLAG_DISK_IO;
+        // No EVENT_TRACE_FLAG_CSWITCH: it emits a PerfInfo CSwitch event for
+        // every context switch, which Kellect does not decode (unknown
+        // provider) and which floods the kernel buffers - that showed up as
+        // etw_lost on busy systems. Stacks do not need it either.
         Filter::listenedEventsProviders.insert(FileGuid.Data1);
     }
     if (eventType & DISKEVENT){
@@ -90,11 +123,12 @@ STATUS Initializer::initEnabledEvent(ULONG64 eventType) {
         Filter::listenedEventsProviders.insert(ImageLoadGuid.Data1);
     }
     if (eventType & TCPIPEVENT){
-        enabledFlags |= EVENT_TRACE_FLAG_NETWORK_TCPIP|EVENT_TRACE_FLAG_CSWITCH;
+        enabledFlags |= EVENT_TRACE_FLAG_NETWORK_TCPIP;
+        // CSWITCH intentionally off here as well (see the FILE block above).
         Filter::listenedEventsProviders.insert(TcpIpGuid.Data1);
     }
 
-    if(Filter::listenedEventsProviders.size() == 8) Filter::listenAllEvents=true;
+    if(Filter::listenedEventsProviders.size() >= 7) Filter::listenAllEvents=true;
 
     return STATUS_SUCCESS;
 }
@@ -104,8 +138,12 @@ STATUS Initializer::initEnabledEvent(ULONG64 eventType) {
 inline void Initializer::initDefaultEnabledEvents() {
 
     Filter::listenAllEvents=true;
-    setListenCallStack(true);
-    userEnabledFlags = ALLEVENT;
+    // Callstack is opt-in (--callstack): by default only kernel events are
+    // collected, which keeps the volume and CPU cost down.
+    setListenCallStack(callstackRequested);
+    userEnabledFlags = 0xab;   // behaviour: no Thread/Image rundown by default
+    if (!callstackRequested)
+        userEnabledFlags &= ~CALLSTACKEVENT;
 }
 
 /*
@@ -116,8 +154,37 @@ inline void Initializer::initDefaultEnabledEvents() {
     The former hardcoded ~80-pair event whitelist is disabled below; unknown
     event types are now handled by thirdFilter's provider-level check.
 */
-void Initializer::initFilter() {
-    // --- built-in PID blacklist (always present, cannot be removed via config) ---
+void Initializer::applyDesiredConfig() {
+    std::ifstream in("config\\remote\\desired.json");
+    if (!in.is_open())
+        return;
+
+    nlohmann::json doc;
+    try {
+        in >> doc;
+    } catch (const std::exception&) {
+        std::cerr << "Warning: config\\remote\\desired.json is not valid JSON; ignored"
+                  << std::endl;
+        return;
+    }
+    if (!doc.is_object())
+        return;
+
+    if (doc.contains("event_mask") && doc["event_mask"].is_number_integer()) {
+        const long long mask = doc["event_mask"].get<long long>();
+        if (mask >= 0 && mask <= 0x3ff) {
+            userEnabledFlags = static_cast<ULONG64>(mask);
+            enbaleFlagsInited = true;   // keep the default path from overwriting it
+            std::cout << "remote desired config: event mask = 0x" << std::hex << mask
+                      << std::dec << " (" << doc.value("desired_version", std::string("?"))
+                      << ")" << std::endl;
+        } else {
+            std::cerr << "Warning: desired.json event_mask out of range; ignored" << std::endl;
+        }
+    }
+}
+
+void Initializer::initFilter() {    // --- built-in PID blacklist (always present, cannot be removed via config) ---
     Filter::filteredProcessID.insert(0);
     Filter::filteredProcessID.insert(4);
     Filter::filteredProcessID.insert(128);
@@ -147,23 +214,61 @@ void Initializer::initFilter() {
     {
         std::ifstream f(filterFileName);
         if (f.is_open()) {
-            std::string section = "", line;
+            std::string section, line;
+            int lineNo = 0;
+            bool warnedOldFormat = false;
+
             while (std::getline(f, line)) {
+                ++lineNo;
                 size_t b = line.find_first_not_of(" \t\r\n");
                 if (b == std::string::npos) continue;
                 size_t e = line.find_last_not_of(" \t\r\n");
                 line = line.substr(b, e - b + 1);
-                if (line[0] == '#') continue;
-                if (line == "filteredProcessID" || line == "droppedEventName" || line == "filteredImageFile") {
+                if (line.empty() || line[0] == '#') continue;
+
+                // Only the known section names switch sections; everything else
+                // is a value for the current one (event names such as
+                // "FileIODirNotify" are bare identifiers too).
+                if (line == "filteredProcessID" || line == "droppedEventName" ||
+                    line == "filteredImageFile" || line == "parsedApiImage") {
                     section = line;
                     continue;
                 }
+                if (line == "filteredEventIdentifier") {
+                    // v1 release format: an 80-pair (provider, opcode) whitelist
+                    // the current pipeline no longer uses. Skipping the section
+                    // (instead of feeding "3740466758 32" to std::stoi, which
+                    // throws std::out_of_range) is what keeps an old
+                    // release/config/filter.txt from crashing startup.
+                    if (!warnedOldFormat) {
+                        std::cerr << "Warning: " << filterFileName
+                                  << " contains the deprecated 'filteredEventIdentifier' section;"
+                                     " it is ignored (use 'droppedEventName')." << std::endl;
+                        warnedOldFormat = true;
+                    }
+                    section = "ignored";
+                    continue;
+                }
+
                 if (section == "filteredProcessID") {
-                    Filter::filteredProcessID.insert(std::stoi(line));
+                    // accept "0 4 128" as well as one PID per line
+                    std::istringstream pids(line);
+                    std::string token;
+                    while (pids >> token) {
+                        try {
+                            int pid = std::stoi(token);
+                            if (pid >= 0) Filter::filteredProcessID.insert(pid);
+                        } catch (const std::exception&) {
+                            std::cerr << "Warning: " << filterFileName << ":" << lineNo
+                                      << " invalid PID '" << token << "' (ignored)" << std::endl;
+                        }
+                    }
                 } else if (section == "droppedEventName") {
                     userDroppedEventNames.insert(line);
                 } else if (section == "filteredImageFile") {
                     Filter::filteredImageFile.insert(line);
+                } else if (section == "parsedApiImage") {
+                    Filter::parsedApiImage.insert(line);
                 }
             }
         } else {
@@ -222,107 +327,70 @@ void Initializer::initFilter() {
 }
 
 
-/*
-    initialize each process loaded modules with std::set<Module*, ModuleSortCriterion>().
-    update lately in the ImageEvent.parse()
-*/
-STATUS Initializer::initProcessID2ModulesMap() {
-
-    if (EventProcess::processID2Name.empty()) {
-        MyLogger::writeLog("initProcessID2ModulesMap -->processID2Name is empty");
-        std::cerr << "Error: processID2Name is empty, cannot initialize processID2ModulesMap" << std::endl;
-        return STATUS_FAIL;
+void Initializer::initImages(bool background) {
+    std::ifstream list(initImagesFile);
+    if (!list) {
+        std::cerr << "Warning: Could not open image prewarm list: " << initImagesFile << '\n';
+        return;
     }
-
-    auto iter = EventProcess::processID2Name.begin();
-    auto end = EventProcess::processID2Name.end();
-
-    //initialize processID2ModulesMap structure with processID2Name which is initilized before. Initialize each item'value a empty set.
-    for (; iter != end; ++iter) {
-        EventImage::processID2Modules.insert(
-                iter->first, std::set<Module*, ModuleSortCriterion>()
-        );//遍历每个进程 ID（即 iter->first），在 processID2Modules 中插入一个空的模块集合（std::set<Module*, ModuleSortCriterion>()）。
-        // 这个集合将用于后续存储与该进程 ID 相关联的所有模块。
-
-        /*
-        initialize processID2ModuleAddressPair structure with processID2Name which is initilized before.
-        Initialize each item'value a default minmaxAddress pair.
-         */
-        EventProcess::processID2ModuleAddressPair.insert(
-                iter->first, std::make_pair(EventProcess::initMinAddress, EventProcess::initMaxAddress));
+    std::string path;
+    size_t accepted = 0;
+    while (accepted < 256 && std::getline(list, path)) {
+        if (path.compare(0, 3, "\xef\xbb\xbf") == 0)
+            path.erase(0, 3);
+        const auto begin = path.find_first_not_of(" \t\r");
+        if (begin == std::string::npos || path[begin] == '#')
+            continue;
+        path = path.substr(begin, path.find_last_not_of(" \t\r") - begin + 1);
+        if (path.size() >= 4096 || Filter::parsedApiImage.count(path))
+            continue;
+        if (background && !EventImage::enqueueModuleApis(path))
+            break;
+        Filter::parsedApiImage.insert(path);
+        Filter::filteredImageFile.insert(path);
+        if (!background)
+            EventImage::loadModuleApis(path);
+        ++accepted;
     }
-
-    return STATUS_SUCCESS;
-}
-STATUS Initializer::initImages(std::string confFile) {
-    std::cout << "------Begin to parse images------" << std::endl;
-    std::vector<std::string> unLoadedImages;   // 存储未加载的图像
-    std::ifstream myfile(confFile);
-    std::string currentImage = "";
-    STATUS status = STATUS_FAIL;
-    bool existUnloadedImage = false;// 标记是否存在未加载的图像
-
-    if (!myfile.is_open()) {
-        MyLogger::writeLog("file initImages open failed!");
-        std::cerr << "Warning: Could not open initImages file: " << confFile << ". Using empty image list." << std::endl;
-        std::cout << "------Parse images end...------" << std::endl;
-        return STATUS_SUCCESS; // 即使文件打开失败，也继续执行，使用空的图像列表
-    }
-
-    //parse the system modules‘APIs
-    while (getline(myfile, currentImage) && currentImage != "") {
-        std::set<MyAPI*, MyAPISortCriterion> apis;
-
-        //   imageFile
-        Filter::filteredImageFile.insert(currentImage);// 将当前图像插入过滤器中
-
-        status = EventImage::getAPIsFromFile(currentImage, apis);// 从文件中获取 API
-
-        if (status == STATUS_SUCCESS) {
-            EventImage::modulesName2APIs.insert(
-                    std::map <std::string, std::set<MyAPI*, MyAPISortCriterion> >::value_type(currentImage, apis)
-            );
-        }// 成功则将 API 记录到模块名称与 API 的映射中
-        else {
-            unLoadedImages.push_back(currentImage);// 记录未加载的图像
-            existUnloadedImage = true; // 标记存在未加载的图像
-        }
-    }
-    std::cout << "------Parse images end...------" << std::endl;
-
-    /*
-     if (existUnloadedImage) {
-
-        std::cout << "The following images loaded failed  " << std::endl;
-        for (auto ss : unLoadedImages) {
-            std::cout << ss << std::endl;
-        }
-    }
-     */
-    return STATUS_SUCCESS;
+    std::cout << "Image prewarm candidates: " << accepted << '\n';
 }
 
 /*
-    initialize EventIdentiier map with correlated properties
+    initialize EventIdentiier map with correlated properties.
+
+    The layout file is chosen from the OS build number (schema module): every
+    eventStruct_*.xml declares MinBuild/MaxBuild on its root element, so a new
+    Windows release only needs a new XML + drift verification, not a code
+    change. Previously this was a hard-coded `6.1 ? win7 : win10`, which is why
+    Win11 was not supported.
 */
 void Initializer::initEventPropertiesMap(std::string confFile) {
 
     std::set <EventIdentifier*> tempEventIdentifierSet;
     std::list<BaseEvent::PropertyInfo> tempList;
     BaseEvent::PropertyInfo propertyInfo;
-    DWORD dwMajorVer,dwMinorVer,dwBuildNumber;
     tinyxml2::XMLDocument doc;
-    //set Windows7 version event type file, else the Windows10 event type file
-    if(Tools::getOSVersion(dwMajorVer,dwMinorVer,dwBuildNumber)){
-        // win 7
-        if (dwMajorVer == 6 && dwMinorVer == 1){
-            confFile = "config/eventStruct_win7.xml";
-        }
-    }
+
+    kellect::schema::OsInfo os = kellect::schema::DetectOs();
+    std::string detected = kellect::schema::SelectSchemaFile("config", os.build);
+    if (!detected.empty())
+        confFile = detected;
+    os.schemaFile = confFile;
+
+    std::cout << "------ETW event schema------" << std::endl;
+    std::cout << "  os      : " << os.displayName << " ("
+              << kellect::schema::ProfileName(os.profile) << ")" << std::endl;
+    std::cout << "  profile : " << confFile << std::endl;
+
     int res = doc.LoadFile(confFile.c_str()); //load xml file
     if(res!=0){
-        cout<<"load xml file failed"<<endl;
-        return;
+        // Without a schema every kernel event is dropped at parse time, so a
+        // missing/invalid config directory must fail loudly instead of
+        // producing an empty stream (this is fatal for a service too).
+        std::cerr << "FATAL: cannot load event schema '" << confFile
+                  << "'. Run kellect from its installation folder (config\\ must"
+                     " sit next to the executable)." << std::endl;
+        exit(4);
     }
 
     //load file to get the EventIdentifier, which used to parse the event stream
@@ -346,8 +414,9 @@ void Initializer::initEventPropertiesMap(std::string confFile) {
 
             const char *attrName = attrElement->GetText();
             int type = attrElement->Int64Attribute("type");
+            bool optional = attrElement->IntAttribute("optional", 0) != 0;
 
-            propertyInfo = make_pair(attrName, type);
+            propertyInfo = BaseEvent::PropertyInfo(attrName ? attrName : "", type, optional);
             tempList.push_back(propertyInfo);
             attrElement = attrElement->NextSiblingElement();
         }
@@ -400,36 +469,47 @@ void Initializer::initEventPropertiesMap(std::string confFile) {
 }
 
 /*
-    initialize threadpool with 4 threads and a event queue with 1,000,000 capacity
+    Pipeline workers. The ETW callback only filters, allocates the event shell,
+    copies the raw frame and pushes it here.
+
+      * parsePools     - exactly ONE thread. Decode + semantic parse must stay in
+                         ETW order because they update shared maps
+                         (tid->pid, fileObject->path, keyHandle->key).
+      * serializePool  - JSON building only; 1 thread keeps the output order,
+                         more threads raise throughput (--serialize-threads).
+      * API loader     - export-table parsing for ImageLoad, on its own thread.
+
+    Both pools are bounded: when a backlog is full the caller runs the task
+    inline, which slows the producer instead of dropping the event.
 */
 void Initializer::initPrasePool() {
 
-    EventParser::parsePools = new ThreadPool(4, 1000000);
+    EventParser::parsePools = new ThreadPool(1, 200000);
+
+    size_t serializerCount = serializeThreads;
+    if (serializerCount < 1) serializerCount = 1;
+    if (serializerCount > 8) serializerCount = 8;
+    // Start the maximum number of serializers; the dynamic target starts at the
+    // configured value and can grow 1..8 without creating threads on the hot path.
+    EventParser::serializePool = new ThreadPool(8, 200000, 8);
+    EventParser::serializePool->SetTargetWorkers(serializerCount);
+
+    // LoadLibrary/PE export parsing (hundreds of microseconds per new image)
+    // must not stall the ordered parse thread.
+    if (callstackRequested)
+        EventImage::startApiLoader();
+
+    if (serializerCount > 1) {
+        std::cout << "note: " << serializerCount
+                  << " serializer threads -> event JSON lines may interleave in time order"
+                  << std::endl;
+    }
 }
 void Initializer::initOutputThread() {
-    // 输出线程保持 detach:进程退出路径由 console handler → ProcessTrace 返回 →
-    // mainSessionConfig cleanup → requestStop + 短暂等待,而非 join。
-    // detach 避免输出线程异常时阻塞主线程退出;final flush 在 requestStop 后
-    // 由输出线程自行完成(最多 500ms 内)。
-    std::thread outputThread(&Output::outputStrings, EventParser::op);
-    outputThread.detach();
+    if (EventParser::op != nullptr)
+        EventParser::outputThread = std::thread(&Output::outputStrings, EventParser::op);
 }
 
-void Initializer::initThreadParseProviders() {
-
-//    EventParser::threadParseProviders.insert(TcpIpProvider);
-    EventParser::threadParseProviders.insert(DiskProvider);
-
-    {
-//        EventParser::threadParseProviders.insert(CallStackGuid.Data1);
-
-        EventParser::threadParseProviders.insert(RegistryProvider);
-    }
-    EventParser::threadParseProviders.insert(ImageLoadGuid.Data1);
-    EventParser::threadParseFlag = true;
-}
-
-//initialize structure of Processor2ThreadAndThread2Process, which is used in function setPidAndTid() to fix threadId and processId
 void Initializer::initProcessor2ThreadAndThread2Process(){
 
     for(int i = 0 ; i<MAX_PROCESSOR_NUM; i++)
@@ -445,14 +525,33 @@ void Initializer::initProcessor2ThreadAndThread2Process(){
 
 STATUS Initializer::initThreadProcessMap() {
 
-    STATUS status = STATUS_SUCCESS;
-    
-    // Simplified version of initThreadProcessMap that skips thread enumeration
-    // This is a temporary fix to avoid the crash in Thread32First
-    
-    std::cout << "[DEBUG] Simplified initThreadProcessMap completed successfully" << std::endl;
-    
-    return status;
+    // Seed threadId -> processId from a live snapshot. Later ThreadStart /
+    // ThreadEnd events keep it current; the snapshot only removes the
+    // "unknown PID" window at startup. Failures degrade gracefully: the map is
+    // filled by events anyway.
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+    if (snapshot == INVALID_HANDLE_VALUE) {
+        std::cerr << "Warning: thread snapshot failed (" << GetLastError()
+                  << "); thread->process mapping will be learned from events." << std::endl;
+        return STATUS_SUCCESS;
+    }
+
+    THREADENTRY32 entry;
+    ZeroMemory(&entry, sizeof(entry));
+    entry.dwSize = sizeof(entry);
+
+    int count = 0;
+    if (Thread32First(snapshot, &entry)) {
+        do {
+            EventThread::threadId2processId[(ULONG64)entry.th32ThreadID] =
+                (int)entry.th32OwnerProcessID;
+            ++count;
+        } while (Thread32Next(snapshot, &entry));
+    }
+    CloseHandle(snapshot);
+
+    std::cout << "  threads  : " << count << std::endl;
+    return STATUS_SUCCESS;
 }
 
 // Helper function to enable debug privilege
@@ -488,24 +587,43 @@ BOOL EnableDebugPrivilege() {
 
 STATUS Initializer:: InitProcessMap() {
 
-    std::cout << "[DEBUG] Entering InitProcessMap..." << std::endl;
-    
-    // Simplified version of InitProcessMap that skips process enumeration
-    // This is a temporary fix to avoid the crash in Process32First
-    
-    STATUS status = STATUS_SUCCESS;
-    
-    // Instead of enumerating processes, we'll just initialize the maps with some default values
+    // Seed pid -> image name / ppid from a live snapshot so events that arrive
+    // before their own ProcessStart/ProcessDCStart carry a usable PName and
+    // PPID. A failed snapshot is not fatal: events fill the maps as they come.
     std::cout << "------Begin to initialize datas of process and thread...------" << std::endl;
-    
-    // Set some default values to avoid crashes later
+
     EventProcess::processID2Name[0] = "idle";
     EventProcess::processID2Name[INIT_PROCESS_ID] = "Unknown";
-    
+
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snapshot == INVALID_HANDLE_VALUE) {
+        std::cerr << "Warning: process snapshot failed (" << GetLastError()
+                  << "); process names will be learned from events." << std::endl;
+        return STATUS_SUCCESS;
+    }
+
+    PROCESSENTRY32W entry;
+    ZeroMemory(&entry, sizeof(entry));
+    entry.dwSize = sizeof(entry);
+
+    int count = 0;
+    if (Process32FirstW(snapshot, &entry)) {
+        do {
+            const int pid = (int)entry.th32ProcessID;
+            std::wstring wideName(entry.szExeFile);
+            std::string name = Tools::WString2String(wideName.c_str());
+
+            EventProcess::processID2Name[pid] = name;
+            if (!name.empty()) EventProcess::processName2ID[name] = pid;
+            EventProcess::processID2ParentProcessID[pid] = (int)entry.th32ParentProcessID;
+            ++count;
+        } while (Process32NextW(snapshot, &entry));
+    }
+    CloseHandle(snapshot);
+
+    std::cout << "  processes: " << count << std::endl;
     std::cout << "------Initialize datas of process and thread end...------" << std::endl;
-    std::cout << "[DEBUG] Simplified InitProcessMap completed successfully" << std::endl;
-    
-    return status;
+    return STATUS_SUCCESS;
 }
 
 void Initializer::initHostUUID() {
@@ -547,8 +665,31 @@ void Initializer::initHostUUID() {
 }
 
 void Initializer::initNeededStruct() {
-    EventParser::op->setOutputThreashold(opThreashold);
-    initImages();       //读取etw事件有关配置文件，即使失败也继续执行
+    setListenCallStack(callstackRequested);
+    // Event source selection:
+    //   -e <mask>          -> exactly those kernel events
+    //   -u <provider>       -> that user-mode provider only (documented usage)
+    //   neither             -> all kernel events (README: "default trace all")
+    // The old code left enabledFlags at 0 when -e was omitted, so a bare
+    // `kellect.exe -c` started no session at all and silently collected nothing.
+    if (!enbaleFlagsInited) {
+        if (userProvider != 0) {
+            enabledFlags = 0;   // user-mode session only
+            std::cout << "no -e given: tracing only the user-mode provider" << std::endl;
+        } else {
+            initDefaultEnabledEvents();
+            enbaleFlagsInited = true;   // let initEnabledEvent build the mask
+        }
+    }
+    initEnabledEvent(userEnabledFlags);
+    enabledFlags |= extraKernelFlags;
+    if (EventParser::evidenceOnly) {
+        MyLogger::initLogger();
+        initHostUUID();
+        return;
+    }
+    if (EventParser::op != nullptr)
+        EventParser::op->setOutputThreashold(opThreashold);
     MyLogger::initLogger();//初始化日志系统
     Tools::initVolume2DiskMap();//构建一个卷标到磁盘符号的映射，便于后续的磁盘操作和管理
     std::cout << "Step 1: Initializing processor-thread mapping..." << std::endl;
@@ -567,33 +708,76 @@ void Initializer::initNeededStruct() {
         std::cout << "------Initialize process and thread failed!------" << std::endl;
         exit(-1);
     }
+    EventImage::setAdaptiveExports(prewarmMode == "adaptive" || prewarmMode == "hybrid");
+    if (callstackRequested && (prewarmMode == "static" || prewarmMode == "hybrid")) {
+        const bool background = !evidenceDirectory.empty();
+        if (background)
+            EventImage::startApiLoader();
+        initImages(background);
+    }
     
+    // Phase 1b: snapshot modules too, so Image DCStart rundown is not needed
+    // for the module map (it is fast-dropped in the ETW callback).
+    EventImage::PreEnumerateModules();
+
     std::cout << "Step 4: Process and thread initialization completed!" << std::endl;
     initEventPropertiesMap();       //2
-    //default to trace all event types
-    if(!enbaleFlagsInited){
-        initDefaultEnabledEvents();
-    }
-    initEnabledEvent(userEnabledFlags);
+
     if(opThreashold == 0){
         initOutputThreashold(userEnabledFlags);
     }
     initFilter();       //3
-    if (initProcessID2ModulesMap() != STATUS_SUCCESS) {
-        std::cerr << "Error: Failed to initialize processID2ModulesMap" << std::endl;
-        exit(-1);
-    }
     initPrasePool();
-    initThreadParseProviders();
     initHostUUID();
     //set output threashold value, which depends on the event types we want to trace
 
     initOutputThread();
 }
 
-void Initializer::showCommandList() {
+void Initializer::showCommandList(bool full) {
 
-    std::string cmdList = "CommandLine Option Rules:\n";
+    if (!full) {
+        std::cout
+            << "Kellect Windows Collector\n\n"
+            << "Usage:\n"
+            << "  kellect.exe [options]\n\n"
+            << "Common:\n"
+            << "  -f <file>            output JSONL (omit = stats only, no file)\n"
+            << "  -e all|<mask>        kernel behaviour events (legacy hex mask accepted)\n"
+            << "  -c                   print every event to console (slow)\n"
+            << "  --mqtt               also publish to SecArgus MQTT\n"
+            << "  --profile <name>     behavior (default) | diagnostic\n"
+            << "  -h                   this help\n"
+            << "  --help-all           all advanced options\n\n"
+            << "Behaviour events: Process, FileIO, Registry, TCP/IP, UDP/IP.\n"
+            << "Thread and CallStack are opt-in (advanced: --enable-thread-events / --callstack).\n";
+        return;
+    }
+
+
+    std::string cmdList =
+        "Usage:\n"
+        "  kellect.exe [options]\n"
+        "\n"
+        "Common:\n"
+        "  -f <file>                output JSONL file (omit = stats only, no file)\n"
+        "  -e <mask>                legacy event mask (0x40 = CallStack)\n"
+        "  --profile <name>         behavior (default) | diagnostic\n"
+        "  --callstack              force CallStack on for a legacy -e mask\n"
+        "  --mqtt                   also publish to SecArgus over MQTT\n"
+        "\n"
+        "Advanced:\n"
+        "  --evidence-dir <dir>     write raw evidence archive\n"
+        "  --kernel-etl             also write kernel.etl\n"
+        "  --replay-etl <etl>       replay a kernel ETL offline\n"
+        "  --symbolize <dir>        offline PE/PDB symbolization\n"
+        "  --schema-probe <file>    write schema drift report\n"
+        "  --init-images <file>     prewarm image list\n"
+        "  --serialize-threads <n>  JSON builder threads (1..8)\n"
+        "  --no-adaptive            disable dynamic serializer/buffer tuning\n"
+        "\n"
+        "All options:\n";
+
     cmdList.append("-e , the event type you want to trace\n");
     cmdList.append("\trguments details:\n"
                    "\t\t0x1(PROCESS)\n"
@@ -603,14 +787,25 @@ void Initializer::showCommandList() {
                    "\t\t0x10(DISK) Win7 is not supported.\n"
                    "\t\t0x20(REGISTRY)\n"
 //                   "\t\t0x40(SYSTEMCALL)\n"
-                   "\t\t0x40(CALLSTACK)\n"
+                   "\t\t0x40(CALLSTACK, only with --callstack)\n"
                    "\t\t0x80(TCPIP)\n"
                    "\t\tall(tracing all event types)\n"
                    "\tUsage:-e 0x11 ,which will trace events of Process and Disk.\n"
-                   "\tUsage:-e 0xbf ,which will trace all events except 'callstack',if you don't need API Info, you should specify '0xbf' to '-e' option.\n"
+                   "\tUsage:-e 0xbf ,trace all kernel events without API info (the default).\n"
                    "\tUsage:-e all  ,which will trace all events, the args of Win7 is 0xef.\n"
                    "\tNote:Do not listen 'DISK' events on Win7,kellect will crash.\n"
     );
+    cmdList.append("--callstack , also collect API call stacks (off by default;\n"
+                   "\tadds a second event stream and CPU cost).\n");
+    cmdList.append("--profile <behavior|diagnostic|lightweight|provenance|full_kernel|full_research>\n"
+                   "\tbehavior (default) keeps file/registry/network lifecycle + key stacks.\n"
+                   "--evidence-dir <directory> , write raw ETW, stack artifacts and coverage.\n"
+                   "\tDefault (no -e/-u/--profile) is behavior: process/thread/image/\n""\tfile/registry/TCP-IP plus key call stacks.\n""\tUse diagnostic only when DiskIO/CSwitch/memory/ALPC are needed.\n"
+                   "--kernel-etl , also save the native kernel ETL to the evidence run directory.\n"
+                   "--replay-etl <file> --evidence-dir <directory> , archive a kernel ETL offline.\n"
+                   "--symbolize <archive-dir> --image-dir <dir> [--pdb-dir <dir>] --symbols-out <new-file>\n"
+                   "--prewarm-mode <off|static|adaptive|hybrid> , legacy stack PE export loading.\n"
+                   "--init-images <file> , UTF-8 prewarm list (default config/initImages.txt).\n");
     cmdList.append("-u , the UserProvider you want to trace\n");
     cmdList.append("\trguments details:\n"
                    "\t\t0x01(Thread_Pool)\n"
@@ -628,14 +823,32 @@ void Initializer::showCommandList() {
     cmdList.append("-f , the file path that you want to output the events\n"
                    "\tUsage: c:\\123.txt ,output events to file c:\\123.txt\n");
     cmdList.append("-c , output events to the console \n");
-    cmdList.append("-k , output events to the kafka server, \n"
-                   "\tUsage: 192.168.1.2:9092/test ,output events to server 192.168.1.2:9092 and topic is \"test\"\n");
     cmdList.append("-s , the socket that you want to transmit events\n"
                    "\tUsage: 192.168.1.2:66 ,output events to host 192.168.1.2 \n");
     cmdList.append("--outputThreshold , set the threshold number of output events.\n");
     cmdList.append("-x , comma-separated event names to drop before parsing (noise control)\n"
                    "\tUsage: -x FileIODirNotify,FileIODirEnum\n"
                    "\tEvent names come from config/eventStruct_win10.xml\n");
+    cmdList.append("--schema-strict , drop events whose raw frame does not match the\n"
+                   "\tdeclared layout (default: keep the valid prefix)\n");
+    cmdList.append("--schema-probe <file> , record per-event frame lengths and write a\n"
+                   "\tschema drift report to <file> on exit (use this on a new\n"
+                   "\tWindows build to rebuild config/eventStruct_*.xml)\n");
+    cmdList.append("--max-file-mb <n> , rotate the -f output file every n MB (0 = never).\n"
+                   "\tRecommended for long-running (service) collection.\n");
+    cmdList.append("--append , append to the -f file instead of truncating it (service\n"
+                   "\trestarts keep the events already collected).\n");
+    cmdList.append("--probe , stream events to the Kellect backend over WebSocket +\n"
+                   "\tMessagePack (protocol v1). Reads config/probe.ini.\n"
+                   "\tOverrides: --probe-url <ws://host:port/ws/probe> --probe-id <id>\n"
+                   "\t--probe-token <token> --probe-config <file> --probe-queue <n>\n"
+                   "\t--probe-batch <n<=500> --probe-rate <events/sec, 0=unlimited>\n");
+    cmdList.append("--serialize-threads <1..8> , JSON builder threads (default 1 keeps\n"
+                   "\tevent order; more threads trade ordering for throughput).\n");
+    cmdList.append("--mqtt , additionally publish event batches to the SecArgus backend\n"
+                   "\tover MQTT. Additive: works together with -c/-f/-s/-k/--probe.\n"
+                   "\tConfig: config/secargus.ini (--mqtt-config <file>).\n"
+                   "\tBroker override: --mqtt-host <ip> --mqtt-port <port>.\n");
     cmdList.append("-h , get the manual\n");
 
     std::cout << cmdList;
@@ -655,7 +868,8 @@ inline bool Initializer::validArgLength(int i,STATUS& status) {
 
 inline bool Initializer::isOutPutOption(char* option) {
 
-    return !strcmp(option, "-c") || !strcmp(option, "-f") || !strcmp(option, "-s");
+    return !strcmp(option, "-c") || !strcmp(option, "-f") || !strcmp(option, "-s")
+        || !strcmp(option, "--probe");
 }
 
 //change the opThreashold according to the event type we traced.
@@ -693,75 +907,40 @@ ULONG64 Initializer::init(GUID &p) {
     if (argc < 1) return 0;
     //default trace all events
     while (i < argc) {
-        currentArv = (char*)malloc(sizeof(argV[i]));
-        ZeroMemory(currentArv, sizeof(argV[i]));
-        strcpy(currentArv, argV[i++]);
+        // Borrowed pointer into the CRT argv - never freed here. The old code
+        // malloc'd sizeof(char*) bytes and strcpy'd the whole option into it:
+        // a heap overflow for every option longer than 7 characters
+        // (e.g. "--outputThreshold").
+        currentArv = argV[i++];
 
-        if (strcmp(currentArv, "-c") == 0 && !outputInited) {
+        if (strcmp(currentArv, "-c") == 0 && !outputInited && !probeRequested) {
 
             EventParser::op = new ConsoleOutPut();
-            status = EventParser::op->init();
-            //EventParser::op->beginOutputThread();
-//            if (status != STATUS_SUCCESS)   break;
             outputInited = true;
         }
         else if(strcmp(currentArv,"-wdm")==0){
-//            if (!validArgLength(i, status))   break;
-//            std::string arg = argV[i++];
-//            userEnabledFlags = strcmp(arg.c_str(),"all") ==( 0x1|0x2|0x8|0x20|0x80)? 0x1ff:Tools::HexStr2DecInt(arg);
- //           EventParser::op = new ConsoleOutPut();
-//            EventParser::op = new FileOutPut("wdm");
             EventParser::isWdm=true;
-  //          status = EventParser::op->init();
-   //         outputInited = true;
-//            if(status == STATUS_SUCCESS)    enbaleFlagsInited = true;
         }
-        else if (strcmp(currentArv, "-f") == 0 && !outputInited) {
+        else if (strcmp(currentArv, "-f") == 0 && !outputInited && !probeRequested) {
 
             if (!validArgLength(i,status))   break;
 
             EventParser::op = new FileOutPut(argV[i++]);
-            status = EventParser::op->init();
-            //EventParser::op->beginOutputThread();
-//            if (status != STATUS_SUCCESS)   break;
             outputInited = true;
         }
-        else if (strcmp(currentArv, "-s") == 0 && !outputInited) {
+        else if (strcmp(currentArv, "-s") == 0 && !outputInited && !probeRequested) {
 
             if (!validArgLength(i, status))   break;
 
             EventParser::op = new SocketOutPut(argV[i++]);
-            status = EventParser::op->init();
-            //EventParser::op->beginOutputThread();
-            if (status != STATUS_SUCCESS)   break;
-
             outputInited = true;
-        }
-        else if(strcmp(currentArv,"-k") == 0){
-            if (!validArgLength(i, status))   break;
-
-            int idx = -1;
-            std::string arg = argV[i++];
-            idx = arg.find("/");
-            if(idx > 0){
-                std::string ip_port = arg.substr(0,idx);
-                std::string topicValue = arg.substr(idx+1);
-                EventParser::op = new KafkaOutPut(ip_port,topicValue);
-                status = EventParser::op->init();
-
-                if (status != STATUS_SUCCESS)   break;
-                outputInited = true;
-            }else{
-                status = STATUS_KAFKA_FORMAT_ERROR;
-                break;
-            }
         }
         else if (strcmp(currentArv, "-e") == 0) {
             EventParser::isWdm=false;
             if (!validArgLength(i, status))   break;
 //            std::cout<<strcmp(argV[i++],"all")<<std::endl;
             std::string arg = argV[i++];
-            userEnabledFlags = strcmp(arg.c_str(),"all") == 0? 0x1ff:Tools::HexStr2DecInt(arg);
+            userEnabledFlags = strcmp(arg.c_str(),"all") == 0 ? 0xab : Tools::HexStr2DecInt(arg);
 
             if(status == STATUS_SUCCESS)    enbaleFlagsInited = true;
         }
@@ -777,9 +956,179 @@ ULONG64 Initializer::init(GUID &p) {
 //        }
         else if (strcmp(currentArv, "--outputThreshold") == 0) {
 
+            if (!validArgLength(i, status))   break;
             std::string threshold = argV[i++];
             opThreashold = Tools::String2ULONG64(threshold);
             status = STATUS_SUCCESS;
+        }
+        else if (strcmp(currentArv, "--schema-probe") == 0) {
+            // Collect a per-(provider, opcode) frame-length report; written on
+            // stop. This is how a new Windows build's layouts are measured.
+            if (!validArgLength(i, status))   break;
+            schemaProbeFile = argV[i++];
+            kellect::schema::SetProbeReportPath(schemaProbeFile);
+            kellect::schema::DriftTracker::Instance().SetProbeEnabled(true);
+            status = STATUS_SUCCESS;
+        }
+        else if (strcmp(currentArv, "--profile") == 0 ||
+                 strcmp(currentArv, "--evidence-dir") == 0) {
+            if (!validArgLength(i, status)) break;
+            std::string& value = strcmp(currentArv, "--profile") == 0 ? profile : evidenceDirectory;
+            value = argV[i++];
+            if (value.empty())
+                status = STATUS_FORMAT_ERROR;
+        }
+        else if (strcmp(currentArv, "--kernel-etl") == 0) {
+            kernelEtl = true;
+            if (evidenceDirectory.empty())
+                evidenceDirectory = "evidence";
+        }
+        else if (strcmp(currentArv, "--prewarm-mode") == 0) {
+            if (!validArgLength(i, status)) break;
+            prewarmMode = argV[i++];
+            if (prewarmMode != "off" && prewarmMode != "static" &&
+                prewarmMode != "adaptive" && prewarmMode != "hybrid") {
+                std::cerr << "Error: invalid --prewarm-mode '" << prewarmMode << "'.\n";
+                status = STATUS_FORMAT_ERROR;
+            }
+        }
+        else if (strcmp(currentArv, "--init-images") == 0) {
+            if (!validArgLength(i, status)) break;
+            initImagesFile = argV[i++];
+            if (initImagesFile.empty())
+                status = STATUS_FORMAT_ERROR;
+        }
+        else if (strcmp(currentArv, "--schema-strict") == 0) {
+            // Drop events whose frame does not fit the declared layout instead
+            // of emitting the best-effort prefix.
+            schemaStrict = true;
+            kellect::schema::SetStrictMode(true);
+            status = STATUS_SUCCESS;
+        }
+        else if (strcmp(currentArv, "--max-file-mb") == 0) {
+            // Rotate the -f output file once it reaches N MB (0 = never).
+            if (!validArgLength(i, status))   break;
+            maxFileMB = Tools::String2ULONG64(argV[i++]);
+            status = STATUS_SUCCESS;
+        }
+        else if (strcmp(currentArv, "--append") == 0) {
+            // Keep appending to an existing -f file instead of truncating it
+            // (the service uses this so a restart does not wipe collected data).
+            appendMode = true;
+            status = STATUS_SUCCESS;
+        }
+        else if (strcmp(currentArv, "--probe") == 0) {
+            // Output to the Kellect backend (WebSocket + MessagePack, protocol
+            // v1). Credentials and URL come from config/probe.ini.
+            if (outputInited || probeRequested) {
+                status = STATUS_DUPLICATE_OUTPUT;
+                break;
+            }
+            probeRequested = true;
+            status = STATUS_SUCCESS;
+        }
+        else if (strcmp(currentArv, "--probe-url") == 0) {
+            if (!validArgLength(i, status))   break;
+            probeUrl = argV[i++];
+            status = STATUS_SUCCESS;
+        }
+        else if (strcmp(currentArv, "--probe-id") == 0) {
+            if (!validArgLength(i, status))   break;
+            probeId = argV[i++];
+            status = STATUS_SUCCESS;
+        }
+        else if (strcmp(currentArv, "--probe-token") == 0) {
+            if (!validArgLength(i, status))   break;
+            probeToken = argV[i++];
+            status = STATUS_SUCCESS;
+        }
+        else if (strcmp(currentArv, "--probe-config") == 0) {
+            if (!validArgLength(i, status))   break;
+            probeConfigFile = argV[i++];
+            status = STATUS_SUCCESS;
+        }
+        else if (strcmp(currentArv, "--probe-queue") == 0) {
+            if (!validArgLength(i, status))   break;
+            probeQueue = static_cast<size_t>(Tools::String2ULONG64(argV[i++]));
+            status = STATUS_SUCCESS;
+        }
+        else if (strcmp(currentArv, "--probe-batch") == 0) {
+            if (!validArgLength(i, status))   break;
+            probeBatch = static_cast<size_t>(Tools::String2ULONG64(argV[i++]));
+            status = STATUS_SUCCESS;
+        }
+        else if (strcmp(currentArv, "--probe-rate") == 0) {
+            if (!validArgLength(i, status))   break;
+            probeRate = static_cast<int>(Tools::String2ULONG64(argV[i++]));
+            status = STATUS_SUCCESS;
+        }
+        else if (strcmp(currentArv, "--serialize-threads") == 0) {
+            // JSON serialisation threads (1 = default, preserves order).
+            if (!validArgLength(i, status))   break;
+            serializeThreads = static_cast<size_t>(Tools::String2ULONG64(argV[i++]));
+            if (serializeThreads < 1) serializeThreads = 1;
+            if (serializeThreads > 8) serializeThreads = 8;
+            status = STATUS_SUCCESS;
+        }
+        else if (strcmp(currentArv, "--callstack") == 0) {
+            // Opt-in: collect/parse API stack traces (extra event stream + CPU).
+            callstackRequested = true;
+            status = STATUS_SUCCESS;
+        }
+        else if (strcmp(currentArv, "--mqtt") == 0) {
+            // Additive SecArgus output; works together with any primary sink.
+            mqttRequested = true;
+            status = STATUS_SUCCESS;
+        }
+        else if (strcmp(currentArv, "--mqtt-config") == 0) {
+            if (!validArgLength(i, status))   break;
+            mqttConfigFile = argV[i++];
+            mqttConfigExplicit = true;
+            status = STATUS_SUCCESS;
+        }
+        else if (strcmp(currentArv, "--mqtt-host") == 0) {
+            if (!validArgLength(i, status))   break;
+            mqttHostOverride = argV[i++];
+            status = STATUS_SUCCESS;
+        }
+        else if (strcmp(currentArv, "--mqtt-port") == 0) {
+            if (!validArgLength(i, status))   break;
+            mqttPortOverride = atoi(argV[i++]);
+            if (mqttPortOverride <= 0 || mqttPortOverride > 65535) {
+                std::cerr << "Error: --mqtt-port must be 1..65535" << std::endl;
+                exit(7);
+            }
+            status = STATUS_SUCCESS;
+        }
+        else if (strcmp(currentArv, "--stats-interval") == 0) {
+            if (!validArgLength(i, status)) break;
+            statsInterval = atoi(argV[i++]);
+            if (statsInterval < 1 || statsInterval > 3600) {
+                std::cerr << "Error: --stats-interval must be 1..3600 seconds.\n";
+                status = STATUS_FORMAT_ERROR;
+            }
+        }
+        else if (strcmp(currentArv, "--stop-event") == 0) {
+            // Internal: used by KellectService's supervisor for graceful stop.
+            if (!validArgLength(i, status))   break;
+            stopEventName = argV[i++];
+            status = STATUS_SUCCESS;
+        }
+        else if (strcmp(currentArv, "--enable-thread-events") == 0) {
+            threadEventsEnabled = true;
+        }
+        else if (strcmp(currentArv, "--enable-image") == 0) {
+            imageEventsEnabled = true;
+        }
+        else if (strcmp(currentArv, "--no-adaptive") == 0) {
+            adaptiveEnabled = false;
+        }
+        else if (strcmp(currentArv, "--adaptive") == 0) {
+            adaptiveEnabled = true;
+        }
+        else if (strcmp(currentArv, "--help-all") == 0) {
+            helpAll = true;
+            status = STATUS_SHOW_MANUAL;
         }
         else if (strcmp(currentArv, "-h") == 0) {
 
@@ -812,6 +1161,267 @@ ULONG64 Initializer::init(GUID &p) {
 
 
         if (status != STATUS_SUCCESS)   break;
+    }
+
+    // Remote desired config (written by update_collection_config) is applied on
+    // startup; this is why the command replies requires_restart.
+    // Desired config is applied *after* the profile so a remote command can
+    // override a GUI/service default on the next start.
+
+    // Default mode is behavior: process/thread/image/file/registry/TCP-IP/
+    // UDP-IP plus key stacks. No evidence archive unless --evidence-dir /
+    // --kernel-etl asked for it.
+    if (status == STATUS_SUCCESS && profile.empty() && !enbaleFlagsInited &&
+        userProvider == 0)
+        profile = "behavior";
+
+    if (status == STATUS_SUCCESS && !profile.empty()) {
+        if (enbaleFlagsInited) {
+            std::cerr << "Error: choose either --profile or -e.\n";
+            exit(3);
+        }
+        char iniPath[MAX_PATH];
+        const DWORD pathLength = GetFullPathNameA("config\\profiles.ini", MAX_PATH, iniPath, nullptr);
+        auto readProfileValue = [&](const char* name, ULONG max, ULONG& value) {
+            char field[32];
+            const DWORD length = GetPrivateProfileStringA(profile.c_str(), name, "", field,
+                static_cast<DWORD>(sizeof(field)), iniPath);
+            char* end = nullptr;
+            const auto parsed = std::strtoul(field, &end, 0);
+            if (length == 0 || length >= sizeof(field) - 1 || *end || parsed > max)
+                return false;
+            value = parsed;
+            return true;
+        };
+        ULONG mask = 0, stack = 0;
+        if (pathLength == 0 || pathLength >= MAX_PATH ||
+            !readProfileValue("event_mask", 0xbf, mask) || (mask & CALLSTACKEVENT) || !mask ||
+            !readProfileValue("extra_kernel_flags", 0xffffffff, extraKernelFlags) ||
+            !readProfileValue("callstack", 1, stack)) {
+            std::cerr << "Error: invalid or missing profile '" << profile << "' in config/profiles.ini.\n";
+            exit(3);
+        }
+        userEnabledFlags = mask;
+        enbaleFlagsInited = true;
+        callstackRequested = callstackRequested || stack != 0;
+
+        char scope[32] = { 0 };
+        GetPrivateProfileStringA(profile.c_str(), "stack_scope", "behavior", scope,
+                                 static_cast<DWORD>(sizeof(scope)), iniPath);
+        stackScope = (strcmp(scope, "full") == 0) ? "full" : "behavior";
+        EventCallstack::SetStackScope(stackScope != "full");
+        std::cout << "profile: " << profile << " (stack scope: " << stackScope << ")" << std::endl;
+
+        // Compatibility: the older research profiles still default to an
+        // evidence archive. behavior/diagnostic do not (pass --evidence-dir).
+        if (evidenceDirectory.empty() && profile != "behavior" &&
+            profile != "diagnostic")
+            evidenceDirectory = "evidence";
+    }
+
+    if (status == STATUS_SUCCESS)
+        applyDesiredConfig();
+
+    // Callstack is opt-in. Strip 0x40 from every mask (including -e all and a
+    // remote desired config) unless --callstack was passed; likewise never
+    // start stack tracing. The kernel event stream itself is unchanged.
+    if (enbaleFlagsInited) {
+        // Explicit -e masks keep their legacy meaning (0x40 = callstack);
+        // --callstack only adds the bit. The behaviour profile already has
+        // 0x40 stripped and sets it via its callstack=1 field.
+        if (callstackRequested)
+            userEnabledFlags |= CALLSTACKEVENT;
+        else
+            userEnabledFlags &= ~CALLSTACKEVENT;
+    }
+    if (!callstackRequested)
+        setListenCallStack(false);
+    if (enbaleFlagsInited && userEnabledFlags == 0 && !callstackRequested) {
+        // The mask only contained 0x40 (callstack), which is now opt-in.
+        std::cerr << "Warning: -e only selected 0x40 (callstack); callstack is "
+                     "disabled unless --callstack is passed."
+                  << std::endl;
+    }
+    if (status == STATUS_SUCCESS && threadEventsEnabled) {
+        userEnabledFlags |= THREADEVENT;
+        std::cout << "thread events: enabled (advanced)" << std::endl;
+    }
+    if (status == STATUS_SUCCESS && imageEventsEnabled) {
+        userEnabledFlags |= IMAGEEVENT;
+        std::cout << "image events: enabled (ImageLoad/Unload; DCStart discarded, "
+                     "startup may report etw_lost)" << std::endl;
+    }
+
+    if (status == STATUS_SUCCESS) {
+        const bool stackOn = callstackRequested ||
+                             (enbaleFlagsInited && (userEnabledFlags & CALLSTACKEVENT) != 0);
+        std::cout << "callstack: "
+                  << (stackOn ? (stackScope == "full" ? "enabled (full scope)"
+                                                      : "enabled (behavior scope)")
+                              : "disabled")
+                  << std::endl;
+    }
+
+    // Options that must reach the primary file sink before it can be wrapped in
+    // the tee and before init() opens the file.
+    if (status == STATUS_SUCCESS && EventParser::op != nullptr) {
+        FileOutPut* primaryFile = dynamic_cast<FileOutPut*>(EventParser::op);
+        if (primaryFile != nullptr) {
+            if (appendMode)
+                primaryFile->setAppend(true);
+            if (maxFileMB > 0) {
+                primaryFile->setMaxFileBytes(maxFileMB * 1024ull * 1024ull);
+                std::cout << "file rotation: every " << maxFileMB << " MB" << std::endl;
+            }
+        }
+    }
+
+    // Probe channel is constructed after all options are parsed (credentials
+    // may be overridden per flag).
+    if (status == STATUS_SUCCESS && probeRequested && EventParser::op == nullptr) {
+        kellect::channel::ProbeConfig probeConfig;
+        std::string configError;
+        if (!kellect::channel::LoadProbeConfig(probeConfigFile, probeConfig, configError)) {
+            std::cerr << "Error: cannot parse " << probeConfigFile << ": "
+                      << configError << std::endl;
+            MyLogger::writeLog("probe config parse error: " + configError);
+            exit(6);
+        }
+        if (!probeUrl.empty()) probeConfig.url = probeUrl;
+        if (!probeId.empty()) probeConfig.probeId = probeId;
+        if (!probeToken.empty()) probeConfig.token = probeToken;
+        if (probeQueue > 0) probeConfig.queueCapacity = probeQueue;
+        if (probeBatch > 0) probeConfig.batchEvents = probeBatch;
+        if (probeRate >= 0) probeConfig.ratePerSecond = probeRate;
+
+        if (probeConfig.url.empty() || probeConfig.probeId.empty() ||
+            probeConfig.token.empty()) {
+            std::cerr << "Error: probe channel needs url, probe_id and token.\n"
+                         "       Fill " << probeConfigFile
+                      << " (see the sample) or pass --probe-url/--probe-id/--probe-token."
+                      << std::endl;
+            MyLogger::writeLog("probe channel: url/probe_id/token missing");
+            exit(6);
+        }
+        if (probeConfig.token == "replace-with-your-token" ||
+            probeConfig.probeId == "probe-000000000000") {
+            std::cerr << "Error: " << probeConfigFile
+                      << " still holds the sample probe_id/token. Register the probe"
+                         " and put the real values in (token is shown only once)."
+                      << std::endl;
+            MyLogger::writeLog("probe channel: sample probe_id/token not replaced");
+            exit(6);
+        }
+
+        EventParser::op = new kellect::channel::ProbeChannel(probeConfig);
+        outputInited = true;
+        std::cout << "probe channel: " << probeConfig.url
+                  << " (probe_id=" << probeConfig.probeId << ")" << std::endl;
+    }
+
+    // ---- SecArgus MQTT output (additive) -----------------------------------
+    // Wraps the existing sink in a TeeOutput: the primary output keeps its
+    // exact behaviour, and an MQTT failure only degrades the MQTT sink.
+    if (status == STATUS_SUCCESS && mqttRequested) {
+        if (EventParser::isWdm) {
+            std::cerr << "Error: --mqtt cannot be combined with -wdm "
+                         "(WDM output is not the Kellect event JSON)." << std::endl;
+            exit(7);
+        }
+
+        kellect::secargus::MqttSettings mqttSettings;
+        std::string mqttError;
+        if (mqttConfigExplicit && GetFileAttributesA(mqttConfigFile.c_str()) == INVALID_FILE_ATTRIBUTES) {
+            std::cerr << "Error: mqtt config not found: " << mqttConfigFile << std::endl;
+            exit(7);
+        }
+        if (!kellect::secargus::LoadMqttSettings(mqttConfigFile, mqttSettings, mqttError)) {
+            std::cerr << "Error: cannot parse " << mqttConfigFile << ": "
+                      << mqttError << std::endl;
+            exit(7);
+        }
+        mqttSettings.enabled = true;   // explicit --mqtt overrides enabled=0
+        if (!mqttHostOverride.empty())
+            mqttSettings.host = mqttHostOverride;
+        if (mqttPortOverride > 0)
+            mqttSettings.port = mqttPortOverride;
+
+        std::string hostname = "windows-host";
+        char hostBuffer[MAX_COMPUTERNAME_LENGTH + 1] = { 0 };
+        DWORD hostLength = static_cast<DWORD>(sizeof(hostBuffer));
+        if (GetComputerNameA(hostBuffer, &hostLength))
+            hostname.assign(hostBuffer, hostLength);
+
+        const kellect::schema::OsInfo os = kellect::schema::DetectOs();
+
+        kellect::secargus::EndpointIdentity identity;
+        if (!kellect::secargus::LoadOrCreateIdentity(
+                mqttSettings.endpointConfig, Initializer::getUUID(), hostname,
+                os.displayName, identity, mqttError)) {
+            std::cerr << "Error: endpoint identity: " << mqttError << std::endl;
+            exit(7);
+        }
+        if (mqttSettings.clientId.empty())
+            mqttSettings.clientId = identity.clientId;
+
+        // Snapshot of the effective collection config, reported by
+        // get_collection_config. Values are the real ones the process runs with.
+        kellect::secargus::CollectionInfo collection;
+        collection.eventMask = userEnabledFlags;
+        collection.userProviders = userProvider;
+        collection.filterFile = "config\\filter.txt";
+        collection.schemaName = kellect::schema::ProfileName(os.profile);
+        collection.schemaFile = os.schemaFile;
+        collection.startedAt = kellect::secargus::IsoNowUtc();
+        collection.hotReload = false;
+
+        std::unique_ptr<Output> mqttSink(
+            new kellect::secargus::MqttOutput(mqttSettings, identity, collection));
+
+        if (EventParser::op == nullptr) {
+            EventParser::op = mqttSink.release();
+            outputInited = true;
+        } else {
+            TeeOutput* tee = new TeeOutput();
+            std::unique_ptr<Output> primary(EventParser::op);
+            tee->addSink(std::move(primary), "primary", true);
+            tee->addSink(std::move(mqttSink), "mqtt", false);
+            EventParser::op = tee;
+        }
+
+        std::cout << "secargus mqtt: " << mqttSettings.host << ":"
+                  << mqttSettings.port << " endpoint_id=" << identity.endpointId
+                  << " spool=" << mqttSettings.spoolDirectory << std::endl;
+    }
+
+    if (status == STATUS_SUCCESS && !outputInited && !evidenceDirectory.empty()) {
+        EventParser::op = new Output();
+        EventParser::evidenceOnly = schemaProbeFile.empty();
+        outputInited = true;
+    }
+
+    // Default: no file. A bare `kellect.exe` only runs the pipeline and prints
+    // live stats; pass -f <file> (GUI: choose a path) to persist JSONL.
+    if (status == STATUS_SUCCESS && !outputInited && !probeRequested && !mqttRequested) {
+        outputInited = true;   // run the collector, but EventParser::op stays null
+        std::cout << "output: disabled (stats only; use -f <file> to save events)"
+                  << std::endl;
+    }
+
+    // Fail before touching the output file: a non-elevated run must not
+    // truncate the destination and then abort.
+    if (status == STATUS_SUCCESS && outputInited && !IsProcessElevated()) {
+        std::cerr << "Error: kellect must run elevated (Run as administrator): "
+                     "creating an ETW session requires it." << std::endl;
+        exit(2);
+    }
+
+    // Open the output destination only after every option has been parsed:
+    // --append/--max-file-mb must work regardless of their position relative to
+    // -f, and an open failure (bad path or unreachable socket
+    // ) still flows through the error switch below.
+    if (status == STATUS_SUCCESS && outputInited && EventParser::op) {
+        status = EventParser::op->init();
     }
 
     if (status == STATUS_SUCCESS && outputInited) {
@@ -855,16 +1465,12 @@ ULONG64 Initializer::init(GUID &p) {
                 MyLogger::writeLog("options or arguments error. ");
                 break;
             }
-            case STATUS_KAFKA_FORMAT_ERROR:{
-                MyLogger::writeLog("kafka argument format error. ,the value should be like: \\\"ip:port\\topicValue\\\"(i.e 192.168.1.1:8888\\test)\"");
-                break;
-            }
             case STATUS_SOCKET_FORMAT_ERROR:{
                 MyLogger::writeLog("socket argument format error. ");
                 break;
             }
         }
-        showCommandList();
+        showCommandList(helpAll);
         exit(-1);
     }
 
@@ -872,6 +1478,13 @@ ULONG64 Initializer::init(GUID &p) {
 }
 
 void Initializer::initUserGuid(ULONG64 userProvider,GUID &ProviderId){
+    if (userProvider != 0x01 && userProvider != 0x02 && userProvider != 0x03 &&
+        userProvider != 0) {
+        std::cerr << "Warning: unknown -u provider 0x" << std::hex << userProvider
+                  << std::dec << " (valid: 0x01 thread pool, 0x02 DNS client,"
+                     " 0x03 print service); no user-mode session will be created."
+                  << std::endl;
+    }
     if(userProvider==0x01){
         struct __declspec(uuid("{C861D0E2-A2C1-4D36-9F9C-970BAB943A12}")) Thread_Pool;
         ProviderId = __uuidof(Thread_Pool);

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="gb2312"?>
 
-<Events>
+<Events Name="win10" MinBuild="10240" MaxBuild="21999">
     <Event>
         <ProviderID>1030727888</ProviderID>
         <OpCode>1</OpCode>
@@ -473,7 +473,7 @@
             <Attribute type="4">startime</Attribute>
             <Attribute type="4">endtime</Attribute>
             <Attribute type="4">seqnum</Attribute>
-            <Attribute type="8">connid</Attribute>
+            <Attribute type="4">connid</Attribute>
         </Attributes>
     </Event>
     <Event>
@@ -490,7 +490,7 @@
             <Attribute type="4">startime</Attribute>
             <Attribute type="4">endtime</Attribute>
             <Attribute type="4">seqnum</Attribute>
-            <Attribute type="8">connid</Attribute>
+            <Attribute type="4">connid</Attribute>
         </Attributes>
     </Event>
     <Event>
@@ -505,7 +505,7 @@
             <Attribute type="2">dport</Attribute>
             <Attribute type="2">sport</Attribute>
             <Attribute type="4">seqnum</Attribute>
-            <Attribute type="8">connid</Attribute>
+            <Attribute type="4">connid</Attribute>
         </Attributes>
     </Event>
     <Event>
@@ -520,7 +520,7 @@
             <Attribute type="2">dport</Attribute>
             <Attribute type="2">sport</Attribute>
             <Attribute type="4">seqnum</Attribute>
-            <Attribute type="8">connid</Attribute>
+            <Attribute type="4">connid</Attribute>
         </Attributes>
     </Event>
     <Event>
@@ -535,7 +535,7 @@
             <Attribute type="2">dport</Attribute>
             <Attribute type="2">sport</Attribute>
             <Attribute type="4">seqnum</Attribute>
-            <Attribute type="8">connid</Attribute>
+            <Attribute type="4">connid</Attribute>
         </Attributes>
     </Event>
     <Event>
@@ -550,7 +550,7 @@
             <Attribute type="2">dport</Attribute>
             <Attribute type="2">sport</Attribute>
             <Attribute type="4">seqnum</Attribute>
-            <Attribute type="8">connid</Attribute>
+            <Attribute type="4">connid</Attribute>
         </Attributes>
     </Event>
     <Event>
@@ -565,7 +565,7 @@
             <Attribute type="2">dport</Attribute>
             <Attribute type="2">sport</Attribute>
             <Attribute type="4">seqnum</Attribute>
-            <Attribute type="8">connid</Attribute>
+            <Attribute type="4">connid</Attribute>
         </Attributes>
     </Event>
     <Event>
@@ -580,7 +580,7 @@
             <Attribute type="2">dport</Attribute>
             <Attribute type="2">sport</Attribute>
             <Attribute type="4">seqnum</Attribute>
-            <Attribute type="8">connid</Attribute>
+            <Attribute type="4">connid</Attribute>
         </Attributes>
     </Event>
     <Event>
@@ -595,7 +595,7 @@
             <Attribute type="2">dport</Attribute>
             <Attribute type="2">sport</Attribute>
             <Attribute type="4">seqnum</Attribute>
-            <Attribute type="8">connid</Attribute>
+            <Attribute type="4">connid</Attribute>
         </Attributes>
     </Event>
     <Event>
@@ -610,7 +610,7 @@
             <Attribute type="2">dport</Attribute>
             <Attribute type="2">sport</Attribute>
             <Attribute type="4">seqnum</Attribute>
-            <Attribute type="8">connid</Attribute>
+            <Attribute type="4">connid</Attribute>
         </Attributes>
     </Event>
     <Event>
@@ -625,7 +625,7 @@
             <Attribute type="2">dport</Attribute>
             <Attribute type="2">sport</Attribute>
             <Attribute type="4">seqnum</Attribute>
-            <Attribute type="8">connid</Attribute>
+            <Attribute type="4">connid</Attribute>
         </Attributes>
     </Event>
     <Event>
@@ -640,7 +640,7 @@
             <Attribute type="2">dport</Attribute>
             <Attribute type="2">sport</Attribute>
             <Attribute type="4">seqnum</Attribute>
-            <Attribute type="8">connid</Attribute>
+            <Attribute type="4">connid</Attribute>
         </Attributes>
     </Event>
     <Event>
@@ -662,7 +662,7 @@
             <Attribute type="2">rcvwinscale</Attribute>
             <Attribute type="2">sndwinscale</Attribute>
             <Attribute type="4">seqnum</Attribute>
-            <Attribute type="8">connid</Attribute>
+            <Attribute type="4">connid</Attribute>
         </Attributes>
     </Event>
     <Event>
@@ -684,7 +684,7 @@
             <Attribute type="2">rcvwinscale</Attribute>
             <Attribute type="2">sndwinscale</Attribute>
             <Attribute type="4">seqnum</Attribute>
-            <Attribute type="8">connid</Attribute>
+            <Attribute type="4">connid</Attribute>
         </Attributes>
     </Event>
     <Event>
@@ -706,7 +706,7 @@
             <Attribute type="2">rcvwinscale</Attribute>
             <Attribute type="2">sndwinscale</Attribute>
             <Attribute type="4">seqnum</Attribute>
-            <Attribute type="8">connid</Attribute>
+            <Attribute type="4">connid</Attribute>
         </Attributes>
     </Event>
     <Event>
@@ -728,7 +728,7 @@
             <Attribute type="2">rcvwinscale</Attribute>
             <Attribute type="2">sndwinscale</Attribute>
             <Attribute type="4">seqnum</Attribute>
-            <Attribute type="8">connid</Attribute>
+            <Attribute type="4">connid</Attribute>
         </Attributes>
     </Event>
     <Event>
@@ -1156,14 +1156,6 @@
             <Attribute type="1">ReturnValue</Attribute>
             <Attribute type="1">Vector</Attribute>
             <Attribute type="2">Reserved</Attribute>
-        </Attributes>
-    </Event>
-    <Event>
-        <ProviderID>3458056116</ProviderID>
-        <OpCode>69</OpCode>
-        <EventName>PerfInfoSysClEnter</EventName>
-        <Attributes>
-            <Attribute type="8">SysCallAddress</Attribute>
         </Attributes>
     </Event>
     <Event>

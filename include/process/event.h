@@ -6,10 +6,13 @@
 #include <vector>
 #include <set>
 #include <list>
+#include <utility>
 #include <algorithm>
 #include "initialization/initializer.h"
 
-#define ULONGMAX 2^64-1
+// NOTE: this used to be `2^64-1`, which in C++ is XOR: 2^64^1 == 67, not the
+// intended sentinel. dataType's default ctor relied on it.
+#define ULONGMAX (~(ULONG64)0)
 
 class dataType
 {
@@ -44,7 +47,7 @@ public:
 
 	inline int getOpCode() const  { return opCode; }
 	inline ULONG64 getProviderID() const { return providerID;}
-	inline const std::string getEventName() const { return eventName;}
+	inline const std::string& getEventName() const { return eventName; }
 	inline void setEventName(std::string eName) { eventName = eName; };
 
 	bool operator<(const EventIdentifier& ei) const {
@@ -77,6 +80,8 @@ class BaseEvent{
 private:
 	char* rawProperty = nullptr;
 	int rawPropertyLen = 0;
+    unsigned pointerBytes = 0;
+    ULONG64 rawSequence = 0;
 
 protected:
 	int threadID;
@@ -91,12 +96,26 @@ protected:
 	EventIdentifier* ei;
 	bool valueableEvent = true;
 	bool propertiesDeleted = false;
-	std::map<std::string, dataType*> properties;
+	// Small flat vector instead of std::map: an event has ~5-30 fields, and the
+	// map allocated a node per field on the ETW callback thread. Linear search
+	// over a contiguous array is faster at this size and allocates once.
+	std::vector<std::pair<std::string, dataType*>> properties;
     std::string userProviderName;
 
 public:
 
-	using PropertyInfo = std::pair<std::string, int>;
+	// One field of a raw-frame layout (config/eventStruct_*.xml).
+	// `optional` marks fields that newer builds may omit: when the frame ends
+	// before them the parser stops cleanly instead of treating it as drift.
+	struct PropertyInfo {
+		std::string name;
+		int type = 0;
+		bool optional = false;
+
+		PropertyInfo() {}
+		PropertyInfo(const std::string& n, int t, bool o = false)
+			: name(n), type(t), optional(o) {}
+	};
 
     enum PropertyNameIndex {
         UniqueProcessKey, ProcessId, ParentId, SessionId, ExitStatus, DirectoryTableBase, Flags, UserSID, ImageFileName, CommandLine, PackageFullName,
@@ -126,7 +145,11 @@ public:
 	virtual STATUS toJsonString(std::string* sJson);
     virtual STATUS toWdmJsonString(std::string* sJson);
 	virtual void parse() {};
-	BaseEvent() {};
+	BaseEvent() : ei(nullptr) {};
+    void setPointerBytes(unsigned bytes) { pointerBytes = bytes; }
+    unsigned getPointerBytes() const { return pointerBytes; }
+    void setRawSequence(ULONG64 seq) { rawSequence = seq; }
+    ULONG64 getRawSequence() const { return rawSequence; }
 	virtual~BaseEvent() {
 		// the arguments are deleted in function getCommonJsonNoLib(..), as to avoid twice traverse arguments
 		
@@ -166,7 +189,7 @@ public:
 		rawProperty = nullptr;
 	}
 
-	const std::map<std::string, dataType*>& getProperties() { return properties; }
+	const std::vector<std::pair<std::string, dataType*>>& getProperties() { return properties; }
 	bool getPropertiesDeleted() { return propertiesDeleted; }
 	int getThreadID() { return threadID; }
 	int getProcessID() { return processID; }
@@ -189,12 +212,21 @@ public:
 	void setProperty(int propertyNameIdex, dataType *dt);
 	inline void setProperty(std::string propertyName, dataType* dt)	//overload setProperty
 	{
-		this->properties.insert(std::map<std::string, dataType*>::value_type(propertyName, dt));
+		for (auto& kv : properties) {
+			if (kv.first == propertyName) {
+				kv.second = dt;   // replace, matching setProperty(int)
+				return;
+			}
+		}
+		properties.emplace_back(std::move(propertyName), dt);
 	};
 	
 	inline bool hasProperty(int propertyNameIndex) {
-		if (propertyNameIndex > propertyNameVector.size())	return false;
-		return properties.count(propertyNameVector[propertyNameIndex]) != 0;
+		if (propertyNameIndex < 0 || static_cast<size_t>(propertyNameIndex) >= propertyNameVector.size())	return false;
+		const std::string& name = propertyNameVector[propertyNameIndex];
+		for (const auto& kv : properties)
+			if (kv.first == name) return true;
+		return false;
 	}
 	int setTIDAndPID(BaseEvent* event);
     void replaceCharacterFromProperty(int propertyIndex,char target ,std::string substitute);
