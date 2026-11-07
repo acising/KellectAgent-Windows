@@ -2,14 +2,17 @@
 #include <tdh.h>
 
 bool Filter::firstFilter(PEVENT_RECORD pEvent) {
-	
+
 	bool flt = false;
 	int pid = pEvent->EventHeader.ProcessId;
 	ULONG64 providerId = pEvent->EventHeader.ProviderId.Data1;
 	int opCode = pEvent->EventHeader.EventDescriptor.Opcode;
 
 	if (filterPID(pid)) 	flt = true;
-	else if (filterEventIdentifier(providerId, opCode))	flt = true;     //do not filter checking for each event, as it is time-consuming
+	else if (filterDroppedIdentifier(providerId, opCode))	flt = true;    //"-x"/filter.txt dropped noise: reject before parsing
+	// NOTE: the former filterEventIdentifier whitelist check was removed;
+	// unknown event types are handled by thirdFilter's provider-level check.
+	// The hardcoded ~80-pair list is preserved (commented) in initFilter().
 
 	return flt;
 }

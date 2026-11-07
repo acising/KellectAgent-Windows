@@ -81,46 +81,34 @@ kellect.exe -e all -f test.json
 
 #### filter.txt
 
-​	用户可以通过配置filter.txt实现不同功能。通常KellectAgent运行不需要进行修改，除非有定制化的需求。
+运行时过滤配置，启动时由 `initFilter()` 读取。三个配置节，使用人类可读的条目：
 
-```json
+```text
+# config/filter.txt
 filteredProcessID
-0 4 128
+0
+4
+128
 
-filteredEventIdentifier
-3740466758 32
-1030727888 1
-1030727888 2
-1030727889 1
-1030727889 2
-1030727889 36
-749821213 10
-749821213 2
-...
+droppedEventName
 
 filteredImageFile
 C:\Windows\SysWOW64\ntdll.dll
 ```
 
-**配置文件不同标签详情：**
+**配置节说明：**
 
 1. *[filteredProcessID]*
 
-   表示根据此标签中的 ID 列表过滤具体事件。 进程 ID 由空格分隔。
+   PID 黑名单（每行一个）。内置条目 {0, 4, 128} 始终存在；此文件中的额外 PID 为增量添加。
 
-2. *[filteredEventIdentifier]*
+2. *[droppedEventName]*
 
-   表示通过Event ProviderID和opcode的组合过滤事件，我们称之为EventIdentifier。 具体的事件日志详情可以在[微软文档](https://docs.microsoft.com/en-us/windows/win32/etw/fileio)中获取. ProviderID 是 Guid 类第一部分的十进制形式，opcode 是每个 BaseEvent Class Page 的 Remarks 下的 EventType 值。
-
-   > 注意：该标签下的事件标识符为白名单列表，是我们需要采集的事件类型。
-
-   [![image-20220503171251436](https://camo.githubusercontent.com/0d8e30388ebd9df55ce302d1fb37bb5e84f1edd598604e33b8667dbf14203376/687474703a2f2f3132312e34302e3136382e36302f6b656c6c6563742f6576656e74547970652e706e67)](https://camo.githubusercontent.com/0d8e30388ebd9df55ce302d1fb37bb5e84f1edd598604e33b8667dbf14203376/687474703a2f2f3132312e34302e3136382e36302f6b656c6c6563742f6576656e74547970652e706e67)
-
-   [![image-20220503171255065](https://camo.githubusercontent.com/fa83496afb6f388c337e59491df6e122e4f0e896314879201824b9576ded7a75/687474703a2f2f3132312e34302e3136382e36302f6b656c6c6563742f677569642e706e67)](https://camo.githubusercontent.com/fa83496afb6f388c337e59491df6e122e4f0e896314879201824b9576ded7a75/687474703a2f2f3132312e34302e3136382e36302f6b656c6c6563742f677569642e706e67)
+   事件名黑名单（来自 `eventStruct_win10.xml`），在最早的过滤阶段丢弃，不进入解析管线。用于治理高量低值噪声（如 `FileIODirNotify`）。CLI 的 `-x` 参数效果相同，运行时追加到该列表。
 
 3. *[filteredImageFile]*
 
-   可以通过此标签中列出的Image文件路径**过滤** 加载Image 的事件。
+   通过 Image 文件路径**过滤**加载 Image 的事件及对应的 CallStack。
 
 #### initImages.txt
 
@@ -150,7 +138,7 @@ C:\Windows\System32\dbghelp.dll
 
 #### uuid
 
-设置当前主机的UUID。若未指定，则KellectAgent会自动生成UUID并输出到该文件中。
+当前主机的唯一标识。首次运行时通过 `CoCreateGuid` 生成并持久化到 `config/uuid`；后续运行复用同一值。每台机器各自生成不同的 UUID。
 
 ## **输出格式**
 
@@ -213,7 +201,7 @@ C:\Windows\System32\dbghelp.dll
 	"PPName": "QQPCRTP.exe",
 	"TID": 9516,
 	"TimeStamp": 133253085392394264,
-	"Host-UUID": "FBFFA15C-FEDE-4f96-9AF8-398294758A2A",
+	"Host-UUID": "XXXXXXXX-XXXX-4XXX-XXXX-XXXXXXXXXXXX",
 	"Args": {
 		"CreateOptions": 18890752,
 		"FileAttributes": 0,
@@ -234,7 +222,7 @@ C:\Windows\System32\dbghelp.dll
 	"PPName": "svchost.exe",
 	"TID": 44940,
 	"TimeStamp": 133253092340669753,
-	"Host-UUID": "FBFFA15C-FEDE-4f96-9AF8-398294758A2A",
+	"Host-UUID": "XXXXXXXX-XXXX-4XXX-XXXX-XXXXXXXXXXXX",
 	"Args": {
 		"stackInfo": "C:\Program Files (x86)\Google\Update\1.3.36.152\goopdate.dll:DllEntry,
         C:\Program Files (x86)\Google\Update\1.3.36.152\goopdate.dll:DllEntry,
@@ -326,6 +314,64 @@ C:\Windows\System32\dbghelp.dll
 ## 数据集
 
 我们使用kellectAgent作为采集工具，并基于redcanaryco提出的脚本[Automic Red Team](https://github.com/redcanaryco/atomic-red-team)进行数据采集。该脚本基于[ATT&CK](https://attack.mitre.org/)中的战术，我们采集到的数据共享在[Kellect网站](http://www.kellect.org)中
+
+## KellectConsole(图形控制台)
+
+`gui/QtKellectConsole` 提供一个可选的 Qt 图形控制台来驱动 `kellect.exe`。它基于
+**官方动态 Qt 5.15 LTS**(msvc2019_64)+ MSVC `/MD` 构建;约 200 KB 的 exe 随包携带
+Qt DLL、平台插件和 VC++/UCRT 运行时(app-local),在 **Windows 7 SP1 / 10 / 11** 上
+免前置依赖直接运行。须以**管理员**身份运行(manifest 申请提权——ETW 必需)。
+
+启动 `KellectConsole.exe` 后:
+
+1. **设置** → `kellect.exe` 启动时自动探测(先 GUI 同目录,再上一级安装根目录),
+   需要时在设置中改指。
+2. 勾选需要的**内核事件类别**(或选一个预设)。
+3. 选择**输出目标**:控制台(屏幕实时视图)/ 文件 / Socket / Kafka。控制台、文件、
+   Socket 由 GUI 从实时流 tee 出(屏幕视图始终可用);Kafka 由 `kellect.exe` 直传。
+4. **启动**。JSON 事件流按事件类型着色、双击出详情对话框。
+
+> GUI 始终以 `-c` 启动 `kellect.exe`,且**不暴露** `-u`。需追踪用户态提供者请直跑
+> 二进制(见下)。
+
+构建:
+
+```
+cmd /c gui\QtKellectConsole\scripts\build.bat test
+```
+(官方动态 Qt 5.15.2 msvc2019_64,位于 `%QTDIR%`——默认
+`D:\Code\Qt\5.15.2\msvc2019_64`,可环境变量覆盖;MSVC v142 / 14.29、Windows SDK
+10.0.19041.0。Qt 一次性获取:
+`pip install aqtinstall` 后执行
+`python -m aqt install-qt windows desktop 5.15.2 win64_msvc2019_64 -O D:\Code\Qt --archives qtbase`。
+构建脚本会把 Qt DLL 和 `platforms\qwindows.dll` 拷到 exe 旁。)
+
+## MSI 安装包
+
+**MSI**——一条流水线构建采集器 + GUI + 安装包:
+
+```
+cmd /c scripts\build-all.bat
+```
+→ `installer\build-msi\Kellect-win-x64.msi`(支持自定义安装目录;GUI 随其 Qt/CRT
+运行时装进 `gui\` 子目录,采集器装在根目录)。
+
+> Windows 服务包装器(`KellectService`)已于 2026-09-19 移除。无人值守采集请用
+> 任务计划程序(`schtasks /sc onstart` + 失败重启策略)直接运行 `kellect.exe`。
+
+### 用户态提供者(`-u`)
+
+`kellect.exe` 可通过 `-u` 额外追踪**一个**用户态 ETW 提供者(单选枚举,非位掩码):
+
+| 值 | 提供者 |
+|----|--------|
+| `0x01` | 线程池(Thread Pool)|
+| `0x02` | DNS Client |
+| `0x03` | 打印服务(Print Service)|
+
+```
+kellect.exe -e all -u 0x02 -f dns.json   :: DNS 解析到文件(须管理员)
+```
 
 ## 未来计划
 

@@ -1,0 +1,8 @@
+/* resources/dark.qss */
+QMainWindow, QWidget { background: #1E1E1E; color: #D4D4D4; }
+QGroupBox { border: 1px solid #3C3C3C; margin-top: 10px; padding-top: 6px; }
+QGroupBox::title { color: #9CDCFE; subcontrol-origin: margin; left: 8px; }
+QPushButton { background: #2D2D30; border: 1px solid #3C3C3C; padding: 4px 12px; }
+QPushButton:hover { background: #3C3C3C; }
+QLineEdit, QComboBox { background: #2D2D30; border: 1px solid #3C3C3C; padding: 2px; }
+QListView { background: #1E1E1E; border: 1px solid #3C3C3C; }

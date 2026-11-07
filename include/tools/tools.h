@@ -21,6 +21,7 @@ public:
 	static void convertFileNameInDiskFormat(std::string &fileName);
 	static std::string parseEventInJsonFormat(const BaseEvent &event);
 	static std::string convertTimestamp(ULONG64 timestamp);
+	static std::string jsonEscape(const std::string& s);      //JSON string escape (backslash, quote, control chars)
 };
 
 template<typename Key, typename Val>

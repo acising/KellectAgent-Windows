@@ -7,6 +7,8 @@
 #include <strsafe.h>
 #include <fstream>
 #include <iostream>
+#include <chrono>
+#include <thread>
 #include <evntrace.h>
 #include <cstdlib>
 #include "process/etw_config.h"
@@ -14,6 +16,41 @@
 #include "process/multithread_configuration.h"
 #define MAXIMUM_SESSION_NAME 1024
 extern VOID WINAPI GetPropertiesByTdh(PEVENT_RECORD pEvent);
+
+namespace {
+// Stop a session by logger name with a self-contained properties buffer
+// (ControlTrace accepts sessionHandle=0 when the logger name is given).
+void stopSessionByName(const char* loggerName) {
+    const size_t size = sizeof(EVENT_TRACE_PROPERTIES) + sizeof(WCHAR);
+    EVENT_TRACE_PROPERTIES* props = (EVENT_TRACE_PROPERTIES*)calloc(size, 1);
+    if (!props) return;
+    props->Wnode.BufferSize = (ULONG)size;
+    props->LoggerNameOffset = sizeof(EVENT_TRACE_PROPERTIES);
+    ControlTraceA((TRACEHANDLE)0, loggerName, props, EVENT_TRACE_CONTROL_STOP);
+    free(props);
+}
+
+// Console Ctrl+C/Break handler (registered for GUI-hosted runs): stopping the
+// session unblocks ProcessTrace, so the normal cleanup path (ControlTrace stop
+// + properties free in mainSessionConfig/subSessionConfig) runs and the
+// process exits naturally. Without this, killing the process leaves the NT
+// Kernel Logger active and the next start fights over it (StartTrace 183).
+BOOL WINAPI consoleCtrlHandler(DWORD ctrlType) {
+    switch (ctrlType) {
+        case CTRL_C_EVENT:
+        case CTRL_BREAK_EVENT:
+        case CTRL_CLOSE_EVENT:
+        case CTRL_LOGOFF_EVENT:
+        case CTRL_SHUTDOWN_EVENT:
+            stopSessionByName(KERNEL_LOGGER_NAME);
+            stopSessionByName("MyTrace");
+            return TRUE;    // handled: let the consumer thread unwind and exit
+        default:
+            return FALSE;
+    }
+}
+} // namespace
+
 ETWConfiguration& ETWConfiguration::operator=(const ETWConfiguration& config) {
 
     if (this == &config)
@@ -80,9 +117,10 @@ PEVENT_TRACE_PROPERTIES ETWConfiguration::allocateTraceProperties(
         //StringCbCopy((LPWSTR)((char*)TraceProperties + TraceProperties->LogFileNameOffset), (logfile_path.length() + 1) * 2, logfile_path.c_str());
     }
 
-    TraceProperties->MinimumBuffers = 100; // Limit file size to 100MB max
-    TraceProperties->BufferSize = 1024; // Use 1024KB trace buffer
-    TraceProperties->MaximumBuffers = 1024;
+    TraceProperties->MinimumBuffers = 100;   // 预留 100 个缓冲(内存下限)
+    TraceProperties->BufferSize = 1024;      // 每缓冲 1MB
+    TraceProperties->MaximumBuffers = 1024;  // 缓冲数上限
+    TraceProperties->FlushTimer = 1;         // 最长 1 秒强制刷给实时消费者(与系统默认一致,显式自文档)
 
     if (LoggerName != nullptr) {
         StringCchCopyW((LPWSTR)((PCHAR)TraceProperties + TraceProperties->LoggerNameOffset),
@@ -157,7 +195,12 @@ cleanup:
     {
         status = ControlTrace(SessionHandle, KERNEL_LOGGER_NAME, mainSessionProperties, EVENT_TRACE_CONTROL_STOP);
 
-        if (ERROR_SUCCESS != status)
+        // 4201(ERROR_WMI_INSTANCE_NOT_FOUND)/4200(ERROR_WMI_GUID_NOT_FOUND):
+        // 会话已被控制台处理器先行停掉(优雅停止的正常双停),不算失败。
+        // 两码别记反:4201 是 INSTANCE、4200 是 GUID(SDK winerror.h 实测)
+        if (ERROR_SUCCESS != status &&
+            status != ERROR_WMI_INSTANCE_NOT_FOUND &&
+            status != ERROR_WMI_GUID_NOT_FOUND)
         {
             std::cerr << "ControlTrace(stop) failed with " << status << std::endl;
         }
@@ -167,6 +210,12 @@ cleanup:
         free(mainSessionProperties);
         std::cout << "Step 7: Trace properties freed" << std::endl;
     }
+
+    // 通知输出线程做 final flush 后退出(ETW 已停,管道内事件已全部解析完入队)
+    EventParser::requestOutputStop();
+    // 给输出线程最多 1 秒完成 final flush(detach 线程无法 join,
+    // 短暂等待让 flush 大概率完成后再返回)
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
     std::cout << "mainSessionConfig completed" << std::endl;
     return 0;
@@ -190,14 +239,14 @@ PEVENT_TRACE_PROPERTIES AllocateTraceProperties(
     TraceProperties->Wnode.BufferSize = BufferSize;
     TraceProperties->Wnode.ClientContext = 1; // Use QueryPerformanceCounter for time stamps
     TraceProperties->Wnode.Flags = WNODE_FLAG_TRACED_GUID;
-    TraceProperties->FlushTimer = 1;
+    TraceProperties->FlushTimer = 1;          // 最长 1 秒强制刷
     TraceProperties->LoggerNameOffset = sizeof(EVENT_TRACE_PROPERTIES);
     TraceProperties->LogFileNameOffset = sizeof(EVENT_TRACE_PROPERTIES) +
                                          (MAXIMUM_SESSION_NAME * sizeof(WCHAR));
     TraceProperties->LogFileMode = EVENT_TRACE_REAL_TIME_MODE;
-    TraceProperties->MaximumFileSize = 1; // Limit file size to 100MB max
-    TraceProperties->BufferSize = 5120; // Use 512KB trace buffers
-    TraceProperties->MinimumBuffers = 128;
+    TraceProperties->MaximumFileSize = 1; // 单文件上限 1MB(仅文件模式生效)
+    TraceProperties->BufferSize = 5120; // 每缓冲 5MB
+    TraceProperties->MinimumBuffers = 128; // 预留 128 个缓冲
     TraceProperties->MaximumBuffers = 512;
     if (LoggerName != NULL) {
         StringCchCopy((LPSTR)((PCHAR)TraceProperties + TraceProperties->LoggerNameOffset),
@@ -312,7 +361,10 @@ cleanup:
     {
         status = ControlTrace(SessionHandle, NULL, subSessionProperties, EVENT_TRACE_CONTROL_STOP);
 
-        if (ERROR_SUCCESS != status)
+        // 会话已被控制台处理器停掉,属正常双停(4201=INSTANCE/4200=GUID)
+        if (ERROR_SUCCESS != status &&
+            status != ERROR_WMI_INSTANCE_NOT_FOUND &&
+            status != ERROR_WMI_GUID_NOT_FOUND)
         {
             wprintf(L"ControlTrace(stop) failed with %lu\n", status);
             wprintf(L"cleanup SubSession Config failed with %lu.\n", status = GetLastError());
@@ -395,12 +447,13 @@ cleanup:
 
 int ETWConfiguration::ETWSessionConfig(bool real_time_switch)
 {
+    SetConsoleCtrlHandler(consoleCtrlHandler, TRUE);
 
     GUID guid={} ;
     PWSTR LoggerName = L"MyTrace";
     ULONG matchAnyKeywords=0;
      if(enable_flag!=0 ) {
-        std::cout<<"keneral start"<<enable_flag <<std::endl;
+        std::cout << "kernel session start, mask = 0x" << std::hex << enable_flag << std::dec << std::endl;
         MainSessionConfigThread t1(*this, real_time_switch);
         t1.startThread();
         t1.wait();

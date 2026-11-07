@@ -1,5 +1,25 @@
+# ===== AI 工具与会话（本地保留） =====
+.claude/
+.agents/
+.zcode/
+.superpowers/
+/AGENTS.md
+
+# ===== docs：全部本地保留，不入库 =====
+docs/
+
+# ===== IDE =====
 .DS_Store
-bin
-cmake-build-debug
-cmake-build-release
-.idea
+.idea/
+
+# ===== 构建产物 =====
+/bin/
+/build-*/
+installer/stage/
+installer/build-msi/
+dist/
+
+# ===== 日志与二进制产物 =====
+*.log
+*.zip
+*.user

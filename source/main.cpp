@@ -23,6 +23,11 @@ int main(int argc, char* argv[]) {
 	Initializer init(argc, argv);
     GUID ProviderId;
 	enabledFlags = init.init(ProviderId);
+    /* === 暂时停用:启动期"假遥测"闲话输出(2026-08-03 注释,暂不删除)===
+       来源 commit 044a59a "new branch test"(Zshengx, 2024-06-18):一段死代码,
+       纯 std::cout 打印 instance-id / OSSEC / RSA key 等,无任何联网或注册逻辑支撑,
+       对采集器功能零依赖。GUI 经 stdout 逐行转发会把它原样显示出来,
+       且易被误判为云侦察/后门行为。先注释停用,确认后可整段删除。
     std::cout << "request join in the manager groups..." << std::endl;
     std::cout << "join in the manager groups successfully..." << std::endl;
     std::cout << "** Config info:" << std::endl;
@@ -41,6 +46,7 @@ int main(int argc, char* argv[]) {
                  "K8IdRwgxOna+1ZERU81Hx73448CAwEAAQ=="
                  "\n** Config info end."
                  << std::endl;
+    */
 	//EventPerfInfo::initSystemCallMap();
 	ETWConfiguration etwConfiguration (enabledFlags,ProviderId);
 

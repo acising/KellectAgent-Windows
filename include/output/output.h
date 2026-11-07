@@ -1,15 +1,14 @@
 #pragma once
 #include <WinSock2.h>
+#include <atomic>
+#include <condition_variable>
+#include <mutex>
 #include "initialization/initializer.h"
 #include "tools/ConcurrentQueue.h"
 
 #pragma comment(lib,"ws2_32.lib")
 
 using namespace moodycamel;
-#define output2console 0x0
-#define output2file	   0x1
-#define output2kafka   0x2
-#define output2socket   0x4
 #define STATUS int
 #define STATUS_FAILED -1
 //#define STATUS_SUCCESS 0
@@ -20,11 +19,13 @@ private:
 	ConcurrentQueue<std::string*> q;
 	std::atomic<ULONG64> count;
     ULONG outputThreshold;	//max number of events output to the destination
+    std::atomic<bool> stopRequested{false};
 
     //const int outputThreshold = 5000;
 	std::mutex m;
 	std::condition_variable cv;
 	const int maxDequeNumber = 15000;
+    static constexpr int flushIntervalMs = 500;
 
 protected:
 	std::string ip;
@@ -40,6 +41,13 @@ public:
 	bool initialized() { return ini; };
 	void setInit(bool i) { ini = i; };
 
+    // 通知输出线程做 final flush 后退出(由采集停止路径调用)
+    void requestStop() {
+        stopRequested = true;
+        cv.notify_all();
+    }
+    bool isStopRequested() const { return stopRequested; }
+
 	STATUS parseIPAndPort();
     void setOutputThreashold(int threashold){
         outputThreshold = threashold;
@@ -51,18 +59,13 @@ public:
 
 	void pushOutputQueue(std::string* res) {
 		q.enqueue(res);
-		//count++;
 
 		if (count.fetch_add(1) >= outputThreshold){
-//            std::cout<<count.fetch_add(0) <<std::endl;
-
             cv.notify_one();
-
         }
 	}
 	void outputStrings();
  void outputStringPointer(std::string *rjson);
-//boost::lockfree::queue<std::string, boost::lockfree::fixed_sized<false> > queue(5000);
 virtual void output(std::string outputString) {}
 };
 

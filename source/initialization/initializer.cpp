@@ -29,8 +29,10 @@ std::string parseFiles[] = { "\\SystemRoot\\System32\\win32k.sys","\\SystemRoot\
 std::map<EventIdentifier*, std::list<BaseEvent::PropertyInfo>, EventIdentifierSortCriterion>  BaseEvent::eventStructMap;
 
 std::set<EventIdentifier*, EventIdentifierSortCriterion> Filter::filteredEventIdentifiers;
+std::set<EventIdentifier*, EventIdentifierSortCriterion> Filter::droppedEventIdentifiers;
 std::set<int> Filter::filteredProcessID;
 std::set<std::string> Filter::filteredImageFile;
+std::set<std::string> Initializer::userDroppedEventNames;
 std::set<ULONG64> Filter::listenedEventsProviders;
 bool Filter::listenAllEvents(false);
 bool Initializer::listenCallStack(false);
@@ -65,7 +67,14 @@ STATUS Initializer::initEnabledEvent(ULONG64 eventType) {
     }
     if (eventType & FILEEVENT){
 
-        enabledFlags |= EVENT_TRACE_FLAG_FILE_IO_INIT | EVENT_TRACE_FLAG_DISK_FILE_IO | EVENT_TRACE_FLAG_FILE_IO|EVENT_TRACE_FLAG_CSWITCH;
+        //DISK_FILE_IO "requires disk IO"(evntrace.h): without DISK_IO the kernel
+        //emits no FileIo_Name-family events(opcodes 0/36), so fileKey2Name only
+        //covers files opened during the capture and most Read/Write events fail
+        //setFileName() and get dropped. DISK_IO is therefore enabled here too;
+        //DiskIo's own events stay out of the output because DiskIoGuid is not
+        //in listenedEventsProviders under a FILE-only mask (thirdFilter drops them).
+        enabledFlags |= EVENT_TRACE_FLAG_FILE_IO_INIT | EVENT_TRACE_FLAG_DISK_FILE_IO | EVENT_TRACE_FLAG_FILE_IO
+                | EVENT_TRACE_FLAG_DISK_IO | EVENT_TRACE_FLAG_DISK_IO_INIT | EVENT_TRACE_FLAG_CSWITCH;
         Filter::listenedEventsProviders.insert(FileGuid.Data1);
     }
     if (eventType & DISKEVENT){
@@ -100,52 +109,114 @@ inline void Initializer::initDefaultEnabledEvents() {
 }
 
 /*
-    initialize tracing filter according to filter.txt
+    initialize tracing filter:
+    - static PID blacklist (built-in + config/filter.txt)
+    - dropped event names (config/filter.txt + CLI -x), resolved to identifiers
+    - image file blacklist (config/filter.txt)
+    The former hardcoded ~80-pair event whitelist is disabled below; unknown
+    event types are now handled by thirdFilter's provider-level check.
 */
 void Initializer::initFilter() {
-    // 直接定义过滤的进程 ID
-    std::vector<int> filteredProcessIDs = {0, 4, 128};
-    for (int id : filteredProcessIDs) {
-        Filter::filteredProcessID.insert(id);
-    }
+    // --- built-in PID blacklist (always present, cannot be removed via config) ---
+    Filter::filteredProcessID.insert(0);
+    Filter::filteredProcessID.insert(4);
+    Filter::filteredProcessID.insert(128);
     Filter::filteredProcessID.insert(GetCurrentProcessId());
 
-    // 直接定义过滤的事件标识
-// 直接定义过滤的事件标识
-    std::vector<std::pair<ULONG64, int>> filteredEventIdentifiers = {
-            {3740466758, 32}, {1030727888, 1}, {1030727888, 2}, {1030727889, 1},
-            {1030727889, 2}, {1030727889, 36}, {2924704302, 10}, {2924704302, 11},
-            {2924704302, 12}, {2924704302, 13}, {2924704302, 14}, {2924704302, 15},
-            {2924704302, 16}, {2924704302, 17}, {2924704302, 18}, {2924704302, 19},
-            {2924704302, 20}, {2924704302, 21}, {2924704302, 22}, {2924704302, 23},
-            {2924704302, 24}, {2924704302, 25}, {2924704302, 26}, {2924704302, 27},
-            {2586315456, 10}, {2586315456, 26}, {2586315456, 11}, {2586315456, 13},
-            {2586315456, 14}, {2586315456, 16}, {2586315456, 18}, {2586315456, 27},
-            {2586315456, 29}, {2586315456, 30}, {2586315456, 32}, {2586315456, 34},
-            {2586315456, 12}, {2586315456, 15}, {2586315456, 28}, {2586315456, 31},
-            {2586315456, 17}, {2429279289, 64}, {2429279289, 72}, {2429279289, 77},
-            {2429279289, 69}, {2429279289, 70}, {2429279289, 71}, {2429279289, 74},
-            {2429279289, 75}, {2429279289, 0}, {2429279289, 32}, {2429279289, 35},
-            {2429279289, 36}, {2429279289, 67}, {2429279289, 68}, {2429279289, 65},
-            {2429279289, 66}, {2429279289, 73}, {1030727892, 11}, {1030727892, 10},
-            {1030727892, 12}, {1030727892, 13}, {1030727892, 15}, {1030727892, 14},
-            {1030727892, 52}, {1030727892, 53}, {1030727892, 37}, {1030727892, 34},
-            {1030727892, 35}, {1171836109, 34}, {1171836109, 33}, {1171836109, 37},
-            {1171836109, 36}, {1171836109, 35}, {3458056116, 66}, {3458056116, 68},
-            {3458056116, 69}, {3458056116, 67}, {3458056116, 69}, {3458056116, 52},
-            {749821213, 10}, {749821213, 2}
-    };
-
-    for (const auto& pair : filteredEventIdentifiers) {
-        EventIdentifier* ei = new EventIdentifier(pair.first, pair.second);
-        Filter::filteredEventIdentifiers.insert(ei);
+    //blacklist the whole kellect toolchain (GUI host / any sibling collector):
+    //the session-start process dump would otherwise surface our own processes'
+    //events in the stream
+    {
+        HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if (snapshot != INVALID_HANDLE_VALUE) {
+            PROCESSENTRY32W entry;
+            entry.dwSize = sizeof(entry);
+            if (Process32FirstW(snapshot, &entry)) {
+                do {
+                    if (Filter::isKellectFamilyImage(entry.szExeFile))
+                        Filter::filteredProcessID.insert(static_cast<int>(entry.th32ProcessID));
+                } while (Process32NextW(snapshot, &entry));
+            }
+            CloseHandle(snapshot);
+        }
     }
 
-    // 直接定义过滤的图像文件
-    std::vector<std::string> filteredImageFiles = {
-            "C:\\Windows\\SysWOW64\\ntdll.dll"
-    };
+    // --- read config/filter.txt for user-configurable entries ---
+    //  sections: filteredProcessID / droppedEventName / filteredImageFile
+    //  missing file or parse failure falls back to the defaults above
+    {
+        std::ifstream f(filterFileName);
+        if (f.is_open()) {
+            std::string section = "", line;
+            while (std::getline(f, line)) {
+                size_t b = line.find_first_not_of(" \t\r\n");
+                if (b == std::string::npos) continue;
+                size_t e = line.find_last_not_of(" \t\r\n");
+                line = line.substr(b, e - b + 1);
+                if (line[0] == '#') continue;
+                if (line == "filteredProcessID" || line == "droppedEventName" || line == "filteredImageFile") {
+                    section = line;
+                    continue;
+                }
+                if (section == "filteredProcessID") {
+                    Filter::filteredProcessID.insert(std::stoi(line));
+                } else if (section == "droppedEventName") {
+                    userDroppedEventNames.insert(line);
+                } else if (section == "filteredImageFile") {
+                    Filter::filteredImageFile.insert(line);
+                }
+            }
+        } else {
+            std::cerr << "Warning: could not open " << filterFileName
+                      << "; using built-in defaults." << std::endl;
+        }
+    }
 
+    // --- resolve dropped event names (from -x CLI and filter.txt) to identifiers ---
+    // requires eventStruct loaded (initEventPropertiesMap runs before initFilter)
+    if (!userDroppedEventNames.empty()) {
+        for (EventIdentifier* ei : BaseEvent::eventIdentifierSet) {
+            if (userDroppedEventNames.count(ei->getEventName())) {
+                Filter::droppedEventIdentifiers.insert(
+                    new EventIdentifier(ei->getProviderID(), ei->getOpCode()));
+            }
+        }
+    }
+
+    // === Former hardcoded event identifier whitelist (~80 pairs), disabled ===
+    // These correspond 1:1 to the event types defined in eventStruct xml.
+    // The whitelist check (filterEventIdentifier) has been removed from
+    // firstFilter; unknown event types are now handled by thirdFilter's
+    // provider-level check. Preserved below as reference for provider/opcode
+    // values in case the whitelist needs to be restored.
+    //
+    // std::vector<std::pair<ULONG64, int>> filteredEventIdentifiers = {
+    //         {3740466758, 32}, {1030727888, 1}, {1030727888, 2}, {1030727889, 1},
+    //         {1030727889, 2}, {1030727889, 36}, {2924704302, 10}, {2924704302, 11},
+    //         {2924704302, 12}, {2924704302, 13}, {2924704302, 14}, {2924704302, 15},
+    //         {2924704302, 16}, {2924704302, 17}, {2924704302, 18}, {2924704302, 19},
+    //         {2924704302, 20}, {2924704302, 21}, {2924704302, 22}, {2924704302, 23},
+    //         {2924704302, 24}, {2924704302, 25}, {2924704302, 26}, {2924704302, 27},
+    //         {2586315456, 10}, {2586315456, 26}, {2586315456, 11}, {2586315456, 13},
+    //         {2586315456, 14}, {2586315456, 16}, {2586315456, 18}, {2586315456, 27},
+    //         {2586315456, 29}, {2586315456, 30}, {2586315456, 32}, {2586315456, 34},
+    //         {2586315456, 12}, {2586315456, 15}, {2586315456, 28}, {2586315456, 31},
+    //         {2586315456, 17}, {2429279289, 64}, {2429279289, 72}, {2429279289, 77},
+    //         {2429279289, 69}, {2429279289, 70}, {2429279289, 71}, {2429279289, 74},
+    //         {2429279289, 75}, {2429279289, 0}, {2429279289, 32}, {2429279289, 35},
+    //         {2429279289, 36}, {2429279289, 67}, {2429279289, 68}, {2429279289, 65},
+    //         {2429279289, 66}, {2429279289, 73}, {1030727892, 11}, {1030727892, 10},
+    //         {1030727892, 12}, {1030727892, 13}, {1030727892, 15}, {1030727892, 14},
+    //         {1030727892, 52}, {1030727892, 53}, {1030727892, 37}, {1030727892, 34},
+    //         {1030727892, 35}, {1171836109, 34}, {1171836109, 33}, {1171836109, 37},
+    //         {1171836109, 36}, {1171836109, 35}, {3458056116, 66}, {3458056116, 68},
+    //         {3458056116, 69}, {3458056116, 67}, {3458056116, 69}, {3458056116, 52},
+    //         {749821213, 10}, {749821213, 2}
+    // };
+    // for (const auto& pair : filteredEventIdentifiers) {
+    //     EventIdentifier* ei = new EventIdentifier(pair.first, pair.second);
+    //     Filter::filteredEventIdentifiers.insert(ei);
+    // }
 
     MyLogger::writeLog("initFilter succeed!");
 }
@@ -336,7 +407,10 @@ void Initializer::initPrasePool() {
     EventParser::parsePools = new ThreadPool(4, 1000000);
 }
 void Initializer::initOutputThread() {
-
+    // 输出线程保持 detach:进程退出路径由 console handler → ProcessTrace 返回 →
+    // mainSessionConfig cleanup → requestStop + 短暂等待,而非 join。
+    // detach 避免输出线程异常时阻塞主线程退出;final flush 在 requestStop 后
+    // 由输出线程自行完成(最多 500ms 内)。
     std::thread outputThread(&Output::outputStrings, EventParser::op);
     outputThread.detach();
 }
@@ -434,57 +508,42 @@ STATUS Initializer:: InitProcessMap() {
     return status;
 }
 
-void Initializer::writeUUID2File() {
-    // 直接定义 UUID，假设要记录到日志
-    std::string uuid = "FBFFA15C-FEDE-4f96-9AF8-398294758A2A";
-    MyLogger::writeLog("UUID: " + uuid); // 或其他处理
-}
-
-STATUS Initializer::setUUIDFromFile() {
-    // 直接定义 UUID
-    std::string uuid = "FBFFA15C-FEDE-4f96-9AF8-398294758A2A";
-    setUUID(uuid);
-    return STATUS_SUCCESS;
-}
-
-STATUS Initializer::setUUIDByFunction() {
-
-    GUID guid;
-    char tempUUID[1024];
-    std::string buf;
-    HRESULT res = CoCreateGuid(&guid);
-    if(res == S_OK){
-        sprintf(tempUUID,"\"%08X-%04X-%04x-%02X%02X-%02X%02X%02X%02X%02X%02X\""
-                , guid.Data1
-                , guid.Data2
-                , guid.Data3
-                , guid.Data4[0], guid.Data4[1]
-                , guid.Data4[2], guid.Data4[3], guid.Data4[4], guid.Data4[5]
-                , guid.Data4[6], guid.Data4[7]);
-
-        buf = std::string(tempUUID);
-
-        Initializer::setUUID(buf);
-        writeUUID2File();
-
-        return STATUS_SUCCESS;
-    }
-
-    Initializer::setUUID("none");
-    return STATUS_FAIL;
-}
-
 void Initializer::initHostUUID() {
-
-    STATUS status = setUUIDFromFile();
-
-    if(status == STATUS_FAIL){
-        STATUS res = setUUIDByFunction();
-
-        if(res == STATUS_FAIL) {
-            std::cout<<"host UUID set failed."<<std::endl;
+    // 1) 从 config/uuid 读上次生成的 UUID(跨重启保持一致)
+    {
+        std::ifstream f("config/uuid");
+        if (f.is_open()) {
+            std::string saved;
+            std::getline(f, saved);
+            // standard UUID string length = 36 (8-4-4-4-12)
+            if (saved.size() == 36) {
+                setUUID(saved);
+                return;
+            }
         }
     }
+
+    // 2) 生成新 UUID 并持久化,下次启动复用
+    GUID guid;
+    if (CoCreateGuid(&guid) == S_OK) {
+        char buf[64];
+        sprintf(buf, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X",
+                guid.Data1, guid.Data2, guid.Data3,
+                guid.Data4[0], guid.Data4[1],
+                guid.Data4[2], guid.Data4[3], guid.Data4[4], guid.Data4[5],
+                guid.Data4[6], guid.Data4[7]);
+        setUUID(buf);
+
+        std::ofstream of("config/uuid");
+        if (of.is_open()) {
+            of << buf;
+        }
+        return;
+    }
+
+    // 3) 兜底:CoCreateGuid 失败(极罕见)
+    setUUID("none");
+    std::cout << "host UUID generation failed." << std::endl;
 }
 
 void Initializer::initNeededStruct() {
@@ -574,6 +633,9 @@ void Initializer::showCommandList() {
     cmdList.append("-s , the socket that you want to transmit events\n"
                    "\tUsage: 192.168.1.2:66 ,output events to host 192.168.1.2 \n");
     cmdList.append("--outputThreshold , set the threshold number of output events.\n");
+    cmdList.append("-x , comma-separated event names to drop before parsing (noise control)\n"
+                   "\tUsage: -x FileIODirNotify,FileIODirEnum\n"
+                   "\tEvent names come from config/eventStruct_win10.xml\n");
     cmdList.append("-h , get the manual\n");
 
     std::cout << cmdList;
@@ -728,10 +790,21 @@ ULONG64 Initializer::init(GUID &p) {
             std::string arg = argV[i++];
             userProvider = Tools::HexStr2DecInt(arg);
             initUserGuid(userProvider,p);
-//           EventParser::op = new ConsoleOutPut();
-////            EventParser::op = new FileOutPut();
-//            status = EventParser::op->init();
-//            outputInited = true;
+        }
+        else if (strcmp(currentArv, "-x") == 0) {
+            //comma-separated event names to drop at firstFilter, e.g. -x FileIODirNotify,FileIODirEnum
+            if (!validArgLength(i, status))   break;
+            std::string arg = argV[i++];
+            size_t start = 0;
+            while (start <= arg.size()) {
+                size_t comma = arg.find(',', start);
+                std::string name = arg.substr(start, (comma == std::string::npos ? arg.size() : comma) - start);
+                size_t b = name.find_first_not_of(" \t"), e = name.find_last_not_of(" \t");
+                if (b != std::string::npos) userDroppedEventNames.insert(name.substr(b, e - b + 1));
+                if (comma == std::string::npos) break;
+                start = comma + 1;
+            }
+            status = STATUS_SUCCESS;
         }
         else {
             status = isOutPutOption(currentArv) ? STATUS_DUPLICATE_OUTPUT : STATUS_UNKNOWN_OPTION;

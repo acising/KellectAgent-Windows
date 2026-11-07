@@ -1,0 +1,17 @@
+# config/filter.txt — runtime filter configuration (read by initFilter() at startup)
+# Format: section name on one line, then one entry per line; # lines are comments.
+#
+# filteredProcessID:  PIDs whose events are dropped (blacklist).
+# droppedEventName:   event names (from eventStruct xml) dropped at firstFilter.
+#                     Same effect as CLI -x; -x entries are additive.
+# filteredImageFile:  image paths whose events are dropped (blacklist).
+
+filteredProcessID
+0
+4
+128
+
+droppedEventName
+
+filteredImageFile
+C:\Windows\SysWOW64\ntdll.dll

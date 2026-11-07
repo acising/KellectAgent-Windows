@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Shared WiX variables for the kellect MSI.
+  Included by kellect.wxs via <?include Variables.wxi ?>.
+  StageDir is anchored to THIS file's directory ($(sys.SOURCEFILEDIR)),
+  so the layout is identical whether wix is run from the installer/
+  folder or from the repo root.
+-->
+<Include>
+  <?define ProductName    = "kellect" ?>
+  <?define ProductDisplay = "kellect - Windows Event Collector" ?>
+  <?define Manufacturer   = "kellect" ?>
+  <?define Version        = "1.0.0" ?>
+
+  <!-- Fixed for the lifetime of the product: drives MajorUpgrade. -->
+  <?define UpgradeCode    = "d4f1a2b3-1234-5678-9abc-def012345678" ?>
+
+  <!-- Assembled by build-msi.bat (kellect.exe, manifest, 4 DLLs, config\,
+       gui\ with KellectConsole.exe + Qt/CRT runtime). -->
+  <?define StageDir       = "$(sys.SOURCEFILEDIR)stage\" ?>
+</Include>

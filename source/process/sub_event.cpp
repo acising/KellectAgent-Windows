@@ -107,7 +107,19 @@ void EventFile::parse() {
 	case NOTDEFINEDTYPE1:
 	case NOTDEFINEDTYPE2:
 		return;
-	case RUNDOWN:
+	case RUNDOWN: {
+        // Session-start dump of every open file handle: bulk, no PID in the
+        // schema, zero analysis value. Still parsed because it feeds the
+        // fileObject->name map used to resolve later Read/Write events.
+        setTIDAndPID(this);
+
+        removeQuotesFromProperty(FileName);
+
+		fileKey2Name[fileObject] =getProperty(FileName)->getString();
+
+        setValueableEvent(false);
+        break;
+	}
 	case NAME:
 	case FILECREATE: {
 
@@ -399,10 +411,13 @@ void  EventImage::parse() {
 
 		Module tempModule = Module(baseAddress, baseAddress + moduleSize, imageFileName);
 
-		//erase unloaded image in correlate process_module map. 
+		//erase unloaded image in correlate process_module map.
 		processID2Modules.eraseValueItemWithKey(processID, &tempModule);
 
-		//TODO : update the min and max module address of the exact process, skip this now.
+		//processID2ModuleAddressPair 的 min/max 在此处不缩小:范围只做粗过滤
+		//(get_properties_kernel.cpp 用它排除明显越界的栈地址),偏宽是安全的
+		//——多放过的地址在 parse 阶段的模块精确匹配中自然淘汰;缩小时反而
+		//可能因重算窗口期漏帧。IMAGELOAD 分支已正确扩大范围。
 
 		break;
 	}
@@ -686,6 +701,23 @@ void  EventProcess::parse() {
 		// for both update and add value
 		processID2Name[pid] = getProperty(ImageFileName)->getString();
 
+		//family process (GUI/service/another collector) started after this run:
+		//blacklist its PID so its later file/registry/... events die at firstFilter,
+		//and drop this ProcessStart event itself
+		if (Filter::isKellectFamilyImage(processID2Name[pid].c_str())) {
+			Filter::filteredProcessID.insert(static_cast<int>(pid));
+			setValueableEvent(false);
+			break;
+		}
+
+		// PID reuse cleanup (plan B): new process with a blacklisted PID but a
+		// non-family image — release the stale entry (covers missed PROCESSEND).
+		// Guard: permanent entries {0,4,128,self} are never released.
+		if (pid != 0 && pid != 4 && pid != 128 &&
+            pid != (ULONG64)GetCurrentProcessId()) {
+            Filter::filteredProcessID.erase(static_cast<int>(pid));
+        }
+
 		if (EventImage::processID2Modules.count(pid) == 0)  {
 
             //for readwritemap
@@ -707,6 +739,15 @@ void  EventProcess::parse() {
 		//process end ,clear correlate modules set
 		EventImage::processID2Modules.erase(pid);
 		processID2ModuleAddressPair.erase(pid);
+
+		// PID reuse cleanup (plan A): release this PID from the dynamic filter
+		// blacklist so a future process reusing the PID isn't silently dropped.
+		// Guard: permanent entries {0,4,128,self} are never released.
+		if (pid != 0 && pid != 4 && pid != 128 &&
+            pid != (ULONG64)GetCurrentProcessId()) {
+            Filter::filteredProcessID.erase(static_cast<int>(pid));
+        }
+
 		break;
 	}
 	case PROCESSDEFUNCT: 
@@ -753,6 +794,20 @@ void  EventRegistry::parse() {
             std::string keyName = getProperty(KeyName)->getString();
             ULONG64 keyHandle = getProperty(KeyHandle)->getULONG64();
             keyHandle2KeyName.insertOverwirte(keyHandle,keyName);
+            break;
+        }
+        case REG_KCBRUNDOWNBEGIN:{
+            // Session-start registry-state dump (same suppression rationale as
+            // EventFile's RUNDOWN): feeds the keyHandle->name map only.
+            removeQuotesFromProperty(KeyName);
+            std::string keyName = getProperty(KeyName)->getString();
+            ULONG64 keyHandle = getProperty(KeyHandle)->getULONG64();
+            keyHandle2KeyName.insertOverwirte(keyHandle,keyName);
+            setValueableEvent(false);
+            break;
+        }
+        case REG_KCBRUNDOWNEND:{
+            setValueableEvent(false);
             break;
         }
         default:{
@@ -1062,14 +1117,14 @@ ULONG64 ProviderID = event->getEventIdentifier()->getProviderID();
 int OpCode = event->getEventIdentifier()->getOpCode();
 bool flag = false;
 sJson->append(
-        "{\"Event\":\"" + eventName +
+        "{\"Event\":\"" + Tools::jsonEscape(eventName) +
         "\",\"PID\":" + std::to_string(event->getProcessID()) +
-        ",\"PName\":\"" + event->getProcessName() +
+        ",\"PName\":\"" + Tools::jsonEscape(event->getProcessName()) +
         "\",\"PPID\":" + std::to_string(event->getParentProcessID()) +
-        ",\"PPName\":\"" + event->getParentProcessName() +
+        ",\"PPName\":\"" + Tools::jsonEscape(event->getParentProcessName()) +
         "\",\"TID\":" + std::to_string(event->getThreadID()) +
         ",\"TimeStamp\":" + std::to_string(event->getTimeStamp()) +
-        ",\"Host-UUID\":" + Initializer::getUUID() +
+        ",\"Host-UUID\":\"" + Initializer::getUUID() + "\"" +
         ",\"args\":{");
 
 //event->getProperty
@@ -1085,7 +1140,7 @@ for (auto pty : event->getProperties()) {
         if (pty.second->getIsString()) {
             std::string argValue = pty.second->getString();
             sJson->append("\"" + pty.first + "\":\"" +
-                          argValue + "\"");
+                          Tools::jsonEscape(argValue) + "\"");
         }
         else {
             sJson->append("\"" + pty.first + "\":" +

@@ -80,48 +80,34 @@ For example, the following command can be used to collect all system logs and ou
 
 #### filter.txt
 
-Users can implement different functions by configuring filter.txt. Usually KellectAgent does not need to be modified to run, unless there are customized requirements.
+Runtime filter configuration, read by `initFilter()` at startup. Three sections with human-readable entries:
 
-- The role of filter.txt is to filter events you don't need. There are three types of labels used for filtering, which are the process ID, event identifier, blacklist of image file path and whitelist of image file path. The default configuration is as follows:
-
-```c++
+```text
+# config/filter.txt
 filteredProcessID
-0 4 128
+0
+4
+128
 
-filteredEventIdentifier
-3740466758 32
-1030727888 1
-1030727888 2
-1030727889 1
-1030727889 2
-1030727889 36
-749821213 10
-749821213 2
-...
+droppedEventName
 
 filteredImageFile
 C:\Windows\SysWOW64\ntdll.dll
 ```
 
-**Label descriptions:**
+**Section descriptions:**
 
 1. *[filteredProcessID]*
 
-    Indicates to filter events based on the list of PIDs separated by spaces.
+    PIDs whose events are dropped (one per line). Built-in entries {0, 4, 128} are always present; additional PIDs from this file are additive.
 
-2. *[filteredEventIdentifier]*
+2. *[droppedEventName]*
 
-    Indicates tracing events through the combination of Event ProviderID and opcode, which we call EventIdentifier. The specific event log details can be obtained in [Microsoft Documentation](https://docs.microsoft.com/en-us/windows/win32/etw/fileio). ProviderID is the decimal form of the first part of the Guid class, and opcode is the EventType value under Remarks of BaseEvent Class Page.
-    
-    > **Note:** The event identifiers under this label are whitelisted and are the types of events we need to collect.
+    Event names (from `eventStruct_win10.xml`) dropped at the earliest filter stage, before any parsing. Use for high-volume low-value noise (e.g. `FileIODirNotify`). The CLI `-x` option has the same effect and adds to this list at runtime.
 
-![image-20220503171251436](images/eventType.png)
+3. *[filteredImageFile]*
 
-![image-20220503171255065](images/guid.png)
-
-​	3.*[filteredImageFile]*
-
-​		ImageLoad events and corresponding CallStacks will be **filtered** by the Image file path listed in this label.
+    ImageLoad events and corresponding CallStacks will be **filtered** by the Image file path listed in this section.
 
 #### initImages.txt
 
@@ -151,7 +137,7 @@ Configure the log output format and path information.
 
 #### uuid
 
-Set the UUID of the current host. If not specified, KellectAgent will automatically generate a UUID and output it to the file.
+A unique identifier for the current host. Generated via `CoCreateGuid` on first run and persisted to `config/uuid`; subsequent runs reuse the same value. Each machine gets a different UUID.
 
 ## **Output Format**
 
@@ -216,7 +202,7 @@ The output case are as follows:
 	"PPName": "QQPCRTP.exe",
 	"TID": 9516,
 	"TimeStamp": 133253085392394264,
-	"Host-UUID": "FBFFA15C-FEDE-4f96-9AF8-398294758A2A",
+	"Host-UUID": "XXXXXXXX-XXXX-4XXX-XXXX-XXXXXXXXXXXX",
 	"Args": {
 		"CreateOptions": 18890752,
 		"FileAttributes": 0,
@@ -237,7 +223,7 @@ The output case are as follows:
 	"PPName": "svchost.exe",
 	"TID": 44940,
 	"TimeStamp": 133253092340669753,
-	"Host-UUID": "FBFFA15C-FEDE-4f96-9AF8-398294758A2A",
+	"Host-UUID": "XXXXXXXX-XXXX-4XXX-XXXX-XXXXXXXXXXXX",
 	"Args": {
 		"stackInfo": "C:\Program Files (x86)\Google\Update\1.3.36.152\goopdate.dll:DllEntry,
         C:\Program Files (x86)\Google\Update\1.3.36.152\goopdate.dll:DllEntry,
@@ -325,6 +311,70 @@ The output case are as follows:
    ```
 ## Dateset
 We use KellectAgent as the collection tool and based on the script [Automic Red Team](https://github.com/redcanaryco/atomic-red-team) proposed by redcanaryco for data collection. The script is based on the tactics in [ATT&CK](https://attack.mitre.org/), and the data we collected is shared in [Kellect Website](http://www.kellect.org)
+
+## KellectConsole (Graphical Console)
+
+`gui/QtKellectConsole` ships an optional Qt-based graphical console for driving
+`kellect.exe`. It is built with the **official dynamic Qt 5.15 LTS** (msvc2019_64)
++ MSVC `/MD`; the ~200 KB exe ships with its Qt DLLs, platform plugin, and the
+VC++/UCRT runtime (app-local), so the install runs on **Windows 7 SP1, 10 and
+11** with no prerequisites. It must run as **Administrator** (the manifest
+requests elevation — required for ETW).
+
+Launch `KellectConsole.exe`, then:
+
+1. **Settings** → `kellect.exe` is auto-detected at startup (GUI's own folder,
+   then one folder up — the install root); override in Settings if needed.
+2. Tick the **kernel event classes** you want (or pick a preset).
+3. Choose an **output target**: Console (live on-screen view), File, Socket, or
+   Kafka. Console/File/Socket are tee'd from the live stream by the GUI so the
+   on-screen view is always available; Kafka is sent directly by `kellect.exe`.
+4. **Start**. The JSON event stream renders with per-event-type colouring
+   and a details dialog on double-click.
+
+> The GUI launches `kellect.exe` with `-c` and does **not** expose `-u`. To
+> trace user-mode providers, run the binary directly (see below).
+
+Build:
+
+```
+cmd /c gui\QtKellectConsole\scripts\build.bat test
+```
+(Official dynamic Qt 5.15.2 msvc2019_64 at `%QTDIR%` — default
+`D:\Code\Qt\5.15.2\msvc2019_64`, MSVC v142 / 14.29, Windows SDK 10.0.19041.0.
+Fetch Qt once with:
+`pip install aqtinstall` then
+`python -m aqt install-qt windows desktop 5.15.2 win64_msvc2019_64 -O D:\Code\Qt --archives qtbase`.
+The build script copies the Qt DLLs + `platforms\qwindows.dll` beside the exe.)
+
+## MSI Installer
+
+**MSI** — one pipeline builds collector + GUI + installer:
+
+```
+cmd /c scripts\build-all.bat
+```
+→ `installer\build-msi\Kellect-win-x64.msi` (custom install folder; the GUI
+installs into `gui\` with its Qt/CRT runtime, the collector into the root).
+
+> The Windows-service wrapper (`KellectService`) was removed on 2026-09-19.
+> For unattended collection use Task Scheduler (`schtasks /sc onstart` with a
+> restart-on-failure setting) running `kellect.exe` directly.
+
+### User-mode providers (`-u`)
+
+`kellect.exe` can additionally trace **one** user-mode ETW provider via `-u`
+(single-select enum, not a bitmask):
+
+| Value | Provider |
+|-------|----------|
+| `0x01` | Thread Pool |
+| `0x02` | DNS Client |
+| `0x03` | Print Service |
+
+```
+kellect.exe -e all -u 0x02 -f dns.json   :: DNS resolution to a file (as Administrator)
+```
 
 ## Future Work
 

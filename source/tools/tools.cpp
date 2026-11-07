@@ -281,3 +281,30 @@ std::string Tools::convertTimestamp(ULONG64 timestamp){
 
     return s;
 }
+
+// JSON string escape per RFC 8259: ", \, control chars; other chars (<0x20)
+// as u00xx. Leaves multi-byte UTF-8 bytes untouched.
+std::string Tools::jsonEscape(const std::string& s) {
+    std::string out;
+    out.reserve(s.size() + 8);
+    for (unsigned char c : s) {
+        switch (c) {
+            case '"':  out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\b': out += "\\b";  break;
+            case '\f': out += "\\f";  break;
+            case '\n': out += "\\n";  break;
+            case '\r': out += "\\r";  break;
+            case '\t': out += "\\t";  break;
+            default:
+                if (c < 0x20) {
+                    char buf[8];
+                    snprintf(buf, sizeof(buf), "\\u%04x", (unsigned)c);
+                    out += buf;
+                } else {
+                    out += (char)c;
+                }
+        }
+    }
+    return out;
+}
