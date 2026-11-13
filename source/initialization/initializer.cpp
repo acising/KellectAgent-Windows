@@ -100,12 +100,16 @@ STATUS Initializer::initEnabledEvent(ULONG64 eventType) {
 }
 /*
     initialize kernel provider trace event types.
+    DiskIO excluded from the default output: DiskIoGuid stays out of
+    listenedEventsProviders (size==7, listenAllEvents stays false), so
+    thirdFilter drops it. DISK_IO flags themselves are still enabled via the
+    FILEEVENT branch in initEnabledEvent() (FileIo Name events depend on them).
+    Explicit "-e 0x10" keeps DiskIO output available.
 */
 inline void Initializer::initDefaultEnabledEvents() {
 
-    Filter::listenAllEvents=true;
     setListenCallStack(true);
-    userEnabledFlags = ALLEVENT;
+    userEnabledFlags = ALLEVENT & ~DISKEVENT;
 }
 
 /*
@@ -761,7 +765,9 @@ ULONG64 Initializer::init(GUID &p) {
             if (!validArgLength(i, status))   break;
 //            std::cout<<strcmp(argV[i++],"all")<<std::endl;
             std::string arg = argV[i++];
-            userEnabledFlags = strcmp(arg.c_str(),"all") == 0? 0x1ff:Tools::HexStr2DecInt(arg);
+            // "all" = 0x1ef (0x1ff minus DISKEVENT 0x10): DiskIO output only
+            // via explicit "-e 0x10"; see initDefaultEnabledEvents().
+            userEnabledFlags = strcmp(arg.c_str(),"all") == 0? 0x1ef:Tools::HexStr2DecInt(arg);
 
             if(status == STATUS_SUCCESS)    enbaleFlagsInited = true;
         }

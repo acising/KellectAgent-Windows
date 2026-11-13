@@ -400,6 +400,14 @@ void  EventImage::parse() {
 	//set process info
     fillProcessInfo(); //fill parentProcess and process Information
 
+    // DCStart/DCEnd are session start/stop snapshots with no attack semantics:
+    // flag them non-valueable here (before the ".exe" early-return below, which
+    // would otherwise bypass the switch); non-exe images still walk the switch
+    // for module-table bookkeeping, only the output is dropped.
+    if (opCode == IMAGEDCSTART || opCode == IMAGEDCEND) {
+        setValueableEvent(false);
+    }
+
     if(imageFileName.find(".exe") != -1){   //won't parse ".exe" PE file
         return;
     }
@@ -483,7 +491,7 @@ void  EventImage::parse() {
 		{
 			delete module;
 		}
-			
+
 		break;
 	}
 	default:
@@ -785,15 +793,25 @@ void  EventRegistry::parse() {
     fillProcessInfo(); //fill parentProcess and process Information
 
     switch (getEventIdentifier()->getOpCode()) {
-        case REG_OPEN:
-        case REG_CREATE:
-        case REG_QUERYVALUE:
-        case REG_KCBCREATE:{
-
+        case REG_CREATE: {
+            // write op: build the handle->name map and keep the output.
             removeQuotesFromProperty(KeyName);
             std::string keyName = getProperty(KeyName)->getString();
             ULONG64 keyHandle = getProperty(KeyHandle)->getULONG64();
             keyHandle2KeyName.insertOverwirte(keyHandle,keyName);
+            break;
+        }
+        case REG_OPEN:
+        case REG_QUERYVALUE:
+        case REG_KCBCREATE: {
+            // read ops / KCB bookkeeping: the handle->name map is required by
+            // later write ops (default branch resolves KeyName through it),
+            // but the events themselves carry no attack signal - drop output.
+            removeQuotesFromProperty(KeyName);
+            std::string keyName = getProperty(KeyName)->getString();
+            ULONG64 keyHandle = getProperty(KeyHandle)->getULONG64();
+            keyHandle2KeyName.insertOverwirte(keyHandle,keyName);
+            setValueableEvent(false);
             break;
         }
         case REG_KCBRUNDOWNBEGIN:{
@@ -806,11 +824,21 @@ void  EventRegistry::parse() {
             setValueableEvent(false);
             break;
         }
-        case REG_KCBRUNDOWNEND:{
+        case REG_KCBRUNDOWNEND:
+        case REG_KCBDELETE:
+        case REG_QUERY:
+        case REG_CLOSE:
+        case REG_ENUMERATEKEY:
+        case REG_ENUMERATEVALUEKEY:
+        case REG_QUERYMULTIVALUE:
+        case REG_FLUSH: {
+            // read ops / KCB bookkeeping with no map contribution: drop.
             setValueableEvent(false);
             break;
         }
         default:{
+            // remaining ops are writes (SetValue/Delete/DeleteValue/
+            // SetInformation/SetSecurity...) - resolve KeyName and keep output.
             auto d = getProperty(KeyHandle);
 
             if(d){
