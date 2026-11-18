@@ -501,6 +501,11 @@ void  EventImage::parse() {
 }
 
 //start tracing callstack configuration
+// Anchor set is kept in sync with the output trimming: anchors whose events
+// are dropped from the output (Registry read ops / KCB, File Query/Flush/
+// Control, Image DCStart/DCEnd, all TcpIp IPV6 - dropped at TDH parse) are
+// NOT registered for stack walking either - their stacks would be orphaned
+// output (the kernel emits the stack independently of the anchor event).
 void EventCallstack::initCallStackTracing(TRACEHANDLE &SessionHandle) {
 
     int idx = 0;
@@ -509,8 +514,9 @@ void EventCallstack::initCallStackTracing(TRACEHANDLE &SessionHandle) {
     if(Filter::listenedEventsProviders.count(ProcessProvider)){
         callStackEvents[idx++] = { ProcessGuid, 1,{ 0 }};   //start
         callStackEvents[idx++] = { ProcessGuid, 2,{ 0 }};   //end
-        callStackEvents[idx++] = { ProcessGuid, 3,{ 0 }};   //dcstart
-        callStackEvents[idx++] = { ProcessGuid, 4,{ 0 }};   //dcend
+        // no DCStart/DCEnd: rundown events fire on the enumeration path, not at
+        // any operation site - their stacks are snapshot-moment noise (实测
+        // 73% 是同一个符号化单帧), never the thread's creation call chain.
     }
     if(Filter::listenedEventsProviders.count(FileProvider)){
         callStackEvents[idx++] = { FileGuid, 32,{ 0 }}; //filecreate
@@ -520,9 +526,6 @@ void EventCallstack::initCallStackTracing(TRACEHANDLE &SessionHandle) {
         callStackEvents[idx++] = { FileGuid, 68,{ 0 }}; //write
         callStackEvents[idx++] = { FileGuid, 70,{ 0 }}; //delete
         callStackEvents[idx++] = { FileGuid, 72,{ 0 }}; //direnum
-        callStackEvents[idx++] = { FileGuid, 73,{ 0 }}; //flush
-        callStackEvents[idx++] = { FileGuid, 74,{ 0 }}; //Query
-        callStackEvents[idx++] = { FileGuid, 75,{ 0 }}; // control
         callStackEvents[idx++] = { FileGuid, 71,{ 0 }}; //Rename
     }
     if(Filter::listenedEventsProviders.count(DiskProvider)){
@@ -532,10 +535,11 @@ void EventCallstack::initCallStackTracing(TRACEHANDLE &SessionHandle) {
     if(Filter::listenedEventsProviders.count(ThreadProvider)){
         callStackEvents[idx++] = { ThreadGuid, 1,{ 0 }};    //  start
         callStackEvents[idx++] = { ThreadGuid, 2,{ 0 }};    //  end
-        callStackEvents[idx++] = { ThreadGuid, 3,{ 0 }};    //  dcstart
-        callStackEvents[idx++] = { ThreadGuid, 4,{ 0 }};    //  dcend
+        // no DCStart/DCEnd: same rundown rationale as Process above.
     }
     if(Filter::listenedEventsProviders.count(TcpIpProvider)){
+        // IPV4 only: IPV6 anchors are dropped at TDH parse (OutType_IPV6
+        // limitation) - stacks for them would never have a home.
         callStackEvents[idx++] = { TcpIpGuid, 10,{ 0 }};    //TcpIpSendIPV4
         callStackEvents[idx++] = { TcpIpGuid, 11,{ 0 }};    //TcpIpRecvIPV4
         callStackEvents[idx++] = { TcpIpGuid, 12,{ 0 }};    //TcpIpConnectIPV4
@@ -544,35 +548,17 @@ void EventCallstack::initCallStackTracing(TRACEHANDLE &SessionHandle) {
         callStackEvents[idx++] = { TcpIpGuid, 15,{ 0 }};    //TcpIpAcceptIPV4
         callStackEvents[idx++] = { TcpIpGuid, 16,{ 0 }};    //TcpIpReconnectIPV4
         callStackEvents[idx++] = { TcpIpGuid, 18,{ 0 }};    //TcpIpTCPCopyIPV4
-
-        callStackEvents[idx++] = { TcpIpGuid, 26,{ 0 }};    //TcpIpSendIPV6
-        callStackEvents[idx++] = { TcpIpGuid, 27,{ 0 }};    //TcpIpRecvIPV6
-        callStackEvents[idx++] = { TcpIpGuid, 28,{ 0 }};    //TcpIpConnectIPV6
-        callStackEvents[idx++] = { TcpIpGuid, 29,{ 0 }};    //TcpIpDisconnectIPV6
-        callStackEvents[idx++] = { TcpIpGuid, 30,{ 0 }};    //TcpIpRetransmitIPV6
-        callStackEvents[idx++] = { TcpIpGuid, 31,{ 0 }};    //TcpIpAcceptIPV6
-        callStackEvents[idx++] = { TcpIpGuid, 32,{ 0 }};    //TcpIpReconnectIPV6
-        callStackEvents[idx++] = { TcpIpGuid, 34,{ 0 }};    //TcpIpTCPCopyIPV6
-
     }
     if(Filter::listenedEventsProviders.count(ImageProvider)){
         callStackEvents[idx++] = { ImageLoadGuid, 10,{ 0 }};    //imagheload
         callStackEvents[idx++] = { ImageLoadGuid, 2,{ 0 }};    //imageunload
-        callStackEvents[idx++] = { ImageLoadGuid, 3,{ 0 }};    //imagedcstart
-        callStackEvents[idx++] = { ImageLoadGuid, 4,{ 0 }};    //imagedcend
     }
     if(Filter::listenedEventsProviders.count(RegistryProvider)){
+        // write ops only: read-op anchors are trimmed from the output
         callStackEvents[idx++] = { RegistryGuid, 10,{ 0 }}; //RegistryCreate
-        callStackEvents[idx++] = { RegistryGuid, 11,{ 0 }}; //RegistryOpen
         callStackEvents[idx++] = { RegistryGuid, 12,{ 0 }}; //RegistryDelete
-        callStackEvents[idx++] = { RegistryGuid, 13,{ 0 }}; //RegistryQuery
         callStackEvents[idx++] = { RegistryGuid, 14,{ 0 }}; //RegistrySetValue
         callStackEvents[idx++] = { RegistryGuid, 15,{ 0 }}; //RegistryDeleteValue
-        callStackEvents[idx++] = { RegistryGuid, 16,{ 0 }}; //RegistryQueryValue
-        callStackEvents[idx++] = { RegistryGuid, 17,{ 0 }}; //RegistryEnumerateKey
-        callStackEvents[idx++] = { RegistryGuid, 22,{ 0 }}; //RegistryKCBCreate
-        callStackEvents[idx++] = { RegistryGuid, 23,{ 0 }}; //RegistryKCBDelete
-        callStackEvents[idx++] = { RegistryGuid, 27,{ 0 }}; //RegistryClose
     }
 
 	TraceSetInformation(SessionHandle, TraceStackTracingInfo, &callStackEvents, sizeof(callStackEvents));
